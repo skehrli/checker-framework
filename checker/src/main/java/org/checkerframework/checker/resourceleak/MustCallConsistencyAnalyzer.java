@@ -620,7 +620,9 @@ class MustCallConsistencyAnalyzer {
 
   private void updateObligationsForVariableDeclaration(
       Set<Obligation> obligations, VariableDeclarationNode node) {
-    ExpressionTree tree = MustCallOnElementsAnnotatedTypeFactory.getArrayTreeForOwningArrayName(node.getTree().getName().toString());
+    ExpressionTree tree =
+        MustCallOnElementsAnnotatedTypeFactory.getArrayTreeForOwningArrayName(
+            node.getTree().getName().toString());
     Element elt = TreeUtils.elementFromTree(node.getTree());
     if (typeFactory.hasOwningArray(elt)) {
       obligations.add(

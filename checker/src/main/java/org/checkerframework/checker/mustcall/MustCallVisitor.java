@@ -178,7 +178,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
       if (mcValues != null) {
         ExpressionTree condition = tree.getCondition();
         ExpressionTree arrayTree = ((ArrayAccessTree) lhs).getExpression();
-        assert(arrayTree instanceof IdentifierTree) : "array expected to be identifier";
+        assert (arrayTree instanceof IdentifierTree) : "array expected to be identifier";
         IdentifierTree arrayId = (IdentifierTree) arrayTree;
         MustCallOnElementsAnnotatedTypeFactory.createArrayObligationForAssignment(assgn);
         MustCallOnElementsAnnotatedTypeFactory.createArrayObligationForLessThan(
@@ -193,7 +193,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
           (MemberSelectTree) ((MethodInvocationTree) stmtTree).getMethodSelect();
       ArrayAccessTree arrAcc = (ArrayAccessTree) methodCall.getExpression();
       ExpressionTree arrayTree = arrAcc.getExpression();
-      assert(arrayTree instanceof IdentifierTree) : "array expected to be identifier";
+      assert (arrayTree instanceof IdentifierTree) : "array expected to be identifier";
       IdentifierTree arrayId = (IdentifierTree) arrayTree;
       Name methodName = methodCall.getIdentifier();
       System.out.println("detected calledmethod: " + methodName);

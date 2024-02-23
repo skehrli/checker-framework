@@ -1,14 +1,23 @@
 package org.checkerframework.checker.calledmethodsonelements;
 
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.ExecutableElement;
 import org.checkerframework.checker.calledmethodsonelements.qual.CalledMethodsOnElements;
 import org.checkerframework.checker.calledmethodsonelements.qual.CalledMethodsOnElementsBottom;
 import org.checkerframework.common.accumulation.AccumulationAnnotatedTypeFactory;
 import org.checkerframework.common.basetype.BaseTypeChecker;
+import org.checkerframework.javacutil.AnnotationBuilder;
 import org.checkerframework.javacutil.TreeUtils;
 
 /** The annotated type factory for the Called Methods Checker. */
 public class CalledMethodsOnElementsAnnotatedTypeFactory extends AccumulationAnnotatedTypeFactory {
+
+  /** The {@code @}{@link MustCallOnElements()} annotation. */
+  public final AnnotationMirror TOP;
 
   /** The {@link CalledMethodsOnElements#value} element/argument. */
   /*package-private*/ final ExecutableElement calledMethodsOnElementsValueElement =
@@ -21,10 +30,19 @@ public class CalledMethodsOnElementsAnnotatedTypeFactory extends AccumulationAnn
    */
   public CalledMethodsOnElementsAnnotatedTypeFactory(BaseTypeChecker checker) {
     super(checker, CalledMethodsOnElements.class, CalledMethodsOnElementsBottom.class);
+    TOP = createCMOEAnnotation(Collections.emptyList());
     // Don't call postInit() for subclasses.
     if (this.getClass() == CalledMethodsOnElementsAnnotatedTypeFactory.class) {
       this.postInit();
     }
+  }
+
+  private AnnotationMirror createCMOEAnnotation(List<String> methodList) {
+    AnnotationBuilder builder = new AnnotationBuilder(processingEnv, CalledMethodsOnElements.class);
+    String[] methodArray = methodList.toArray(new String[methodList.size()]);
+    Arrays.sort(methodArray);
+    builder.setValue("value", methodArray);
+    return builder.build();
   }
 
   public ExecutableElement getCalledMethodsOnElementsValueElement() {

@@ -95,9 +95,7 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   /** Set of method accesses that fulfill an obligation for an {@code @OwningArray} array. */
   private static Set<MemberSelectTree> obligationFulfillingMethodAccess = new HashSet<>();
 
-  /**
-   * Maps the name of an {@code @OwningArray} to the corresponding AST-node
-   */
+  /** Maps the name of an {@code @OwningArray} to the corresponding AST-node */
   private static Map<String, ExpressionTree> owningArrayNameToTreeMap = new HashMap<>();
 
   /**
