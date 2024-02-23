@@ -155,7 +155,6 @@ public class CalledMethodsOnElementsTransfer extends AccumulationTransfer {
     System.out.println("oldtype: " + result.getElseStore().getValue(target));
     if (CFAbstractStore.canInsertJavaExpression(target)) {
       if (result.containsTwoStores()) {
-        updateValueAndInsertIntoStore(result.getThenStore(), target, valuesAsList);
         updateValueAndInsertIntoStore(result.getElseStore(), target, valuesAsList);
       } else {
         updateValueAndInsertIntoStore(result.getRegularStore(), target, valuesAsList);

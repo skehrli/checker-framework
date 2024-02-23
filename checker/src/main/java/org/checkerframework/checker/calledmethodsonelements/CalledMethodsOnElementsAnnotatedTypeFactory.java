@@ -27,6 +27,10 @@ public class CalledMethodsOnElementsAnnotatedTypeFactory extends AccumulationAnn
     }
   }
 
+  public ExecutableElement getCalledMethodsOnElementsValueElement() {
+    return calledMethodsOnElementsValueElement;
+  }
+
   // @Override
   // protected TreeAnnotator createTreeAnnotator() {
   //   return new ListTreeAnnotator(super.createTreeAnnotator(), new

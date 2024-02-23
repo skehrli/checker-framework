@@ -620,8 +620,10 @@ class MustCallConsistencyAnalyzer {
   }
 
   private void updateObligationsForVariableDeclaration(Set<Obligation> obligations, VariableDeclarationNode node) {
+    System.out.println("Node: " + node);
     VariableTree tree = node.getTree();
     Element elt = TreeUtils.elementFromDeclaration(node.getTree());
+    // System.out.println("tree, elt, javaexp: " + node + " " + tree.getName() + " " + elt + " " + JavaExpression.fromVariableTree(tree));
     if (typeFactory.hasOwningArray(elt)) {
       obligations.add(new Obligation(
                             ImmutableSet.of(new ResourceAlias(JavaExpression.fromVariableTree(tree), elt, tree)),
@@ -1762,8 +1764,8 @@ class MustCallConsistencyAnalyzer {
     CalledMethodsOnElementsAnnotatedTypeFactory cmTypeFactory =
         typeFactory.getTypeFactoryOfSubchecker(CalledMethodsOnElementsChecker.class);
 
-    AnnotatedTypeMirror mcAtm = mcTypeFactory.getAnnotatedType((IdentifierTree) arrayTree);
-    AnnotatedTypeMirror cmAtm = cmTypeFactory.getAnnotatedType((IdentifierTree) arrayTree);
+    AnnotatedTypeMirror mcAtm = mcTypeFactory.getAnnotatedType(arrayTree);
+    AnnotatedTypeMirror cmAtm = cmTypeFactory.getAnnotatedType(arrayTree);
     AnnotationMirror mcAnno = mcAtm.getPrimaryAnnotation(MustCallOnElements.class);
     AnnotationMirror cmAnno = cmAtm.getPrimaryAnnotation(CalledMethodsOnElements.class);
     assert(mcAnno != null) : "no MustCallOnElements annotation on array";
@@ -2090,6 +2092,7 @@ class MustCallConsistencyAnalyzer {
       // successor block, but can vary slightly depending on the exception type.  There might
       // be some opportunities for optimization in this mostly-redundant work.
       for (Node node : currentBlock.getNodes()) {
+        System.out.println(node + " of kind " + node.getTree());
         if (node instanceof AssignmentNode) {
           updateObligationsForAssignment(obligations, cfg, (AssignmentNode) node);
         } else if (node instanceof ReturnNode) {
@@ -2309,7 +2312,10 @@ class MustCallConsistencyAnalyzer {
             if (typeFactory.hasOwningArray(alias.element)) {
               assert(alias.tree instanceof VariableTree) : "Invariant broke: Alias of an @OwningArray must be VariableTree";
               VariableTree arrayTree = (VariableTree) alias.tree;
-              System.out.println("tree is: " + alias.element);
+              System.out.println("tree is: " + arrayTree.getInitializer());
+              System.out.println("tree is: " + arrayTree.getType());
+              System.out.println("tree is: " + arrayTree.getNameExpression());
+              System.out.println("tree is: " + arrayTree.getModifiers());
               MustCallOnElementsAnnotatedTypeFactory mcTypeFactory =
                   typeFactory.getTypeFactoryOfSubchecker(MustCallOnElementsChecker.class);
               CalledMethodsOnElementsAnnotatedTypeFactory cmTypeFactory =
@@ -2318,9 +2324,7 @@ class MustCallConsistencyAnalyzer {
               AnnotatedTypeMirror cmAtm = cmTypeFactory.getAnnotatedType(alias.element);
               AnnotationMirror mcAnno = mcAtm.getPrimaryAnnotation(MustCallOnElements.class);
               AnnotationMirror cmAnno = cmAtm.getPrimaryAnnotation(CalledMethodsOnElements.class);
-              System.out.println("mc is: " + mcAtm);
-              System.out.println("cm is: " + cmAtm);
-              if(mcAnno == null || cmAnno == null) break;
+              if(mcAnno == null || cmAnno == null) return;
               assert(mcAnno != null) : "no MustCallOnElements annotation on array";
               assert(cmAnno != null) : "no CalledMethodsOnElements annotation on array";
               List<String> mcValues =
@@ -2330,9 +2334,10 @@ class MustCallConsistencyAnalyzer {
                   AnnotationUtils.getElementValueArray(
                       cmAnno, cmTypeFactory.getCalledMethodsOnElementsValueElement(), String.class);
               mcValues.removeAll(cmValues);
-              if (!mcValues.isEmpty()) {
-                checker.reportError(arrayTree, "unfulfilled.mustcallonelements.obligations");
+              if (mcValues.isEmpty()) {
+                return;
               }
+              checker.reportError(arrayTree, "unfulfilled.mustcallonelements.obligations");
             }
           }
         }

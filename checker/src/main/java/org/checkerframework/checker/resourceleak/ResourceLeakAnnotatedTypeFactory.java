@@ -3,6 +3,7 @@ package org.checkerframework.checker.resourceleak;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
 import com.sun.source.tree.Tree;
+import com.sun.source.tree.VariableTree;
 import java.lang.annotation.Annotation;
 import java.util.Arrays;
 import java.util.Collections;
@@ -316,6 +317,16 @@ public class ResourceLeakAnnotatedTypeFactory extends CalledMethodsAnnotatedType
             || tree.getKind() == Tree.Kind.METHOD_INVOCATION
         : "unexpected declaration tree kind: " + tree.getKind();
     return !hasEmptyMustCallValue(tree);
+  }
+
+  /*package-private*/ boolean declaredTypeHasOwningArray(VariableTree tree) {
+    assert tree.getKind() == Tree.Kind.METHOD
+            || tree.getKind() == Tree.Kind.VARIABLE
+            || tree.getKind() == Tree.Kind.NEW_CLASS
+            || tree.getKind() == Tree.Kind.METHOD_INVOCATION
+        : "unexpected declaration tree kind: " + tree.getKind();
+    System.out.println("elmt " + TreeUtils.elementFromDeclaration(tree) + " ? " + hasOwningArray(TreeUtils.elementFromTree(tree)));
+    return hasOwningArray(TreeUtils.elementFromDeclaration(tree));
   }
 
   /**
