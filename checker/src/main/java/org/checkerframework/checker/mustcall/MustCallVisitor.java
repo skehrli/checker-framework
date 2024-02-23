@@ -177,16 +177,24 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
       // check whether the RHS actually has must-call obligations
       if (mcValues != null) {
         ExpressionTree condition = tree.getCondition();
+        ExpressionTree arrayTree = ((ArrayAccessTree) lhs).getExpression();
+        assert(arrayTree instanceof IdentifierTree) : "array expected to be identifier";
+        IdentifierTree arrayId = (IdentifierTree) arrayTree;
         MustCallOnElementsAnnotatedTypeFactory.createArrayObligationForAssignment(assgn);
         MustCallOnElementsAnnotatedTypeFactory.createArrayObligationForLessThan(
             condition, mcValues);
         MustCallOnElementsAnnotatedTypeFactory.putArrayAffectedByLoopWithThisCondition(
-            condition, ((ArrayAccessTree) lhs).getExpression());
+            condition, arrayTree);
+        MustCallOnElementsAnnotatedTypeFactory.putArrayTreeForOwningArrayName(
+            arrayId.getName().toString(), arrayTree);
       }
     } else {
       MemberSelectTree methodCall =
           (MemberSelectTree) ((MethodInvocationTree) stmtTree).getMethodSelect();
       ArrayAccessTree arrAcc = (ArrayAccessTree) methodCall.getExpression();
+      ExpressionTree arrayTree = arrAcc.getExpression();
+      assert(arrayTree instanceof IdentifierTree) : "array expected to be identifier";
+      IdentifierTree arrayId = (IdentifierTree) arrayTree;
       Name methodName = methodCall.getIdentifier();
       System.out.println("detected calledmethod: " + methodName);
       ExpressionTree condition = tree.getCondition();
@@ -194,7 +202,9 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
       MustCallOnElementsAnnotatedTypeFactory.closeArrayObligationForLessThan(
           condition, methodName.toString());
       MustCallOnElementsAnnotatedTypeFactory.putArrayAffectedByLoopWithThisCondition(
-          condition, arrAcc.getExpression());
+          condition, arrayTree);
+      MustCallOnElementsAnnotatedTypeFactory.putArrayTreeForOwningArrayName(
+          arrayId.getName().toString(), arrayTree);
     }
 
     return super.visitForLoop(tree, p);

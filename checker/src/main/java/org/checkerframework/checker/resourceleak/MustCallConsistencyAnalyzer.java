@@ -53,10 +53,10 @@ import org.checkerframework.checker.mustcall.qual.MustCall;
 import org.checkerframework.checker.mustcall.qual.MustCallAlias;
 import org.checkerframework.checker.mustcall.qual.NotOwning;
 import org.checkerframework.checker.mustcall.qual.Owning;
-import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsChecker;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElements;
+import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.common.accumulation.AccumulationStore;
 import org.checkerframework.common.accumulation.AccumulationValue;
@@ -68,7 +68,6 @@ import org.checkerframework.dataflow.cfg.block.Block.BlockType;
 import org.checkerframework.dataflow.cfg.block.ConditionalBlock;
 import org.checkerframework.dataflow.cfg.block.ExceptionBlock;
 import org.checkerframework.dataflow.cfg.block.SingleSuccessorBlock;
-import org.checkerframework.dataflow.cfg.node.ArrayAccessNode;
 import org.checkerframework.dataflow.cfg.node.AssignmentNode;
 import org.checkerframework.dataflow.cfg.node.ClassNameNode;
 import org.checkerframework.dataflow.cfg.node.FieldAccessNode;
@@ -619,13 +618,15 @@ class MustCallConsistencyAnalyzer {
     }
   }
 
-  private void updateObligationsForVariableDeclaration(Set<Obligation> obligations, VariableDeclarationNode node) {
-    VariableTree tree = node.getTree();
-    Element elt = TreeUtils.elementFromDeclaration(node.getTree());
+  private void updateObligationsForVariableDeclaration(
+      Set<Obligation> obligations, VariableDeclarationNode node) {
+    ExpressionTree tree = MustCallOnElementsAnnotatedTypeFactory.getArrayTreeForOwningArrayName(node.getTree().getName().toString());
+    Element elt = TreeUtils.elementFromTree(node.getTree());
     if (typeFactory.hasOwningArray(elt)) {
-      obligations.add(new Obligation(
-                            ImmutableSet.of(new ResourceAlias(JavaExpression.fromVariableTree(tree), elt, tree)),
-                            Collections.singleton(MethodExitKind.NORMAL_RETURN)));
+      obligations.add(
+          new Obligation(
+              ImmutableSet.of(new ResourceAlias(JavaExpression.fromTree(tree), elt, tree)),
+              Collections.singleton(MethodExitKind.NORMAL_RETURN)));
     }
   }
 
@@ -1164,7 +1165,8 @@ class MustCallConsistencyAnalyzer {
         == null) {
       return;
     }
-    ExpressionTree arr = MustCallOnElementsAnnotatedTypeFactory.getArrayTreeForLoopWithThisCondition(tree);
+    ExpressionTree arr =
+        MustCallOnElementsAnnotatedTypeFactory.getArrayTreeForLoopWithThisCondition(tree);
     if (arr == null) return;
     // check whether obligations have been fulfilled prior to reassignment
     checkReassignmentToOwningArray(arr);
@@ -1766,8 +1768,8 @@ class MustCallConsistencyAnalyzer {
     AnnotatedTypeMirror cmAtm = cmTypeFactory.getAnnotatedType((IdentifierTree) arrayTree);
     AnnotationMirror mcAnno = mcAtm.getPrimaryAnnotation(MustCallOnElements.class);
     AnnotationMirror cmAnno = cmAtm.getPrimaryAnnotation(CalledMethodsOnElements.class);
-    assert(mcAnno != null) : "no MustCallOnElements annotation on array";
-    assert(cmAnno != null) : "no CalledMethodsOnElements annotation on array";
+    assert (mcAnno != null) : "no MustCallOnElements annotation on array";
+    assert (cmAnno != null) : "no CalledMethodsOnElements annotation on array";
     List<String> mcValues =
         AnnotationUtils.getElementValueArray(
             mcAnno, mcTypeFactory.getMustCallOnElementsValueElement(), String.class);
@@ -2307,22 +2309,20 @@ class MustCallConsistencyAnalyzer {
           // checkMustCallOnElements();
           for (ResourceAlias alias : obligation.resourceAliases) {
             if (typeFactory.hasOwningArray(alias.element)) {
-              assert(alias.tree instanceof VariableTree) : "Invariant broke: Alias of an @OwningArray must be VariableTree";
-              VariableTree arrayTree = (VariableTree) alias.tree;
-              System.out.println("tree is: " + alias.element);
+              assert (alias.tree instanceof IdentifierTree)
+                  : "Invariant broke: Alias of an @OwningArray must be IdentifierTree";
+              IdentifierTree arrayTree = (IdentifierTree) alias.tree;
               MustCallOnElementsAnnotatedTypeFactory mcTypeFactory =
                   typeFactory.getTypeFactoryOfSubchecker(MustCallOnElementsChecker.class);
               CalledMethodsOnElementsAnnotatedTypeFactory cmTypeFactory =
                   typeFactory.getTypeFactoryOfSubchecker(CalledMethodsOnElementsChecker.class);
-              AnnotatedTypeMirror mcAtm = mcTypeFactory.getAnnotatedType(alias.element);
-              AnnotatedTypeMirror cmAtm = cmTypeFactory.getAnnotatedType(alias.element);
+              AnnotatedTypeMirror mcAtm = mcTypeFactory.getAnnotatedType(arrayTree);
+              AnnotatedTypeMirror cmAtm = cmTypeFactory.getAnnotatedType(arrayTree);
               AnnotationMirror mcAnno = mcAtm.getPrimaryAnnotation(MustCallOnElements.class);
               AnnotationMirror cmAnno = cmAtm.getPrimaryAnnotation(CalledMethodsOnElements.class);
-              System.out.println("mc is: " + mcAtm);
-              System.out.println("cm is: " + cmAtm);
-              if(mcAnno == null || cmAnno == null) break;
-              assert(mcAnno != null) : "no MustCallOnElements annotation on array";
-              assert(cmAnno != null) : "no CalledMethodsOnElements annotation on array";
+              if (mcAnno == null || cmAnno == null) break;
+              assert (mcAnno != null) : "no MustCallOnElements annotation on array";
+              assert (cmAnno != null) : "no CalledMethodsOnElements annotation on array";
               List<String> mcValues =
                   AnnotationUtils.getElementValueArray(
                       mcAnno, mcTypeFactory.getMustCallOnElementsValueElement(), String.class);

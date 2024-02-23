@@ -346,7 +346,8 @@ public class MustCallInference {
     }
     Set<Obligation> result = null;
     for (VariableTree param : methodTree.getParameters()) {
-      if (resourceLeakAtf.declaredTypeHasMustCall(param) || resourceLeakAtf.declaredTypeHasOwningArray(param)) {
+      if (resourceLeakAtf.declaredTypeHasMustCall(param)
+          || resourceLeakAtf.declaredTypeHasOwningArray(param)) {
         VariableElement paramElement = TreeUtils.elementFromDeclaration(param);
         if (result == null) {
           result = new HashSet<>(2);

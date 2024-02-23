@@ -96,6 +96,11 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   private static Set<MemberSelectTree> obligationFulfillingMethodAccess = new HashSet<>();
 
   /**
+   * Maps the name of an {@code @OwningArray} to the corresponding AST-node
+   */
+  private static Map<String, ExpressionTree> owningArrayNameToTreeMap = new HashMap<>();
+
+  /**
    * Maps the AST-node corresponding to the loop condition of a loop calling a method on an
    * {@code @OwningArray} to the name of the method called.
    */
@@ -240,6 +245,14 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   //   changeNonOwningParameterTypesToTop(declaration, type);
   //   super.constructorFromUsePreSubstitution(tree, type, resolvePolyQuals);
   // }
+
+  public static void putArrayTreeForOwningArrayName(String name, ExpressionTree tree) {
+    owningArrayNameToTreeMap.put(name, tree);
+  }
+
+  public static ExpressionTree getArrayTreeForOwningArrayName(String name) {
+    return owningArrayNameToTreeMap.get(name);
+  }
 
   public static boolean doesMethodAccessCloseArrayObligation(MemberSelectTree memSelect) {
     return obligationFulfillingMethodAccess.contains(memSelect);

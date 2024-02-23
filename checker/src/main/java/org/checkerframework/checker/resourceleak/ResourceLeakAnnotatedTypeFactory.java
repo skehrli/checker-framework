@@ -325,7 +325,11 @@ public class ResourceLeakAnnotatedTypeFactory extends CalledMethodsAnnotatedType
             || tree.getKind() == Tree.Kind.NEW_CLASS
             || tree.getKind() == Tree.Kind.METHOD_INVOCATION
         : "unexpected declaration tree kind: " + tree.getKind();
-    System.out.println("elmt " + TreeUtils.elementFromDeclaration(tree) + " ? " + hasOwningArray(TreeUtils.elementFromTree(tree)));
+    System.out.println(
+        "elmt "
+            + TreeUtils.elementFromDeclaration(tree)
+            + " ? "
+            + hasOwningArray(TreeUtils.elementFromTree(tree)));
     return hasOwningArray(TreeUtils.elementFromDeclaration(tree));
   }
 

@@ -152,7 +152,6 @@ public class CalledMethodsOnElementsTransfer extends AccumulationTransfer {
       String... values) {
     List<String> valuesAsList = Arrays.asList(values);
     JavaExpression target = JavaExpression.fromTree(tree);
-    System.out.println("oldtype: " + result.getElseStore().getValue(target));
     if (CFAbstractStore.canInsertJavaExpression(target)) {
       if (result.containsTwoStores()) {
         updateValueAndInsertIntoStore(result.getElseStore(), target, valuesAsList);
@@ -160,7 +159,6 @@ public class CalledMethodsOnElementsTransfer extends AccumulationTransfer {
         updateValueAndInsertIntoStore(result.getRegularStore(), target, valuesAsList);
       }
     }
-    System.out.println("newtype: " + result.getElseStore().getValue(target));
   }
 
   private void updateValueAndInsertIntoStore(
