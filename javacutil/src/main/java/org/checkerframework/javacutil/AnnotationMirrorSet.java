@@ -1,5 +1,6 @@
 package org.checkerframework.javacutil;
 
+import java.lang.annotation.Annotation;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -63,6 +64,10 @@ public class AnnotationMirrorSet
    */
   public AnnotationMirrorSet(Collection<? extends AnnotationMirror> annos) {
     this.addAll(annos);
+  }
+
+  public AnnotationMirror getAnnotationByClass(Class<? extends Annotation> anno) {
+    return AnnotationUtils.getAnnotationByClass(shadowSet, anno);
   }
 
   @SuppressWarnings("keyfor:argument") // transferring keys from one map to another
