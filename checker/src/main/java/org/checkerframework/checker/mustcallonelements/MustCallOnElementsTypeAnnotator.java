@@ -1,5 +1,7 @@
 package org.checkerframework.checker.mustcallonelements;
 
+import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedArrayType;
+import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedDeclaredType;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedPrimitiveType;
 import org.checkerframework.framework.type.typeannotator.TypeAnnotator;
 
@@ -13,6 +15,18 @@ public class MustCallOnElementsTypeAnnotator extends TypeAnnotator {
    */
   protected MustCallOnElementsTypeAnnotator(MustCallOnElementsAnnotatedTypeFactory typeFactory) {
     super(typeFactory);
+  }
+
+  @Override
+  public Void visitArray(AnnotatedArrayType type, Void aVoid) {
+    type.replaceAnnotation(((MustCallOnElementsAnnotatedTypeFactory) atypeFactory).BOTTOM);
+    return super.visitArray(type, aVoid);
+  }
+
+  @Override
+  public Void visitDeclared(AnnotatedDeclaredType type, Void aVoid) {
+    type.replaceAnnotation(((MustCallOnElementsAnnotatedTypeFactory) atypeFactory).BOTTOM);
+    return super.visitDeclared(type, aVoid);
   }
 
   @Override

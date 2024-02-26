@@ -17,6 +17,7 @@ import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.type.TypeMirror;
 import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElements;
+import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElementsUnknown;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
@@ -90,12 +91,41 @@ public class MustCallOnElementsTransfer extends CFTransfer {
     treeBuilder = new TreeBuilder(env);
   }
 
+  // @Override
+  // public TransferResult<CFValue, CFStore> visitAssignment(
+  //     AssignmentNode node, TransferInput<CFValue, CFStore> input) {
+  //   TransferResult<CFValue, CFStore> res = super.visitLessThan(node, input);
+  //   BinaryTree tree = node.getTree();
+  //   assert (tree.getKind() == Tree.Kind.LESS_THAN)
+  //       : "failed assumption: binaryTree in calledmethodsonelements transfer function is not
+  // lessthan tree";
+  //   List<String> mustcallMethods =
+  //       MustCallOnElementsAnnotatedTypeFactory.whichObligationsDoesLoopWithThisConditionCreate(
+  //           tree);
+  //   if (mustcallMethods != null) {
+  //     CFStore thenStore = res.getElseStore();
+  //     CFStore elseStore = res.getElseStore();
+  //     ExpressionTree arrayTree =
+  //         MustCallOnElementsAnnotatedTypeFactory.getArrayTreeForLoopWithThisCondition(
+  //             node.getTree());
+  //     AnnotatedTypeMirror currentType = atypeFactory.getAnnotatedType(arrayTree);
+  //     AnnotationMirror newType = getUpdatedMustCallOnElementsType(currentType, mustcallMethods);
+  //     JavaExpression receiverReceiver = JavaExpression.fromTree(arrayTree);
+  //     System.out.println("type beore: " + elseStore.getValue(receiverReceiver));
+  //     elseStore.clearValue(receiverReceiver);
+  //     elseStore.insertValue(receiverReceiver, newType);
+  //     elseStore.clearValue(receiverReceiver);
+  //     elseStore.insertValue(receiverReceiver, newType);
+  //     System.out.println("type after: " + elseStore.getValue(receiverReceiver));
+
+  //     return new ConditionalTransferResult<>(res.getResultValue(), thenStore, elseStore);
+  //   }
+  //   return res;
+  // }
+
   @Override
   public TransferResult<CFValue, CFStore> visitLessThan(
       LessThanNode node, TransferInput<CFValue, CFStore> input) {
-    if (!(atypeFactory instanceof MustCallOnElementsAnnotatedTypeFactory)) {
-      return super.visitLessThan(node, input);
-    }
     TransferResult<CFValue, CFStore> res = super.visitLessThan(node, input);
     BinaryTree tree = node.getTree();
     assert (tree.getKind() == Tree.Kind.LESS_THAN)
@@ -113,8 +143,12 @@ public class MustCallOnElementsTransfer extends CFTransfer {
       AnnotatedTypeMirror currentType = atypeFactory.getAnnotatedType(arrayTree);
       AnnotationMirror newType = getUpdatedMustCallOnElementsType(currentType, mustcallMethods);
       JavaExpression receiverReceiver = JavaExpression.fromTree(arrayTree);
+      System.out.println("type beore: " + elseStore.getValue(receiverReceiver));
+      // thenStore.clearValue(receiverReceiver);
+      // thenStore.insertValue(receiverReceiver, newType);
       elseStore.clearValue(receiverReceiver);
       elseStore.insertValue(receiverReceiver, newType);
+      System.out.println("type after: " + elseStore.getValue(receiverReceiver));
 
       return new ConditionalTransferResult<>(res.getResultValue(), thenStore, elseStore);
     }
@@ -139,7 +173,12 @@ public class MustCallOnElementsTransfer extends CFTransfer {
       type = atypeFactory.TOP;
     } else {
       AnnotatedArrayType curType = (AnnotatedArrayType) currentType;
-      type = curType.getComponentType().getPrimaryAnnotation(MustCallOnElements.class);
+      type = curType.getPrimaryAnnotation(MustCallOnElements.class);
+      if (type == null) {
+        assert (curType.getPrimaryAnnotation(MustCallOnElementsUnknown.class) != null)
+            : "array annotation neither MCOE nor MOCEunknown";
+        type = atypeFactory.BOTTOM;
+      }
     }
 
     ExecutableElement valueElement = atypeFactory.getMustCallOnElementsValueElement();

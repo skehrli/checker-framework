@@ -5,6 +5,7 @@ import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.Tree;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import javax.annotation.processing.ProcessingEnvironment;
@@ -139,10 +140,34 @@ public class CalledMethodsOnElementsTransfer extends AccumulationTransfer {
       ExpressionTree arrayTree =
           MustCallOnElementsAnnotatedTypeFactory.getArrayTreeForLoopWithThisCondition(
               node.getTree());
+      JavaExpression target = JavaExpression.fromTree(arrayTree);
+      // System.out.println("before cm: " + res.getElseStore().getValue(target));
       accumulate(arrayTree, res, calledMethod);
+      // System.out.println("after cm: " + res.getElseStore().getValue(target));
       return new ConditionalTransferResult<>(
           res.getResultValue(), res.getThenStore(), res.getElseStore());
     }
+    List<String> mustCall =
+        MustCallOnElementsAnnotatedTypeFactory.whichObligationsDoesLoopWithThisConditionCreate(
+            tree);
+    if (mustCall != null) {
+      // array is newly assigned -> remove all calledmethods
+      ExpressionTree arrayTree =
+          MustCallOnElementsAnnotatedTypeFactory.getArrayTreeForLoopWithThisCondition(
+              node.getTree());
+      JavaExpression target = JavaExpression.fromTree(arrayTree);
+      AnnotationMirror newAnno = atypeFactory.createAccumulatorAnnotation(Collections.emptyList());
+      AccumulationStore thenStore = res.getThenStore();
+      AccumulationStore elseStore = res.getElseStore();
+      System.out.println("before cm: " + elseStore.getValue(target));
+      // thenStore.clearValue(target);
+      // thenStore.insertValue(target, newAnno);
+      elseStore.clearValue(target);
+      elseStore.insertValue(target, newAnno);
+      System.out.println("after cm: " + elseStore.getValue(target));
+      return new ConditionalTransferResult<>(res.getResultValue(), thenStore, elseStore);
+    }
+
     return res;
   }
 
@@ -154,6 +179,7 @@ public class CalledMethodsOnElementsTransfer extends AccumulationTransfer {
     JavaExpression target = JavaExpression.fromTree(tree);
     if (CFAbstractStore.canInsertJavaExpression(target)) {
       if (result.containsTwoStores()) {
+        updateValueAndInsertIntoStore(result.getThenStore(), target, valuesAsList);
         updateValueAndInsertIntoStore(result.getElseStore(), target, valuesAsList);
       } else {
         updateValueAndInsertIntoStore(result.getRegularStore(), target, valuesAsList);

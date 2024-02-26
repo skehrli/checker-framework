@@ -30,8 +30,10 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
 import org.checkerframework.common.basetype.BaseAnnotatedTypeFactory;
 import org.checkerframework.common.basetype.BaseTypeChecker;
+import org.checkerframework.dataflow.cfg.block.Block;
 import org.checkerframework.dataflow.cfg.node.LocalVariableNode;
 import org.checkerframework.dataflow.cfg.node.Node;
+import org.checkerframework.framework.flow.CFStore;
 import org.checkerframework.framework.type.*;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
 import org.checkerframework.framework.type.GenericAnnotatedTypeFactory;
@@ -116,6 +118,22 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
    * to/from an {@code @OwningArray} to the array node.
    */
   private static Map<Tree, ExpressionTree> arrayTreeForLoopWithThisCondition = new HashMap<>();
+
+  /**
+   * Fetches the store from the results of dataflow for {@code first}. If {@code afterFirstStore} is
+   * true, then the store after {@code first} is returned; if {@code afterFirstStore} is false, the
+   * store before {@code succ} is returned.
+   *
+   * @param afterFirstStore whether to use the store after the first block or the store before its
+   *     successor, succ
+   * @param first a block
+   * @param succ first's successor
+   * @return the appropriate CFStore, populated with MustCall annotations, from the results of
+   *     running dataflow
+   */
+  public CFStore getStoreForBlock(boolean afterFirstStore, Block first, Block succ) {
+    return afterFirstStore ? flowResult.getStoreAfter(first) : flowResult.getStoreBefore(succ);
+  }
 
   /** True if -AnoLightweightOwnership was passed on the command line. */
   private final boolean noLightweightOwnership;
