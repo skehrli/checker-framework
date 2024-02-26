@@ -143,12 +143,12 @@ public class MustCallOnElementsTransfer extends CFTransfer {
       AnnotatedTypeMirror currentType = atypeFactory.getAnnotatedType(arrayTree);
       AnnotationMirror newType = getUpdatedMustCallOnElementsType(currentType, mustcallMethods);
       JavaExpression receiverReceiver = JavaExpression.fromTree(arrayTree);
-      System.out.println("type beore: " + elseStore.getValue(receiverReceiver));
+      // System.out.println("type beore: " + elseStore.getValue(receiverReceiver));
       // thenStore.clearValue(receiverReceiver);
       // thenStore.insertValue(receiverReceiver, newType);
       elseStore.clearValue(receiverReceiver);
       elseStore.insertValue(receiverReceiver, newType);
-      System.out.println("type after: " + elseStore.getValue(receiverReceiver));
+      // System.out.println("type after: " + elseStore.getValue(receiverReceiver));
 
       return new ConditionalTransferResult<>(res.getResultValue(), thenStore, elseStore);
     }
