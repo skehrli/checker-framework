@@ -1217,13 +1217,13 @@ class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Returns whether the given ExpressionTree (expected to be an array) has any mustCallOnElements
-   * calling obligations in the given Block (i.e. whether the MustCallOnElementsObligation type of
-   * tree is not bottom and not top in the store of the given block).
+   * Returns a list of methods that have to be "called on elements" on the {@code @OwningArray} array
+   * specified by the given tree (expected to be an array identifier). The list is extracted from the
+   * store passed as an argument.
    *
-   * @param currentBlock the block in which we want to know whether the array has mcoe obligations
-   * @param tree the array tree
-   * @return whether the array passed by argument tree has any mcoe obligations in the given block
+   * @param mcoeStore store containing MustCallOnElements type annotation information
+   * @param arrTree the array identifier tree
+   * @return list of the MustCallOnElements obligations of the given array
    */
   private List<String> getMustCallOnElementsObligations(CFStore mcoeStore, ExpressionTree arrTree) {
     CFValue cfval = mcoeStore.getValue(JavaExpression.fromTree(arrTree));
@@ -1248,8 +1248,7 @@ class MustCallConsistencyAnalyzer {
   private void updateObligationsForAssignment(
       Set<Obligation> obligations,
       ControlFlowGraph cfg,
-      AssignmentNode assignmentNode,
-      Block block) {
+      AssignmentNode assignmentNode) {
     Node lhs = assignmentNode.getTarget();
     Element lhsElement = TreeUtils.elementFromTree(lhs.getTree());
     if (lhsElement == null) {
@@ -2159,7 +2158,7 @@ class MustCallConsistencyAnalyzer {
       // be some opportunities for optimization in this mostly-redundant work.
       for (Node node : currentBlock.getNodes()) {
         if (node instanceof AssignmentNode) {
-          updateObligationsForAssignment(obligations, cfg, (AssignmentNode) node, currentBlock);
+          updateObligationsForAssignment(obligations, cfg, (AssignmentNode) node);
         } else if (node instanceof ReturnNode) {
           updateObligationsForOwningReturn(obligations, cfg, (ReturnNode) node);
         } else if (node instanceof MethodInvocationNode || node instanceof ObjectCreationNode) {
@@ -2537,7 +2536,7 @@ class MustCallConsistencyAnalyzer {
    * @param obligation the Obligation
    * @param mcoeStore the mustCallOnElements store
    * @param cmoeStore the calledMethodsOnElements store
-   * @param outOfScopeReason if the {@code @MustCallOnElements} obligation is not satisfied, a
+   * @param exitReasonForErrorMessage if the {@code @MustCallOnElements} obligation is not satisfied, a
    *     useful explanation to include in the error message
    */
   private void checkMustCallOnElements(

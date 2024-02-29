@@ -329,7 +329,7 @@ public class ResourceLeakAnnotatedTypeFactory extends CalledMethodsAnnotatedType
         "elmt "
             + TreeUtils.elementFromDeclaration(tree)
             + " ? "
-            + hasOwningArray(TreeUtils.elementFromTree(tree)));
+            + hasOwningArray(TreeUtils.elementFromDeclaration(tree)));
     return hasOwningArray(TreeUtils.elementFromDeclaration(tree));
   }
 

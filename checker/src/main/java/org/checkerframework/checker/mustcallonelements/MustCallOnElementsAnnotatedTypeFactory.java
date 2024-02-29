@@ -239,15 +239,15 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   //   super.methodFromUsePreSubstitution(tree, type, resolvePolyQuals);
   // }
 
-  /**
-   * Changes the type of each parameter not annotated as @OwningArray to @MustCallOnElementsUnknown
-   * (top). Also replaces the component type of the varargs array, if applicable.
-   *
-   * <p>This method is not responsible for handling receivers, which can never be owning.
-   *
-   * @param declaration a method or constructor declaration
-   * @param type the method or constructor's type
-   */
+  // /**
+  //  * Changes the type of each parameter not annotated as @OwningArray to @MustCallOnElementsUnknown
+  //  * (top). Also replaces the component type of the varargs array, if applicable.
+  //  *
+  //  * <p>This method is not responsible for handling receivers, which can never be owning.
+  //  *
+  //  * @param declaration a method or constructor declaration
+  //  * @param type the method or constructor's type
+  //  */
   // private void changeNonOwningParameterTypesToTop(
   //     ExecutableElement declaration, AnnotatedExecutableType type) {
   //   // Formal parameters without a declared owning annotation are disregarded by the RLC
