@@ -135,7 +135,6 @@ public class MustCallOnElementsTransfer extends CFTransfer {
         MustCallOnElementsAnnotatedTypeFactory.whichObligationsDoesLoopWithThisConditionCreate(
             tree);
     if (mustcallMethods != null) {
-      CFStore thenStore = res.getElseStore();
       CFStore elseStore = res.getElseStore();
       ExpressionTree arrayTree =
           MustCallOnElementsAnnotatedTypeFactory.getArrayTreeForLoopWithThisCondition(
@@ -150,7 +149,7 @@ public class MustCallOnElementsTransfer extends CFTransfer {
       elseStore.insertValue(receiverReceiver, newType);
       // System.out.println("type after: " + elseStore.getValue(receiverReceiver));
 
-      return new ConditionalTransferResult<>(res.getResultValue(), thenStore, elseStore);
+      return new ConditionalTransferResult<>(res.getResultValue(), res.getThenStore(), elseStore);
     }
     return res;
   }

@@ -135,6 +135,26 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
     return afterFirstStore ? flowResult.getStoreAfter(first) : flowResult.getStoreBefore(succ);
   }
 
+  /**
+   * Returns the store immediately before the specified tree.
+   *
+   * @param tree an AST node
+   * @return the mcoe store immediately before the tree
+   */
+  public CFStore getStoreForTree(Tree tree) {
+    return flowResult.getStoreBefore(tree);
+  }
+
+  /**
+   * Returns the store immediately after the specified tree.
+   *
+   * @param tree an AST node
+   * @return the mcoe store immediately after the tree
+   */
+  public CFStore getStoreAfterTree(Tree tree) {
+    return flowResult.getStoreAfter(tree);
+  }
+
   /** True if -AnoLightweightOwnership was passed on the command line. */
   private final boolean noLightweightOwnership;
 

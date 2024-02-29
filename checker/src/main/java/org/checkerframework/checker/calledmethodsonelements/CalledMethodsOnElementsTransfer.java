@@ -1,35 +1,22 @@
 package org.checkerframework.checker.calledmethodsonelements;
 
 import com.sun.source.tree.BinaryTree;
-import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.ExpressionTree;
-import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.Tree;
-import com.sun.source.tree.VariableTree;
-import com.sun.source.util.TreePath;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.AnnotationMirror;
-import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
-import javax.lang.model.type.TypeMirror;
 import org.checkerframework.checker.calledmethodsonelements.qual.CalledMethodsOnElements;
 import org.checkerframework.checker.calledmethodsonelements.qual.CalledMethodsOnElementsBottom;
-import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
-import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElements;
-import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElementsUnknown;
-import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
+import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
 import org.checkerframework.dataflow.analysis.ConditionalTransferResult;
 import org.checkerframework.dataflow.analysis.TransferInput;
 import org.checkerframework.dataflow.analysis.TransferResult;
 import org.checkerframework.dataflow.cfg.node.LessThanNode;
-import org.checkerframework.dataflow.cfg.node.LocalVariableNode;
-import org.checkerframework.dataflow.cfg.node.Node;
-import org.checkerframework.dataflow.cfg.node.StringConversionNode;
 import org.checkerframework.dataflow.expression.JavaExpression;
 import org.checkerframework.framework.flow.CFAnalysis;
 import org.checkerframework.framework.flow.CFStore;
@@ -40,39 +27,6 @@ import org.checkerframework.framework.type.AnnotatedTypeMirror;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedArrayType;
 import org.checkerframework.javacutil.AnnotationBuilder;
 import org.checkerframework.javacutil.AnnotationUtils;
-import org.checkerframework.javacutil.TreePathUtil;
-import org.checkerframework.javacutil.TreeUtils;
-import org.checkerframework.javacutil.TypesUtils;
-import org.checkerframework.javacutil.trees.TreeBuilder;
-import org.plumelib.util.CollectionsPlume;
-import com.sun.source.tree.BinaryTree;
-import com.sun.source.tree.ExpressionTree;
-import com.sun.source.tree.Tree;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
-import javax.annotation.processing.ProcessingEnvironment;
-import javax.lang.model.element.AnnotationMirror;
-import javax.lang.model.element.ExecutableElement;
-import javax.lang.model.type.TypeMirror;
-import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
-import org.checkerframework.checker.nullness.qual.Nullable;
-import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
-import org.checkerframework.common.accumulation.AccumulationStore;
-import org.checkerframework.common.accumulation.AccumulationTransfer;
-import org.checkerframework.common.accumulation.AccumulationValue;
-import org.checkerframework.dataflow.analysis.ConditionalTransferResult;
-import org.checkerframework.dataflow.analysis.TransferInput;
-import org.checkerframework.dataflow.analysis.TransferResult;
-import org.checkerframework.dataflow.cfg.node.LessThanNode;
-import org.checkerframework.dataflow.expression.JavaExpression;
-import org.checkerframework.framework.flow.CFAbstractStore;
-import org.checkerframework.framework.type.AnnotatedTypeMirror;
-import org.checkerframework.javacutil.AnnotationMirrorSet;
-import org.checkerframework.javacutil.AnnotationUtils;
-import org.checkerframework.javacutil.ElementUtils;
 import org.plumelib.util.CollectionsPlume;
 
 /** A transfer function that accumulates the names of methods called. */
@@ -153,7 +107,8 @@ public class CalledMethodsOnElementsTransfer extends CFTransfer {
           MustCallOnElementsAnnotatedTypeFactory.getArrayTreeForLoopWithThisCondition(
               node.getTree());
       JavaExpression target = JavaExpression.fromTree(arrayTree);
-      AnnotationMirror newAnno = createAccumulatorAnnotation(Collections.emptyList(), atypeFactory.TOP);
+      AnnotationMirror newAnno =
+          createAccumulatorAnnotation(Collections.emptyList(), atypeFactory.TOP);
       CFStore thenStore = res.getThenStore();
       CFStore elseStore = res.getElseStore();
       // System.out.println("before cm: " + elseStore.getValue(target));
@@ -228,7 +183,6 @@ public class CalledMethodsOnElementsTransfer extends CFTransfer {
     builder.setValue("value", Collections.singletonList(value));
     return builder.build();
   }
-
 
   /**
    * Checks if WPI is enabled for the Resource Leak Checker inference. See {@link
