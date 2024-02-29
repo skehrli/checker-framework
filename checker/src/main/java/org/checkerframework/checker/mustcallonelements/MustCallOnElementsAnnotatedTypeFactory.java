@@ -240,7 +240,8 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   // }
 
   // /**
-  //  * Changes the type of each parameter not annotated as @OwningArray to @MustCallOnElementsUnknown
+  //  * Changes the type of each parameter not annotated as @OwningArray to
+  // @MustCallOnElementsUnknown
   //  * (top). Also replaces the component type of the varargs array, if applicable.
   //  *
   //  * <p>This method is not responsible for handling receivers, which can never be owning.

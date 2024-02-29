@@ -1193,7 +1193,8 @@ class MustCallConsistencyAnalyzer {
     if (mcoeObligations.isEmpty()) {
       return;
     }
-    checker.reportError(arr, "illegal.owningarray.allocation", mcoeObligations.toString());
+    checker.reportError(
+        arr, "illegal.owningarray.allocation", formatMissingMustCallMethods(mcoeObligations));
   }
 
   /**
@@ -1217,9 +1218,9 @@ class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Returns a list of methods that have to be "called on elements" on the {@code @OwningArray} array
-   * specified by the given tree (expected to be an array identifier). The list is extracted from the
-   * store passed as an argument.
+   * Returns a list of methods that have to be "called on elements" on the {@code @OwningArray}
+   * array specified by the given tree (expected to be an array identifier). The list is extracted
+   * from the store passed as an argument.
    *
    * @param mcoeStore store containing MustCallOnElements type annotation information
    * @param arrTree the array identifier tree
@@ -1246,9 +1247,7 @@ class MustCallConsistencyAnalyzer {
    * @param assignmentNode the assignment
    */
   private void updateObligationsForAssignment(
-      Set<Obligation> obligations,
-      ControlFlowGraph cfg,
-      AssignmentNode assignmentNode) {
+      Set<Obligation> obligations, ControlFlowGraph cfg, AssignmentNode assignmentNode) {
     Node lhs = assignmentNode.getTarget();
     Element lhsElement = TreeUtils.elementFromTree(lhs.getTree());
     if (lhsElement == null) {
@@ -1269,9 +1268,12 @@ class MustCallConsistencyAnalyzer {
         ExpressionTree tree =
             MustCallOnElementsAnnotatedTypeFactory.getArrayTreeForOwningArrayName(
                 arrTree.getName().toString());
-        List<String> mcoeObligations =
-            getMustCallOnElementsObligations(
-                mcoeTypeFactory.getStoreAfter(assignmentNode.getTree()), tree);
+        CFStore mcoeStore = mcoeTypeFactory.getStoreBefore(assignmentNode.getTree());
+        List<String> mcoeObligations = Collections.emptyList();
+        // if store does not contain the array tree, it must be the first assignment and hence legal
+        if (mcoeStore.getValue(JavaExpression.fromTree(tree)) != null) {
+          mcoeObligations = getMustCallOnElementsObligations(mcoeStore, tree);
+        }
         if (mcoeObligations.isEmpty()) {
           // if no mcoeObligations and rhs is new array it is safe to add the obligation,
           // even in case of reassignment (since obligations is a set)
@@ -1290,8 +1292,11 @@ class MustCallConsistencyAnalyzer {
           return;
         }
       } else if (!(lhs.getTree() instanceof ArrayAccessTree)) {
-        checker.reportError(
-            assignmentNode.getTree(), "illegal.owningarray.assignment", lhs.getTree().toString());
+        checker.reportError(assignmentNode.getTree(), "illegal owningarray assignment");
+        // checker.reportError(
+        //     assignmentNode.getTree(),
+        //     "illegal.owningarray.assignment",
+        //     "" + lhs.getTree().toString());
         return;
       } else {
         // assignment is to an element of the array, not the array pointer itself:
@@ -2536,8 +2541,8 @@ class MustCallConsistencyAnalyzer {
    * @param obligation the Obligation
    * @param mcoeStore the mustCallOnElements store
    * @param cmoeStore the calledMethodsOnElements store
-   * @param exitReasonForErrorMessage if the {@code @MustCallOnElements} obligation is not satisfied, a
-   *     useful explanation to include in the error message
+   * @param exitReasonForErrorMessage if the {@code @MustCallOnElements} obligation is not
+   *     satisfied, a useful explanation to include in the error message
    */
   private void checkMustCallOnElements(
       Obligation obligation,
