@@ -30,10 +30,7 @@ import org.checkerframework.javacutil.AnnotationUtils;
 import org.plumelib.util.CollectionsPlume;
 
 /**
- * Transfer function for the must-call type system. Its primary purposes are (1) to create temporary
- * variables for expressions (which allow those expressions to have refined information in the
- * store, which the consistency checker can use), and (2) to reset refined information when a method
- * annotated with @CreatesMustCallFor is called.
+ * Transfer function for the MustCallOnElements type system.
  */
 public class MustCallOnElementsTransfer extends CFTransfer {
 
@@ -82,13 +79,8 @@ public class MustCallOnElementsTransfer extends CFTransfer {
       AnnotatedTypeMirror currentType = atypeFactory.getAnnotatedType(arrayTree);
       AnnotationMirror newType = getUpdatedMustCallOnElementsType(currentType, mustcallMethods);
       JavaExpression receiverReceiver = JavaExpression.fromTree(arrayTree);
-      // System.out.println("type beore: " + elseStore.getValue(receiverReceiver));
-      // thenStore.clearValue(receiverReceiver);
-      // thenStore.insertValue(receiverReceiver, newType);
       elseStore.clearValue(receiverReceiver);
       elseStore.insertValue(receiverReceiver, newType);
-      // System.out.println("type after: " + elseStore.getValue(receiverReceiver));
-
       return new ConditionalTransferResult<>(res.getResultValue(), res.getThenStore(), elseStore);
     }
     return res;

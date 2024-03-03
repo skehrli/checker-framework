@@ -90,10 +90,13 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
   }
 
   /**
-   * Checks whether the loop either: - initializes entries of an @Owning array - calls a method on
-   * entries of an @OwningArray array The pattern-match checks: - does the loop have a single
-   * statement? - is the statement an assignment? - is the LHS an element of an @OwningArray? - is
-   * the RHS a newly constructed Resource (of the form: new Resource();)? ...
+   * Checks through pattern-matching whether the loop either:
+   * <ul>
+   * <li>initializes entries of an {@code @OwningArray}</li>
+   * <li>calls a method on entries of an {@code @OwningArray} array</li>
+   * </ul>
+   * If yes, this is marked in some static datastructures in the
+   * {@code @MustCallOnElementsAnnotatedTypeFactory}
    */
   @Override
   public Void visitForLoop(ForLoopTree tree, Void p) {

@@ -9,8 +9,7 @@ import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.framework.flow.CFAnalysis;
 
 /**
- * The analysis for the Called Methods Checker. The analysis is specialized to ignore certain
- * exception types; see {@link #isIgnoredExceptionType(TypeMirror)}.
+ * The analysis for the MustCallOnElements Checker.
  */
 public class MustCallOnElementsAnalysis extends CFAnalysis {
 
