@@ -29,9 +29,7 @@ import org.checkerframework.javacutil.AnnotationBuilder;
 import org.checkerframework.javacutil.AnnotationUtils;
 import org.plumelib.util.CollectionsPlume;
 
-/**
- * Transfer function for the MustCallOnElements type system.
- */
+/** Transfer function for the MustCallOnElements type system. */
 public class MustCallOnElementsTransfer extends CFTransfer {
 
   /** The type factory. */

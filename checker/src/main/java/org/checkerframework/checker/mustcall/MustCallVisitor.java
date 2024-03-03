@@ -91,10 +91,12 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
 
   /**
    * Checks through pattern-matching whether the loop either:
+   *
    * <ul>
-   * <li>initializes entries of an {@code @OwningArray}</li>
-   * <li>calls a method on entries of an {@code @OwningArray} array</li>
+   *   <li>initializes entries of an {@code @OwningArray}
+   *   <li>calls a method on entries of an {@code @OwningArray} array
    * </ul>
+   *
    * If yes, this is marked in some static datastructures in the
    * {@code @MustCallOnElementsAnnotatedTypeFactory}
    */

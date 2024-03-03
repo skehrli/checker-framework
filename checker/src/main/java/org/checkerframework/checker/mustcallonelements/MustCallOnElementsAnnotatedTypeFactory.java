@@ -283,27 +283,32 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   //   super.constructorFromUsePreSubstitution(tree, type, resolvePolyQuals);
   // }
 
-  /** setter method for datastructure that maps the string of an owning array to (one of)
-   * its tree(s) in the AST.
+  /**
+   * setter method for datastructure that maps the string of an owning array to (one of) its tree(s)
+   * in the AST.
+   *
    * @param name the name of the array
    * @param tree the AST subtree corresponding to the array
-   * */
+   */
   public static void putArrayTreeForOwningArrayName(String name, ExpressionTree tree) {
     owningArrayNameToTreeMap.put(name, tree);
   }
 
-  /** getter method for datastructure that maps the string of an owning array to (one of)
-   * its tree(s) in the AST.
+  /**
+   * getter method for datastructure that maps the string of an owning array to (one of) its tree(s)
+   * in the AST.
+   *
    * @param name name of the array
    * @return the AST subtree corresponding to the array
-   * */
+   */
   public static ExpressionTree getArrayTreeForOwningArrayName(String name) {
     return owningArrayNameToTreeMap.get(name);
   }
 
   /**
-   * returns whether the specified member-select AST node is in a pattern-matched loop
-   * that fulfills an {@code @OwningArray} obligation.
+   * returns whether the specified member-select AST node is in a pattern-matched loop that fulfills
+   * an {@code @OwningArray} obligation.
+   *
    * @param memSelect the member-select AST node
    * @return whether the node is in a pattern-matched loop fulfilling an mcoe obligation
    */
@@ -312,9 +317,10 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   }
 
   /**
-   * Marks the specified member-select AST node as one that fulfills a mcoe obligation
-   * for an {@code @OwningArray} array, i.e. marks the node as being in a pattern-matched
-   * loop. Only call when the corrresponding loop has been successfully pattern-matched.
+   * Marks the specified member-select AST node as one that fulfills a mcoe obligation for an
+   * {@code @OwningArray} array, i.e. marks the node as being in a pattern-matched loop. Only call
+   * when the corrresponding loop has been successfully pattern-matched.
+   *
    * @param memSelect the member-select AST node
    */
   public static void fulfillArrayObligationForMethodAccess(MemberSelectTree memSelect) {
@@ -322,8 +328,8 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   }
 
   /**
-   * returns whether the specified assignment AST node is in a pattern-matched allocating
-   * for-loop.
+   * returns whether the specified assignment AST node is in a pattern-matched allocating for-loop.
+   *
    * @param assgn the assignment AST node
    * @return whether the specified node is in an allocating for-loop for an {@code @OwningArray}.
    */
@@ -332,10 +338,10 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   }
 
   /**
-   * Marks the specified assignment AST node as one that's in a loop that creates a mcoe
-   * obligation for an {@code @OwningArray} array, i.e. marks the node as being in a
-   * pattern-matched loop. Only call when the corrresponding loop has been successfully
-   * pattern-matched.
+   * Marks the specified assignment AST node as one that's in a loop that creates a mcoe obligation
+   * for an {@code @OwningArray} array, i.e. marks the node as being in a pattern-matched loop. Only
+   * call when the corrresponding loop has been successfully pattern-matched.
+   *
    * @param assgn the assignment node
    */
   public static void createArrayObligationForAssignment(AssignmentTree assgn) {
@@ -343,9 +349,10 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   }
 
   /**
-   * Marks the specified less-than AST node as one that's the condition of a loop that
-   * creates a mcoe obligation for an {@code @OwningArray} array. The obligations created
-   * are passed in the second argument.
+   * Marks the specified less-than AST node as one that's the condition of a loop that creates a
+   * mcoe obligation for an {@code @OwningArray} array. The obligations created are passed in the
+   * second argument.
+   *
    * @param tree the less-than node
    * @param methods a list of the methods in the obligation
    */
@@ -356,9 +363,10 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   }
 
   /**
-   * Marks the specified less-than AST node as one that's the condition of a loop that
-   * fulfills a mcoe obligation for an {@code @OwningArray} array. The fulfilled mcoe
-   * method is passed in the second argument.
+   * Marks the specified less-than AST node as one that's the condition of a loop that fulfills a
+   * mcoe obligation for an {@code @OwningArray} array. The fulfilled mcoe method is passed in the
+   * second argument.
+   *
    * @param tree the less-than AST node
    * @param method the method that is called on the array elements in the loop
    */

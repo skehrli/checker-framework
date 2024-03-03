@@ -8,9 +8,7 @@ import org.checkerframework.checker.signature.qual.CanonicalName;
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.framework.flow.CFAnalysis;
 
-/**
- * The analysis for the MustCallOnElements Checker.
- */
+/** The analysis for the MustCallOnElements Checker. */
 public class MustCallOnElementsAnalysis extends CFAnalysis {
 
   /**
