@@ -50,10 +50,10 @@ import org.checkerframework.javacutil.TypesUtils;
 
 /**
  * The annotated type factory for the Must Call Checker. Primarily responsible for the subtyping
- * rules between @MustCallOnElements annotations. Additionally holds some static datastructures
- * used for pattern-matching loops that create/fulfill MustCallOnElements obligations. These are
- * in the MustCall checker, since it runs before the MustCallOnElements checker and the pattern-
- * match must be finished by the time the MustCallOnElements checker runs.
+ * rules between @MustCallOnElements annotations. Additionally holds some static datastructures used
+ * for pattern-matching loops that create/fulfill MustCallOnElements obligations. These are in the
+ * MustCall checker, since it runs before the MustCallOnElements checker and the pattern- match must
+ * be finished by the time the MustCallOnElements checker runs.
  */
 public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFactory {
 
@@ -318,8 +318,9 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
 
   /**
    * Associates the given less-than AST-node (which is a loop condition for a successfully
-   * pattern-matched loop for opening/closing a MustCallOnElements obligation) with the
-   * arrayTree AST-node that corresponds to the array in question.
+   * pattern-matched loop for opening/closing a MustCallOnElements obligation) with the arrayTree
+   * AST-node that corresponds to the array in question.
+   *
    * @param condition the less-than AST-node
    * @param arrayTree the array AST-node
    */
@@ -333,7 +334,9 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   /**
    * Returns the list of MustCallOnElements obligations created in this loop, specified through the
    * less-than AST-node, which is the loop condition.
-   * @param condition the condition of a pattern-matched loop that creates a MustCallOnElements obligation
+   *
+   * @param condition the condition of a pattern-matched loop that creates a MustCallOnElements
+   *     obligation
    * @return list of the methods that are the MustCallOnElements obligations created in this loop
    */
   public static List<String> whichObligationsDoesLoopWithThisConditionCreate(Tree condition) {
@@ -343,9 +346,12 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   }
 
   /**
-   * Returns the name of the method that is called in the pattern-matched, MustCallOnElements-fulfilling
-   * loop specified by the given Tree, which is the condition of said loop.
-   * @param condition the condition of a pattern-matched loop that closes a MustCallOnElements obligation
+   * Returns the name of the method that is called in the pattern-matched,
+   * MustCallOnElements-fulfilling loop specified by the given Tree, which is the condition of said
+   * loop.
+   *
+   * @param condition the condition of a pattern-matched loop that closes a MustCallOnElements
+   *     obligation
    * @return name of the method that is called on the elements of the array in the loop
    */
   public static String whichMethodDoesLoopWithThisConditionCall(Tree condition) {
@@ -355,8 +361,9 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   }
 
   /**
-   * Fetches the array AST-node, for which a MustCallOnElements obligation is opened/closed
-   * in the loop, for which the given lessThan AST-node is the condition.
+   * Fetches the array AST-node, for which a MustCallOnElements obligation is opened/closed in the
+   * loop, for which the given lessThan AST-node is the condition.
+   *
    * @param condition the less-than AST-node
    * @return the array AST-node in the loop body
    */

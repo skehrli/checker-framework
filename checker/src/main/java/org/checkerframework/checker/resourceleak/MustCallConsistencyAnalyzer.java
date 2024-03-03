@@ -1367,21 +1367,8 @@ class MustCallConsistencyAnalyzer {
               assignmentNode.getTree(), "illegal.owningarray.assignment", lhs.getTree().toString());
         }
       } else if ((lhs instanceof FieldAccessNode) && (rhs instanceof ArrayCreationNode)) {
-        // assigning field. Since we demand it is final, this must be the first assignment.
-        // If not final, report error. If final, create obligation.
-        if (!ElementUtils.isFinal(TreeUtils.elementFromTree(lhs.getTree()))) {
-          String arr = ((IdentifierTree) lhs.getTree()).getName().toString();
-          checker.reportError(assignmentNode.getTree(), "owningarray.field.not.final", arr, arr);
-        } else {
-          ExpressionTree tree =
-              MustCallOnElementsAnnotatedTypeFactory.getArrayTreeForOwningArrayName(
-                  ((FieldAccessNode) lhs).getFieldName());
-          Element elt = TreeUtils.elementFromTree(tree);
-          obligations.add(
-              new Obligation(
-                  ImmutableSet.of(new ResourceAlias(JavaExpression.fromTree(tree), elt, tree)),
-                  Collections.singleton(MethodExitKind.NORMAL_RETURN)));
-        }
+        // assigning field. Since we demand it is final, this case should not occur.
+        assert false : "field assignment is happening, we demand it is final.";
       } else if (lhs.getTree() instanceof ArrayAccessTree) {
         // assignment is to an element of the array, not the array pointer itself:
         // check whether assignment is in a pattern-matched loop. if not, issue warning. if yes
@@ -2564,6 +2551,9 @@ class MustCallConsistencyAnalyzer {
           if (!noLightweightOwnership
               && memberElm.getKind().isField()
               && (memberElm.getAnnotation(OwningArray.class) != null)) {
+            if (!ElementUtils.isFinal(memberElm)) {
+              checker.reportError(member, "owningarray.field.not.final", ((VariableTree) member).getName());
+            }
             ExpressionTree tree =
                 MustCallOnElementsAnnotatedTypeFactory.getArrayTreeForOwningArrayName(
                     ((VariableTree) member).getName().toString());
