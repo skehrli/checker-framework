@@ -2544,6 +2544,14 @@ class MustCallConsistencyAnalyzer {
     return typeFactory.hasCreatesMustCallFor(miNode);
   }
 
+  /**
+   * Finds {@link OwningArray} fields for the enclosing class of the method corresponding to a CFG.
+   *
+   * @param cfg the CFG
+   * @return the OwningArray fields of the enclosing class of the method that corresponds to the
+   * given cfg, or an empty set if the given CFG doesn't correspond to a method body or there are
+   * no such fields.
+   */
   private Set<Obligation> computeOwningArrayFields(ControlFlowGraph cfg) {
     if (cfg.getUnderlyingAST().getKind() == Kind.METHOD) {
       Set<Obligation> result = new LinkedHashSet<>(1);
