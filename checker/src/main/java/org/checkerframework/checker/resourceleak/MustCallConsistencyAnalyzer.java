@@ -1337,7 +1337,8 @@ class MustCallConsistencyAnalyzer {
                   arrTree.getName().toString());
           Element elt = TreeUtils.elementFromTree(tree);
           assert !elt.getKind().isField()
-              : "this code assumes @OwningArray assignments within the examined method are not fields, since @OwningArray fields must be final";
+              : "this code assumes @OwningArray assignments within the examined method are not"
+                  + " fields, since @OwningArray fields must be final";
           CFStore mcoeStore = mcoeTypeFactory.getStoreBefore(assignmentNode.getTree());
           List<String> mcoeObligations = Collections.emptyList();
           // if store does not contain the array tree, it must be the first assignment and hence
@@ -2318,6 +2319,7 @@ class MustCallConsistencyAnalyzer {
           || obligationGoesOutOfScopeBeforeSuccessor) {
         MustCallAnnotatedTypeFactory mcAtf =
             typeFactory.getTypeFactoryOfSubchecker(MustCallChecker.class);
+
         // If successor is an exceptional successor, and Obligation represents the
         // temporary variable for currentBlock's node, do not propagate or do a
         // consistency check, as in the exceptional case the "assignment" to the
@@ -2417,7 +2419,6 @@ class MustCallConsistencyAnalyzer {
           // not get the store for the specific CFG edge from currentBlock to successor.
           // We do not believe this will impact precision except in convoluted and
           // uncommon cases.  If we find that we need more precision, we can revisit this,
-          //
           // but it will require additional API support in the AnalysisResult type to get
           // the information that we need.
           mcStore =
@@ -2552,7 +2553,8 @@ class MustCallConsistencyAnalyzer {
               && memberElm.getKind().isField()
               && (memberElm.getAnnotation(OwningArray.class) != null)) {
             if (!ElementUtils.isFinal(memberElm)) {
-              checker.reportError(member, "owningarray.field.not.final", ((VariableTree) member).getName());
+              checker.reportError(
+                  member, "owningarray.field.not.final", ((VariableTree) member).getName());
             }
             ExpressionTree tree =
                 MustCallOnElementsAnnotatedTypeFactory.getArrayTreeForOwningArrayName(
