@@ -50,7 +50,10 @@ import org.checkerframework.javacutil.TypesUtils;
 
 /**
  * The annotated type factory for the Must Call Checker. Primarily responsible for the subtyping
- * rules between @MustCallOnElements annotations.
+ * rules between @MustCallOnElements annotations. Additionally holds some static datastructures used
+ * for pattern-matching loops that create/fulfill MustCallOnElements obligations. These are in the
+ * MustCall checker, since it runs before the MustCallOnElements checker and the pattern- match must
+ * be finished by the time the MustCallOnElements checker runs.
  */
 public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFactory {
 
@@ -135,6 +138,26 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
     return afterFirstStore ? flowResult.getStoreAfter(first) : flowResult.getStoreBefore(succ);
   }
 
+  /**
+   * Returns the store immediately before the specified tree.
+   *
+   * @param tree an AST node
+   * @return the mcoe store immediately before the tree
+   */
+  public CFStore getStoreForTree(Tree tree) {
+    return flowResult.getStoreBefore(tree);
+  }
+
+  /**
+   * Returns the store immediately after the specified tree.
+   *
+   * @param tree an AST node
+   * @return the mcoe store immediately after the tree
+   */
+  public CFStore getStoreAfterTree(Tree tree) {
+    return flowResult.getStoreAfter(tree);
+  }
+
   /** True if -AnoLightweightOwnership was passed on the command line. */
   private final boolean noLightweightOwnership;
 
@@ -201,103 +224,106 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   }
 
   /**
-   * Treat non-owning-array method parameters as @MustCallOnElementsUnknown (top) when the method is
-   * called.
-   */
-  // @Override
-  // public void methodFromUsePreSubstitution(
-  //     ExpressionTree tree, AnnotatedExecutableType type, boolean resolvePolyQuals) {
-  //   ExecutableElement declaration;
-  //   if (tree instanceof MethodInvocationTree) {
-  //     declaration = TreeUtils.elementFromUse((MethodInvocationTree) tree);
-  //   } else if (tree instanceof MemberReferenceTree) {
-  //     declaration = (ExecutableElement) TreeUtils.elementFromUse(tree);
-  //   } else {
-  //     throw new TypeSystemError("unexpected type of method tree: " + tree.getKind());
-  //   }
-  //   changeNonOwningParameterTypesToTop(declaration, type);
-  //   super.methodFromUsePreSubstitution(tree, type, resolvePolyQuals);
-  // }
-
-  /**
-   * Changes the type of each parameter not annotated as @OwningArray to @MustCallOnElementsUnknown
-   * (top). Also replaces the component type of the varargs array, if applicable.
+   * setter method for datastructure that maps the string of an owning array to (one of) its tree(s)
+   * in the AST.
    *
-   * <p>This method is not responsible for handling receivers, which can never be owning.
-   *
-   * @param declaration a method or constructor declaration
-   * @param type the method or constructor's type
+   * @param name the name of the array
+   * @param tree the AST subtree corresponding to the array
    */
-  // private void changeNonOwningParameterTypesToTop(
-  //     ExecutableElement declaration, AnnotatedExecutableType type) {
-  //   // Formal parameters without a declared owning annotation are disregarded by the RLC
-  //   // _analysis_, as their @MustCallOnElements obligation is set to Top in this method. However,
-  //   // this computation is not desirable for RLC _inference_ in unannotated programs,
-  //   // where a goal is to infer and add @Owning annotations to formal parameters.
-  //   if (getWholeProgramInference() != null && !isWpiEnabledForRLC()) {
-  //     return;
-  //   }
-  //   List<AnnotatedTypeMirror> parameterTypes = type.getParameterTypes();
-  //   for (int i = 0; i < parameterTypes.size(); i++) {
-  //     Element paramDecl = declaration.getParameters().get(i);
-  //     if (noLightweightOwnership || getDeclAnnotation(paramDecl, OwningArray.class) == null) {
-  //       AnnotatedTypeMirror paramType = parameterTypes.get(i);
-  //       paramType.replaceAnnotation(TOP);
-  //     }
-  //   }
-  //   if (declaration.isVarArgs()) {
-  //     // also modify the component type of a varargs array
-  //     AnnotatedTypeMirror varargsType =
-  //         ((AnnotatedArrayType) parameterTypes.get(parameterTypes.size() -
-  // 1)).getComponentType();
-  //     varargsType.replaceAnnotation(TOP);
-  //   }
-  // }
-
-  // @Override
-  // protected void constructorFromUsePreSubstitution(
-  //     NewClassTree tree, AnnotatedExecutableType type, boolean resolvePolyQuals) {
-  //   ExecutableElement declaration = TreeUtils.elementFromUse(tree);
-  //   changeNonOwningParameterTypesToTop(declaration, type);
-  //   super.constructorFromUsePreSubstitution(tree, type, resolvePolyQuals);
-  // }
-
   public static void putArrayTreeForOwningArrayName(String name, ExpressionTree tree) {
     owningArrayNameToTreeMap.put(name, tree);
   }
 
+  /**
+   * getter method for datastructure that maps the string of an owning array to (one of) its tree(s)
+   * in the AST.
+   *
+   * @param name name of the array
+   * @return the AST subtree corresponding to the array
+   */
   public static ExpressionTree getArrayTreeForOwningArrayName(String name) {
     return owningArrayNameToTreeMap.get(name);
   }
 
+  /**
+   * returns whether the specified member-select AST node is in a pattern-matched loop that fulfills
+   * an {@code @OwningArray} obligation.
+   *
+   * @param memSelect the member-select AST node
+   * @return whether the node is in a pattern-matched loop fulfilling an mcoe obligation
+   */
   public static boolean doesMethodAccessCloseArrayObligation(MemberSelectTree memSelect) {
     return obligationFulfillingMethodAccess.contains(memSelect);
   }
 
+  /**
+   * Marks the specified member-select AST node as one that fulfills a mcoe obligation for an
+   * {@code @OwningArray} array, i.e. marks the node as being in a pattern-matched loop. Only call
+   * when the corrresponding loop has been successfully pattern-matched.
+   *
+   * @param memSelect the member-select AST node
+   */
   public static void fulfillArrayObligationForMethodAccess(MemberSelectTree memSelect) {
     obligationFulfillingMethodAccess.add(memSelect);
   }
 
+  /**
+   * returns whether the specified assignment AST node is in a pattern-matched allocating for-loop.
+   *
+   * @param assgn the assignment AST node
+   * @return whether the specified node is in an allocating for-loop for an {@code @OwningArray}.
+   */
   public static boolean doesAssignmentCreateArrayObligation(AssignmentTree assgn) {
     return obligationCreatingAssignments.contains(assgn);
   }
 
+  /**
+   * Marks the specified assignment AST node as one that's in a loop that creates a mcoe obligation
+   * for an {@code @OwningArray} array, i.e. marks the node as being in a pattern-matched loop. Only
+   * call when the corrresponding loop has been successfully pattern-matched.
+   *
+   * @param assgn the assignment node
+   */
   public static void createArrayObligationForAssignment(AssignmentTree assgn) {
     obligationCreatingAssignments.add(assgn);
   }
 
+  /**
+   * Marks the specified less-than AST node as one that's the condition of a loop that creates a
+   * mcoe obligation for an {@code @OwningArray} array. The obligations created are passed in the
+   * second argument.
+   *
+   * @param tree the less-than node
+   * @param methods a list of the methods in the obligation
+   */
   public static void createArrayObligationForLessThan(Tree tree, List<String> methods) {
     assert (tree.getKind() == Tree.Kind.LESS_THAN)
         : "Trying to associate Tree as condition of a method calling for-loop, but is not a LESS_THAN tree";
     whichObligationsDoesLoopWithThisConditionCreateMap.put(tree, methods);
   }
 
+  /**
+   * Marks the specified less-than AST node as one that's the condition of a loop that fulfills a
+   * mcoe obligation for an {@code @OwningArray} array. The fulfilled mcoe method is passed in the
+   * second argument.
+   *
+   * @param tree the less-than AST node
+   * @param method the method that is called on the array elements in the loop
+   */
   public static void closeArrayObligationForLessThan(Tree tree, String method) {
     assert (tree.getKind() == Tree.Kind.LESS_THAN)
         : "Trying to associate Tree as condition of a method calling for-loop, but is not a LESS_THAN tree";
     whichMethodDoesLoopWithThisConditionCallMap.put(tree, method);
   }
 
+  /**
+   * Associates the given less-than AST-node (which is a loop condition for a successfully
+   * pattern-matched loop for opening/closing a MustCallOnElements obligation) with the arrayTree
+   * AST-node that corresponds to the array in question.
+   *
+   * @param condition the less-than AST-node
+   * @param arrayTree the array AST-node
+   */
   public static void putArrayAffectedByLoopWithThisCondition(
       Tree condition, ExpressionTree arrayTree) {
     assert (condition.getKind() == Tree.Kind.LESS_THAN)
@@ -305,18 +331,42 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
     arrayTreeForLoopWithThisCondition.put(condition, arrayTree);
   }
 
+  /**
+   * Returns the list of MustCallOnElements obligations created in this loop, specified through the
+   * less-than AST-node, which is the loop condition.
+   *
+   * @param condition the condition of a pattern-matched loop that creates a MustCallOnElements
+   *     obligation
+   * @return list of the methods that are the MustCallOnElements obligations created in this loop
+   */
   public static List<String> whichObligationsDoesLoopWithThisConditionCreate(Tree condition) {
     assert (condition.getKind() == Tree.Kind.LESS_THAN)
         : "Trying to associate Tree as condition of a method calling for-loop, but is not a LESS_THAN tree";
     return whichObligationsDoesLoopWithThisConditionCreateMap.get(condition);
   }
 
+  /**
+   * Returns the name of the method that is called in the pattern-matched,
+   * MustCallOnElements-fulfilling loop specified by the given Tree, which is the condition of said
+   * loop.
+   *
+   * @param condition the condition of a pattern-matched loop that closes a MustCallOnElements
+   *     obligation
+   * @return name of the method that is called on the elements of the array in the loop
+   */
   public static String whichMethodDoesLoopWithThisConditionCall(Tree condition) {
     assert (condition.getKind() == Tree.Kind.LESS_THAN)
         : "Trying to associate Tree as condition of a method calling for-loop, but is not a LESS_THAN tree";
     return whichMethodDoesLoopWithThisConditionCallMap.get(condition);
   }
 
+  /**
+   * Fetches the array AST-node, for which a MustCallOnElements obligation is opened/closed in the
+   * loop, for which the given lessThan AST-node is the condition.
+   *
+   * @param condition the less-than AST-node
+   * @return the array AST-node in the loop body
+   */
   public static ExpressionTree getArrayTreeForLoopWithThisCondition(Tree condition) {
     assert (condition.getKind() == Tree.Kind.LESS_THAN)
         : "Trying to associate Tree as condition of an obligation changing for-loop, but is not a LESS_THAN tree";
@@ -471,40 +521,4 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
       return super.visitIdentifier(tree, type);
     }
   }
-
-  // @Override
-  // protected QualifierUpperBounds createQualifierUpperBounds() {
-  //   return new MustCallOnElementsQualifierUpperBounds();
-  // }
-
-  // /** Support @InheritableMustCallOnElements meaning @MustCallOnElements on all subtypes. */
-  // class MustCallOnElementsQualifierUpperBounds extends QualifierUpperBounds {
-
-  //   /**
-  //    * Creates a {@link QualifierUpperBounds} from the MustCallOnElements Checker the annotations
-  // that are in
-  //    * the type hierarchy.
-  //    */
-  //   public MustCallOnElementsQualifierUpperBounds() {
-  //     super(MustCallOnElementsAnnotatedTypeFactory.this);
-  //   }
-
-  //   @Override
-  //   protected AnnotationMirrorSet getAnnotationFromElement(Element element) {
-  //     AnnotationMirrorSet explict = super.getAnnotationFromElement(element);
-  //     if (!explict.isEmpty()) {
-  //       return explict;
-  //     }
-  //     AnnotationMirror inheritableMustCallOnElements = getDeclAnnotation(element,
-  // InheritableMustCallOnElements.class);
-  //     if (inheritableMustCallOnElements != null) {
-  //       List<String> mustCallOnElementsVal =
-  //           AnnotationUtils.getElementValueArray(
-  //               inheritableMustCallOnElements, inheritableMustCallOnElementsValueElement,
-  // String.class);
-  //       return AnnotationMirrorSet.singleton(createMustCallOnElements(mustCallOnElementsVal));
-  //     }
-  //     return AnnotationMirrorSet.emptySet();
-  //   }
-  // }
 }

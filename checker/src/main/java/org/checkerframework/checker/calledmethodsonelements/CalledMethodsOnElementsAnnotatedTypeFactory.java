@@ -1,54 +1,30 @@
 package org.checkerframework.checker.calledmethodsonelements;
 
-import com.sun.source.tree.AssignmentTree;
-import com.sun.source.tree.CompilationUnitTree;
-import com.sun.source.tree.ExpressionTree;
-import com.sun.source.tree.IdentifierTree;
-import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.Tree;
 import java.lang.annotation.Annotation;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.IdentityHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.AnnotationMirror;
-import javax.lang.model.element.Element;
-import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.type.TypeMirror;
-import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElements;
-import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElementsUnknown;
-import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
+import org.checkerframework.checker.calledmethodsonelements.qual.CalledMethodsOnElements;
+import org.checkerframework.checker.calledmethodsonelements.qual.CalledMethodsOnElementsBottom;
 import org.checkerframework.checker.nullness.qual.Nullable;
-import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
 import org.checkerframework.common.basetype.BaseAnnotatedTypeFactory;
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.dataflow.cfg.block.Block;
-import org.checkerframework.dataflow.cfg.node.LocalVariableNode;
-import org.checkerframework.dataflow.cfg.node.Node;
 import org.checkerframework.framework.flow.CFStore;
 import org.checkerframework.framework.type.*;
-import org.checkerframework.framework.type.AnnotatedTypeMirror;
 import org.checkerframework.framework.type.GenericAnnotatedTypeFactory;
 import org.checkerframework.framework.type.QualifierHierarchy;
 import org.checkerframework.framework.type.SubtypeIsSubsetQualifierHierarchy;
-import org.checkerframework.framework.type.treeannotator.ListTreeAnnotator;
-import org.checkerframework.framework.type.treeannotator.TreeAnnotator;
-import org.checkerframework.framework.type.typeannotator.ListTypeAnnotator;
-import org.checkerframework.framework.type.typeannotator.TypeAnnotator;
 import org.checkerframework.javacutil.*;
 import org.checkerframework.javacutil.AnnotationBuilder;
 import org.checkerframework.javacutil.TreeUtils;
 import org.checkerframework.javacutil.TypesUtils;
-import org.checkerframework.checker.calledmethodsonelements.qual.CalledMethodsOnElements;
-import org.checkerframework.checker.calledmethodsonelements.qual.CalledMethodsOnElementsBottom;
 
 /** The annotated type factory for the Called Methods Checker. */
 public class CalledMethodsOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFactory {
@@ -79,6 +55,14 @@ public class CalledMethodsOnElementsAnnotatedTypeFactory extends BaseAnnotatedTy
     return afterFirstStore ? flowResult.getStoreAfter(first) : flowResult.getStoreBefore(succ);
   }
 
+  public CFStore getStoreForBlock(Block block) {
+    return flowResult.getStoreBefore(block);
+  }
+
+  public CFStore getStoreForTree(Tree tree) {
+    return flowResult.getStoreBefore(tree);
+  }
+
   /**
    * Create a new CalledMethodsOnElementsAnnotatedTypeFactory.
    *
@@ -93,7 +77,6 @@ public class CalledMethodsOnElementsAnnotatedTypeFactory extends BaseAnnotatedTy
       this.postInit();
     }
   }
-
 
   private AnnotationMirror createCMOEAnnotation(List<String> methodList) {
     AnnotationBuilder builder = new AnnotationBuilder(processingEnv, CalledMethodsOnElements.class);

@@ -7,6 +7,7 @@ import com.google.common.collect.Iterables;
 import com.sun.source.tree.ArrayAccessTree;
 import com.sun.source.tree.AssignmentTree;
 import com.sun.source.tree.BinaryTree;
+import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.MethodInvocationTree;
@@ -46,6 +47,7 @@ import org.checkerframework.checker.calledmethods.qual.CalledMethods;
 import org.checkerframework.checker.calledmethodsonelements.CalledMethodsOnElementsAnnotatedTypeFactory;
 import org.checkerframework.checker.calledmethodsonelements.CalledMethodsOnElementsChecker;
 import org.checkerframework.checker.calledmethodsonelements.qual.CalledMethodsOnElements;
+import org.checkerframework.checker.calledmethodsonelements.qual.CalledMethodsOnElementsBottom;
 import org.checkerframework.checker.mustcall.CreatesMustCallForToJavaExpression;
 import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcall.MustCallChecker;
@@ -56,6 +58,7 @@ import org.checkerframework.checker.mustcall.qual.Owning;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsChecker;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElements;
+import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElementsUnknown;
 import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.common.accumulation.AccumulationStore;
@@ -82,7 +85,6 @@ import org.checkerframework.dataflow.cfg.node.ReturnNode;
 import org.checkerframework.dataflow.cfg.node.SuperNode;
 import org.checkerframework.dataflow.cfg.node.ThisNode;
 import org.checkerframework.dataflow.cfg.node.TypeCastNode;
-import org.checkerframework.dataflow.cfg.node.VariableDeclarationNode;
 import org.checkerframework.dataflow.expression.FieldAccess;
 import org.checkerframework.dataflow.expression.JavaExpression;
 import org.checkerframework.dataflow.expression.LocalVariable;
@@ -90,10 +92,8 @@ import org.checkerframework.dataflow.expression.ThisReference;
 import org.checkerframework.dataflow.util.NodeUtils;
 import org.checkerframework.framework.flow.CFStore;
 import org.checkerframework.framework.flow.CFValue;
-import org.checkerframework.framework.type.AnnotatedTypeMirror;
 import org.checkerframework.framework.util.JavaExpressionParseUtil.JavaExpressionParseException;
 import org.checkerframework.framework.util.StringToJavaExpression;
-import org.checkerframework.javacutil.AnnotationMirrorSet;
 import org.checkerframework.javacutil.AnnotationUtils;
 import org.checkerframework.javacutil.BugInCF;
 import org.checkerframework.javacutil.ElementUtils;
@@ -178,6 +178,18 @@ class MustCallConsistencyAnalyzer {
    * to access the Must Call Checker.
    */
   private final ResourceLeakAnnotatedTypeFactory typeFactory;
+
+  /**
+   * The type factory for the MustCallOnElements Checker, which is used to get MustCallOnElements
+   * types
+   */
+  private final MustCallOnElementsAnnotatedTypeFactory mcoeTypeFactory;
+
+  /**
+   * The type factory for the CalledMethodsOnElements Checker, which is used to get
+   * CalledMethodsOnElements types
+   */
+  private final CalledMethodsOnElementsAnnotatedTypeFactory cmoeTypeFactory;
 
   /**
    * A cache for the result of calling {@code ResourceLeakAnnotatedTypeFactory.getStoreAfter()} on a
@@ -575,6 +587,9 @@ class MustCallConsistencyAnalyzer {
   /*package-private*/ MustCallConsistencyAnalyzer(
       ResourceLeakAnnotatedTypeFactory typeFactory, ResourceLeakAnalysis analysis) {
     this.typeFactory = typeFactory;
+    this.mcoeTypeFactory = typeFactory.getTypeFactoryOfSubchecker(MustCallOnElementsChecker.class);
+    this.cmoeTypeFactory =
+        typeFactory.getTypeFactoryOfSubchecker(CalledMethodsOnElementsChecker.class);
     this.checker = (ResourceLeakChecker) typeFactory.getChecker();
     this.analysis = analysis;
     this.permitStaticOwning = checker.hasOption("permitStaticOwning");
@@ -608,8 +623,9 @@ class MustCallConsistencyAnalyzer {
     Deque<BlockWithObligations> worklist = new ArrayDeque<>();
 
     // Add any owning parameters to the initial set of variables to track.
-    BlockWithObligations entry =
-        new BlockWithObligations(cfg.getEntryBlock(), computeOwningParameters(cfg));
+    Set<Obligation> initialObligations = computeOwningArrayFields(cfg);
+    initialObligations.addAll(computeOwningParameters(cfg));
+    BlockWithObligations entry = new BlockWithObligations(cfg.getEntryBlock(), initialObligations);
     worklist.add(entry);
     visited.add(entry);
 
@@ -1149,70 +1165,129 @@ class MustCallConsistencyAnalyzer {
     return false;
   }
 
-  private void verifyAllocatingForLoop(LessThanNode node, Block block) {
+  /**
+   * Verifies whether a loop, specified through the passed LessThanNode loop condition, is:
+   *
+   * <ul>
+   *   <li>1. an allocating loop (a pattern-matched loop that creates obligations for an
+   *       {@code @OwningArray} array)
+   *   <li>2. whether the array, for which the loop creates mcoe obligations, has open mcoe
+   *       obligations
+   * </ul>
+   *
+   * If both are true, the loop is illegal, since the mcoe obligations of a previous allocation were
+   * not fulfilled. In this case, an error is reported.
+   *
+   * @param node the node that is the condition for the for loop
+   */
+  private void verifyAllocatingForLoop(LessThanNode node) {
     BinaryTree tree = node.getTree();
+    // check whether the loop specified through the condition was pattern-matched as an allocating
+    // loop
     if (MustCallOnElementsAnnotatedTypeFactory.whichObligationsDoesLoopWithThisConditionCreate(tree)
         == null) {
       return;
     }
     ExpressionTree arr =
         MustCallOnElementsAnnotatedTypeFactory.getArrayTreeForLoopWithThisCondition(tree);
-    if (arr == null) return;
+    assert arr != null
+        : "invariant violated: pattern-matcher didn't put array tree into datastructure";
     // check whether obligations have been fulfilled prior to reassignment
-    List<String> mcoeObligations = getMustCallOnElementsObligations(block, arr);
-    List<String> cmoeObligations = getCalledMethodsOnElementsObligations(block, arr);
+    List<String> mcoeObligations =
+        getMustCallOnElementsObligations(mcoeTypeFactory.getStoreForTree(arr), arr);
+    List<String> cmoeObligations =
+        getCalledMethodsOnElements(cmoeTypeFactory.getStoreForTree(arr), arr);
+    System.out.println(
+        "verifying assignmentloop: " + mcoeObligations + "\n        -> " + cmoeObligations);
     mcoeObligations.removeAll(cmoeObligations);
-    System.out.println("verifying assignmentloop: " + mcoeObligations + "\n        -> " + cmoeObligations);
     if (mcoeObligations.isEmpty()) {
       return;
     }
-    checker.reportError(tree, "unfulfilled.mustcallonelements.obligations");
+    checker.reportError(
+        arr,
+        "illegal.owningarray.allocation",
+        arr.toString(),
+        formatMissingMustCallMethods(mcoeObligations));
   }
 
   /**
-   * Returns whether the given ExpressionTree (expected to be an array) has any mustCallOnElements
-   * calling obligations in the given Block (i.e. whether the MustCallOnElementsObligation type of
-   * tree is not bottom and not top in the store of the given block).
+   * Returns a list of methods considered "called on elements" of the given tree (expected to be an
+   * array identifier) The list is extracted from the store passed as an argument.
    *
-   * @param currentBlock the block in which we want to know whether the array has mcoe obligations
-   * @param tree the array tree
-   * @return whether the array passed by argument tree has any mcoe obligations in the given block
+   * @param cmoeStore the store holding cmoe type annotation information
+   * @param arrTree the array identifier tree
+   * @return list of the methods called on the elements of the given array (in dedicated,
+   *     pattern-matched for-loops)
    */
-  private List<String> getCalledMethodsOnElementsObligations(Block currentBlock, ExpressionTree tree) {
-    CalledMethodsOnElementsAnnotatedTypeFactory cmoeAtf =
-        typeFactory.getTypeFactoryOfSubchecker(CalledMethodsOnElementsChecker.class);
-    CFStore cmoeStore = cmoeAtf.getStoreForBlock(true, currentBlock, null);
-    AnnotationMirrorSet annoSet =
-        cmoeStore.getValue(JavaExpression.fromTree(tree)).getAnnotations();
-    AnnotationMirror anno = annoSet.getAnnotationByClass(CalledMethodsOnElements.class);
-    List<String> cmValues =
-        AnnotationUtils.getElementValueArray(
-            anno, cmoeAtf.getCalledMethodsOnElementsValueElement(), String.class);
-    System.out.println("Stores: " + cmoeStore + " block: " + currentBlock);
-    return cmValues;
+  private List<String> getCalledMethodsOnElements(CFStore cmoeStore, ExpressionTree arrTree) {
+    CFValue cfval = cmoeStore.getValue(JavaExpression.fromTree(arrTree));
+    Element arrElm = TreeUtils.elementFromTree(arrTree);
+    if (arrElm.getKind() == ElementKind.FIELD && arrElm.getAnnotation(OwningArray.class) != null) {
+      if (ElementUtils.isFinal(arrElm)) {
+        if (cfval == null) {
+          // entry block doesn't have final field in store yet
+          return Collections.emptyList();
+        }
+      } else {
+        // nonfinal OwningArray field is illegal. An error was already issued.
+        // Prevent program crash and return here.
+        return Collections.emptyList();
+      }
+    }
+    assert cfval != null : "No mcoe annotation for " + arrTree + " in store.";
+    AnnotationMirror cmoeAnno =
+        AnnotationUtils.getAnnotationByClass(cfval.getAnnotations(), CalledMethodsOnElements.class);
+    AnnotationMirror cmoeAnnoBottom =
+        AnnotationUtils.getAnnotationByClass(
+            cfval.getAnnotations(), CalledMethodsOnElementsBottom.class);
+    assert cmoeAnno != null || cmoeAnnoBottom != null
+        : "No cmoe annotation for " + arrTree + " in store.";
+    if (cmoeAnnoBottom != null) {
+      return Collections.emptyList();
+    } else {
+      return AnnotationUtils.getElementValueArray(
+          cmoeAnno, cmoeTypeFactory.getCalledMethodsOnElementsValueElement(), String.class);
+    }
   }
 
   /**
-   * Returns whether the given ExpressionTree (expected to be an array) has any mustCallOnElements
-   * calling obligations in the given Block (i.e. whether the MustCallOnElementsObligation type of
-   * tree is not bottom and not top in the store of the given block).
+   * Returns a list of methods that have to be "called on elements" on the {@code @OwningArray}
+   * array specified by the given tree (expected to be an array identifier). The list is extracted
+   * from the store passed as an argument.
    *
-   * @param currentBlock the block in which we want to know whether the array has mcoe obligations
-   * @param tree the array tree
-   * @return whether the array passed by argument tree has any mcoe obligations in the given block
+   * @param mcoeStore store containing MustCallOnElements type annotation information
+   * @param arrTree the array identifier tree
+   * @return list of the MustCallOnElements obligations of the given array
    */
-  private List<String> getMustCallOnElementsObligations(Block currentBlock, ExpressionTree tree) {
-    MustCallOnElementsAnnotatedTypeFactory mcoeAtf =
-        typeFactory.getTypeFactoryOfSubchecker(MustCallOnElementsChecker.class);
-    CFStore mcoeStore = mcoeAtf.getStoreForBlock(true, currentBlock, null);
-    AnnotationMirrorSet annoSet =
-        mcoeStore.getValue(JavaExpression.fromTree(tree)).getAnnotations();
-    AnnotationMirror anno = annoSet.getAnnotationByClass(MustCallOnElements.class);
-    List<String> mcValues =
-        AnnotationUtils.getElementValueArray(
-            anno, mcoeAtf.getMustCallOnElementsValueElement(), String.class);
-    System.out.println("Stores: " + mcoeStore + " block: " + currentBlock);
-    return mcValues;
+  private List<String> getMustCallOnElementsObligations(CFStore mcoeStore, ExpressionTree arrTree) {
+    CFValue cfval = mcoeStore.getValue(JavaExpression.fromTree(arrTree));
+    Element arrElm = TreeUtils.elementFromTree(arrTree);
+    if (arrElm.getKind() == ElementKind.FIELD && arrElm.getAnnotation(OwningArray.class) != null) {
+      if (ElementUtils.isFinal(arrElm)) {
+        if (cfval == null) {
+          // entry block doesn't have final field in store yet
+          return Collections.emptyList();
+        }
+      } else {
+        // nonfinal OwningArray field is illegal. An error was already issued.
+        // Prevent program crash and return here.
+        return Collections.emptyList();
+      }
+    }
+    assert cfval != null : "No mcoe annotation for " + arrTree + " in store.";
+    AnnotationMirror mcoeAnno =
+        AnnotationUtils.getAnnotationByClass(cfval.getAnnotations(), MustCallOnElements.class);
+    AnnotationMirror mcoeAnnoUnknown =
+        AnnotationUtils.getAnnotationByClass(
+            cfval.getAnnotations(), MustCallOnElementsUnknown.class);
+    assert mcoeAnno != null || mcoeAnnoUnknown != null
+        : "No mcoe annotation for " + arrTree + " in store.";
+    if (mcoeAnnoUnknown != null) {
+      return Collections.emptyList();
+    } else {
+      return AnnotationUtils.getElementValueArray(
+          mcoeAnno, mcoeTypeFactory.getMustCallOnElementsValueElement(), String.class);
+    }
   }
 
   /**
@@ -1226,10 +1301,7 @@ class MustCallConsistencyAnalyzer {
    * @param assignmentNode the assignment
    */
   private void updateObligationsForAssignment(
-      Set<Obligation> obligations,
-      ControlFlowGraph cfg,
-      AssignmentNode assignmentNode,
-      Block block) {
+      Set<Obligation> obligations, ControlFlowGraph cfg, AssignmentNode assignmentNode) {
     Node lhs = assignmentNode.getTarget();
     Element lhsElement = TreeUtils.elementFromTree(lhs.getTree());
     if (lhsElement == null) {
@@ -1242,40 +1314,74 @@ class MustCallConsistencyAnalyzer {
     // Ownership transfer to index of @OwningArray array.
     boolean isOwningArray = !noLightweightOwnership && typeFactory.hasOwningArray(lhsElement);
     if (isOwningArray && typeFactory.canCreateObligations()) {
-      if (rhs instanceof ArrayCreationNode) {
-        // array is newly assigned. Verify whether
-        assert ((lhs instanceof LocalVariableNode) && (lhs.getTree() instanceof IdentifierTree))
-            : "shid";
-        IdentifierTree arrTree = (IdentifierTree) lhs.getTree();
-        ExpressionTree tree =
+      if (lhs.getTree() instanceof VariableTree) {
+        // declaration of local @OwningArray
+        VariableTree owningArrayDeclarationTree = (VariableTree) lhs.getTree();
+        ExpressionTree arrayTree =
             MustCallOnElementsAnnotatedTypeFactory.getArrayTreeForOwningArrayName(
-                arrTree.getName().toString());
-        if (getMustCallOnElementsObligations(block, tree).isEmpty()) {
-          // if no mcoeObligations and rhs is new array it is safe to add the obligation,
-          // even in case of reassignment (since obligations a set)
+                owningArrayDeclarationTree.getName().toString());
+        Element elt = TreeUtils.elementFromTree(arrayTree);
+        obligations.add(
+            new Obligation(
+                ImmutableSet.of(
+                    new ResourceAlias(JavaExpression.fromTree(arrayTree), elt, arrayTree)),
+                Collections.singleton(MethodExitKind.NORMAL_RETURN)));
+      } else if (lhs.getTree() instanceof IdentifierTree) {
+        // definition of local @OwningArray. Cannot be a field, because @OwningArray fields are
+        // final
+        if (rhs instanceof ArrayCreationNode) {
+          // array is newly assigned.
+          IdentifierTree arrTree = (IdentifierTree) lhs.getTree();
+          ExpressionTree tree =
+              MustCallOnElementsAnnotatedTypeFactory.getArrayTreeForOwningArrayName(
+                  arrTree.getName().toString());
           Element elt = TreeUtils.elementFromTree(tree);
-          obligations.add(
-              new Obligation(
-                  ImmutableSet.of(new ResourceAlias(JavaExpression.fromTree(tree), elt, tree)),
-                  Collections.singleton(MethodExitKind.NORMAL_RETURN)));
-          return;
+          assert !elt.getKind().isField()
+              : "this code assumes @OwningArray assignments within the examined method are not"
+                  + " fields, since @OwningArray fields must be final";
+          CFStore mcoeStore = mcoeTypeFactory.getStoreBefore(assignmentNode.getTree());
+          List<String> mcoeObligations = Collections.emptyList();
+          // if store does not contain the array tree, it must be the first assignment and hence
+          // legal
+          if (mcoeStore.getValue(JavaExpression.fromTree(tree)) != null) {
+            mcoeObligations = getMustCallOnElementsObligations(mcoeStore, tree);
+          }
+          if (mcoeObligations.isEmpty()) {
+            // if no mcoeObligations and rhs is new array it is safe to add the obligation,
+            // even in case of reassignment (since obligations is a set)
+            obligations.add(
+                new Obligation(
+                    ImmutableSet.of(new ResourceAlias(JavaExpression.fromTree(tree), elt, tree)),
+                    Collections.singleton(MethodExitKind.NORMAL_RETURN)));
+            return;
+          } else {
+            checker.reportError(
+                assignmentNode.getTree(),
+                "owningarray.reassignment.with.open.obligations",
+                mcoeObligations.toString(),
+                arrTree.toString());
+            // return;
+          }
         } else {
+          // assigning an @OwningArray to anything but a new array is not allowed
           checker.reportError(
-              assignmentNode.getTree(), "array has open obligations, cannot reassign.");
-          return;
+              assignmentNode.getTree(), "illegal.owningarray.assignment", lhs.getTree().toString());
         }
-      } else if (!(lhs.getTree() instanceof ArrayAccessTree)) {
-        checker.reportError(
-            assignmentNode.getTree(),
-            "illegal assignment; only assigning array to NewArrayNode allowed");
-        return;
-      } else {
+      } else if ((lhs instanceof FieldAccessNode) && (rhs instanceof ArrayCreationNode)) {
+        // assigning field. Since we demand it is final, this case should not occur.
+        assert false : "field assignment is happening, we demand it is final.";
+      } else if (lhs.getTree() instanceof ArrayAccessTree) {
+        // assignment is to an element of the array, not the array pointer itself:
         // check whether assignment is in a pattern-matched loop. if not, issue warning. if yes
         // check whether obligations have been fulfilled prior to reassignment
         if (!MustCallOnElementsAnnotatedTypeFactory.doesAssignmentCreateArrayObligation(
             (AssignmentTree) assignmentNode.getTree())) {
           // assignment not in a pattern-matched loop: not permitted for @OwningArray
-          checker.reportError(assignmentNode.getTree(), "bad assignment");
+          // checker.reportError(assignmentNode.getTree(),
+          //                     "prohibited.owningarrayelement.assignment");
+          checker.reportError(
+              assignmentNode.getTree(),
+              "Assigning to element of @OwningArray index outside of a designated loop.");
         }
         // really unsure about the remainder of this code that deletes obligations for the local var
         // TODO
@@ -2129,13 +2235,13 @@ class MustCallConsistencyAnalyzer {
       // be some opportunities for optimization in this mostly-redundant work.
       for (Node node : currentBlock.getNodes()) {
         if (node instanceof AssignmentNode) {
-          updateObligationsForAssignment(obligations, cfg, (AssignmentNode) node, currentBlock);
+          updateObligationsForAssignment(obligations, cfg, (AssignmentNode) node);
         } else if (node instanceof ReturnNode) {
           updateObligationsForOwningReturn(obligations, cfg, (ReturnNode) node);
         } else if (node instanceof MethodInvocationNode || node instanceof ObjectCreationNode) {
           updateObligationsForInvocation(obligations, node, successorAndExceptionType.second);
         } else if (node instanceof LessThanNode) {
-          verifyAllocatingForLoop((LessThanNode) node, currentBlock);
+          verifyAllocatingForLoop((LessThanNode) node);
         }
         // All other types of nodes are ignored. This is safe, because other kinds of
         // nodes cannot create or modify the resource-alias sets that the algorithm is
@@ -2192,14 +2298,8 @@ class MustCallConsistencyAnalyzer {
                 + " with exception type "
                 + exceptionType;
     // Computed outside the Obligation loop for efficiency.
-    MustCallOnElementsAnnotatedTypeFactory mcoeAtf =
-        typeFactory.getTypeFactoryOfSubchecker(MustCallOnElementsChecker.class);
-    CalledMethodsOnElementsAnnotatedTypeFactory cmoeAtf =
-        typeFactory.getTypeFactoryOfSubchecker(CalledMethodsOnElementsChecker.class);
-
     AccumulationStore regularStoreOfSuccessor = analysis.getInput(successor).getRegularStore();
-    final CFStore mcoeStore = mcoeAtf.getStoreForBlock(true, successor, null);
-    final CFStore cmoeStore = cmoeAtf.getStoreForBlock(true, successor, null);
+    final CFStore mcoeStore = mcoeTypeFactory.getStoreForBlock(true, successor, null);
     for (Obligation obligation : obligations) {
       // This boolean is true if there is no evidence that the Obligation does not go out
       // of scope - that is, if there is definitely a resource alias that is in scope in
@@ -2219,6 +2319,7 @@ class MustCallConsistencyAnalyzer {
           || obligationGoesOutOfScopeBeforeSuccessor) {
         MustCallAnnotatedTypeFactory mcAtf =
             typeFactory.getTypeFactoryOfSubchecker(MustCallChecker.class);
+
         // If successor is an exceptional successor, and Obligation represents the
         // temporary variable for currentBlock's node, do not propagate or do a
         // consistency check, as in the exceptional case the "assignment" to the
@@ -2303,12 +2404,12 @@ class MustCallConsistencyAnalyzer {
         CFStore mcStore;
         AccumulationStore cmStore;
         CFStore mcoeStoreCurrent =
-            mcoeAtf.getStoreForBlock(
+            mcoeTypeFactory.getStoreForBlock(
                 obligationGoesOutOfScopeBeforeSuccessor,
                 currentBlock, // 1a. (MC)
                 successor); // 1b. (MC)
         CFStore cmoeStoreCurrent =
-            cmoeAtf.getStoreForBlock(
+            cmoeTypeFactory.getStoreForBlock(
                 obligationGoesOutOfScopeBeforeSuccessor,
                 currentBlock, // 1a. (MC)
                 successor); // 1b. (MC)
@@ -2356,39 +2457,8 @@ class MustCallConsistencyAnalyzer {
             exceptionType == null ? MethodExitKind.NORMAL_RETURN : MethodExitKind.EXCEPTIONAL_EXIT;
         if (obligation.whenToEnforce.contains(exitKind)) {
           checkMustCall(obligation, cmStore, mcStore, exitReasonForErrorMessage);
-          // checkMustCallOnElements();
-          for (ResourceAlias alias : obligation.resourceAliases) {
-            if (typeFactory.hasOwningArray(alias.element)) {
-              CFValue mcoeValue = mcoeStoreCurrent.getValue(alias.reference);
-              assert (mcoeValue != null)
-                  : "No mcoe annotation for " + alias.reference + " in store.";
-              AnnotationMirror mcoeAnno =
-                  AnnotationUtils.getAnnotationByClass(
-                      mcoeValue.getAnnotations(), MustCallOnElements.class);
-              assert (mcoeAnno != null)
-                  : "No mcoe annotation for " + alias.reference + " in store.";
-              List<String> mcoeValues =
-                  AnnotationUtils.getElementValueArray(
-                      mcoeAnno, mcoeAtf.getMustCallOnElementsValueElement(), String.class);
-              CFValue cmoeValue = cmoeStoreCurrent.getValue(alias.reference);
-              assert (cmoeValue != null)
-                  : "No cmoe annotation for " + alias.reference + " in store.";
-              AnnotationMirror cmoeAnno =
-                  AnnotationUtils.getAnnotationByClass(
-                      cmoeValue.getAnnotations(), CalledMethodsOnElements.class);
-              assert (cmoeAnno != null)
-                  : "No cmoe annotation for " + alias.reference + " in store.";
-              List<String> cmoeValues =
-                  AnnotationUtils.getElementValueArray(
-                      cmoeAnno, cmoeAtf.getCalledMethodsOnElementsValueElement(), String.class);
-              System.out.println("verifying exit: " + mcoeValues + "\n        -> " + cmoeValues);
-              System.out.println("\n                Stores: " + mcoeStoreCurrent + " " + cmoeStoreCurrent);
-              mcoeValues.removeAll(cmoeValues);
-              if (!mcoeValues.isEmpty()) {
-                checker.reportError(alias.tree, "unfulfilled.mustcallonelements.obligations");
-              }
-            }
-          }
+          checkMustCallOnElements(
+              obligation, mcoeStoreCurrent, cmoeStoreCurrent, exitReasonForErrorMessage);
         }
       } else {
         // In this case, there is info in the successor store about some alias in the
@@ -2463,6 +2533,46 @@ class MustCallConsistencyAnalyzer {
   }
 
   /**
+   * Finds {@link OwningArray} fields for the enclosing class of the method corresponding to a CFG.
+   *
+   * @param cfg the CFG
+   * @return the OwningArray fields of the enclosing class of the method that corresponds to the
+   *     given cfg, or an empty set if the given CFG doesn't correspond to a method body or there
+   *     are no such fields.
+   */
+  private Set<Obligation> computeOwningArrayFields(ControlFlowGraph cfg) {
+    if (cfg.getUnderlyingAST().getKind() == Kind.METHOD) {
+      Set<Obligation> result = new LinkedHashSet<>(1);
+      MethodTree method = ((UnderlyingAST.CFGMethod) cfg.getUnderlyingAST()).getMethod();
+      TreePath path = typeFactory.getPath(method);
+      ClassTree enclosingClass = TreePathUtil.enclosingClass(path);
+      for (Tree member : enclosingClass.getMembers()) {
+        if (member instanceof VariableTree) {
+          Element memberElm = TreeUtils.elementFromTree(member);
+          if (!noLightweightOwnership
+              && memberElm.getKind().isField()
+              && (memberElm.getAnnotation(OwningArray.class) != null)) {
+            if (!ElementUtils.isFinal(memberElm)) {
+              checker.reportError(
+                  member, "owningarray.field.not.final", ((VariableTree) member).getName());
+            }
+            ExpressionTree tree =
+                MustCallOnElementsAnnotatedTypeFactory.getArrayTreeForOwningArrayName(
+                    ((VariableTree) member).getName().toString());
+            Element elt = TreeUtils.elementFromTree(tree);
+            result.add(
+                new Obligation(
+                    ImmutableSet.of(new ResourceAlias(JavaExpression.fromTree(tree), elt, tree)),
+                    Collections.singleton(MethodExitKind.NORMAL_RETURN)));
+          }
+        }
+      }
+      return result;
+    }
+    return Collections.emptySet();
+  }
+
+  /**
    * Finds {@link Owning} formal parameters for the method corresponding to a CFG.
    *
    * @param cfg the CFG
@@ -2533,6 +2643,44 @@ class MustCallConsistencyAnalyzer {
       }
     }
     return null;
+  }
+
+  /**
+   * For the given Obligation, checks whether the first alias is an {@code @OwningArray} and if yes,
+   * whether it's the only alias (aliases of such arrays are not allowed) and whether its
+   * {@code @MustCallOnElements} obligation are satisfied, based on {@code @CalledMethodsOnElements}
+   * and {@code @MustCallOnElements} types in the given stores.
+   *
+   * @param obligation the Obligation
+   * @param mcoeStore the mustCallOnElements store
+   * @param cmoeStore the calledMethodsOnElements store
+   * @param exitReasonForErrorMessage if the {@code @MustCallOnElements} obligation is not
+   *     satisfied, a useful explanation to include in the error message
+   */
+  private void checkMustCallOnElements(
+      Obligation obligation,
+      CFStore mcoeStore,
+      CFStore cmoeStore,
+      String exitReasonForErrorMessage) {
+    for (ResourceAlias alias : obligation.resourceAliases) {
+      if (typeFactory.hasOwningArray(alias.element)) {
+        assert obligation.resourceAliases.size() == 1 : "aliases of @OwningArray not allowed";
+        List<String> mcoeValues =
+            getMustCallOnElementsObligations(mcoeStore, (ExpressionTree) alias.tree);
+        List<String> cmoeValues =
+            getCalledMethodsOnElements(cmoeStore, (ExpressionTree) alias.tree);
+        System.out.println("verifying exit: " + mcoeValues + "\n        -> " + cmoeValues);
+        mcoeValues.removeAll(cmoeValues);
+        if (!mcoeValues.isEmpty()) {
+          checker.reportError(
+              alias.tree,
+              "unfulfilled.mustcallonelements.obligations",
+              formatMissingMustCallMethods(mcoeValues),
+              alias.tree.toString(),
+              exitReasonForErrorMessage);
+        }
+      }
+    }
   }
 
   /**
