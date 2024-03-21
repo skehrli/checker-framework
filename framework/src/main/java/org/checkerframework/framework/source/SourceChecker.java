@@ -403,9 +403,6 @@ import org.plumelib.util.UtilPlume;
   // org.checkerframework.framework.source.SourceChecker.shutdownHook()
   "resourceStats",
 
-  // Parse all JDK files at startup rather than as needed.
-  "parseAllJdk",
-
   // Run checks that test ajava files.
   //
   // Whenever processing a source file, parse it with JavaParser and check that the AST can be
@@ -414,6 +411,11 @@ import org.plumelib.util.UtilPlume;
   // Also checks that annotations can be inserted. For each Java file, clears all annotations and
   // reinserts them, then checks if the original and modified ASTs are equivalent.
   "ajavaChecks",
+
+  // Converts type argument inference crashes into errors. By default, this option is true.
+  // Use "-AconvertTypeArgInferenceCrashToWarning=false" to turn this option off and allow type
+  // argument inference crashes to crash the type checker.
+  "convertTypeArgInferenceCrashToWarning"
 })
 public abstract class SourceChecker extends AbstractTypeProcessor implements OptionConfiguration {
 
@@ -585,6 +587,9 @@ public abstract class SourceChecker extends AbstractTypeProcessor implements Opt
 
   /** True if the -AwarnUnneededSuppressions command-line argument was passed. */
   private boolean warnUnneededSuppressions;
+
+  /** Creates a source checker. */
+  protected SourceChecker() {}
 
   // Also see initChecker().
   @Override
@@ -2355,16 +2360,31 @@ public abstract class SourceChecker extends AbstractTypeProcessor implements Opt
       }
       // Check if the message key in the warning suppression is part of the message key that
       // the checker is emiting.
-      if (messageKey.equals(messageKeyInSuppressWarningsString)
-          || messageKey.startsWith(messageKeyInSuppressWarningsString + ".")
-          || messageKey.endsWith("." + messageKeyInSuppressWarningsString)
-          || messageKey.contains("." + messageKeyInSuppressWarningsString + ".")) {
+      if (messageKeyMatches(messageKey, messageKeyInSuppressWarningsString)) {
         return true;
       }
     }
 
     // None of the SuppressWarnings strings suppresses this error.
     return false;
+  }
+
+  /**
+   * Does the given messageKey match a messageKey that appears in a SuppressWarnings? Subclasses
+   * should override this method if they need additional logic to compare message keys.
+   *
+   * @param messageKey the message key of the error that is being emitted, without any "checker:"
+   *     prefix
+   * @param messageKeyInSuppressWarningsString the message key in a {@code @SuppressWarnings}
+   *     annotation
+   * @return true if the arguments match
+   */
+  protected boolean messageKeyMatches(
+      String messageKey, String messageKeyInSuppressWarningsString) {
+    return messageKey.equals(messageKeyInSuppressWarningsString)
+        || messageKey.startsWith(messageKeyInSuppressWarningsString + ".")
+        || messageKey.endsWith("." + messageKeyInSuppressWarningsString)
+        || messageKey.contains("." + messageKeyInSuppressWarningsString + ".");
   }
 
   /**
