@@ -20,6 +20,7 @@ import org.checkerframework.checker.calledmethods.CalledMethodsAnnotatedTypeFact
 import org.checkerframework.checker.calledmethods.CalledMethodsAnnotatedTypeFactory.PotentiallyAssigningLoop;
 import org.checkerframework.checker.calledmethods.CalledMethodsAnnotatedTypeFactory.PotentiallyFulfillingLoop;
 import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
+import org.checkerframework.checker.mustcall.MustCallChecker;
 import org.checkerframework.checker.mustcall.qual.InheritableMustCall;
 import org.checkerframework.checker.mustcall.qual.MustCall;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
@@ -54,6 +55,9 @@ public class CalledMethodsOnElementsTransfer extends CFTransfer {
 
   /** The type factory. */
   private final CalledMethodsOnElementsAnnotatedTypeFactory atypeFactory;
+
+  /** The {@code MustCallAnnotatedTypeFactory} to query {@code @MustCall} types. */
+  private MustCallAnnotatedTypeFactory mcAtf;
 
   /** The processing environment. */
   private final ProcessingEnvironment env;
@@ -235,8 +239,12 @@ public class CalledMethodsOnElementsTransfer extends CFTransfer {
    * @return the list of mustcall obligations for the type
    */
   private List<String> getMustCallValuesForType(TypeMirror type) {
-    MustCallAnnotatedTypeFactory mcAtf =
-        new MustCallAnnotatedTypeFactory(atypeFactory.getChecker());
+    if (mcAtf == null) {
+      mcAtf =
+          ((ResourceLeakChecker) atypeFactory.getChecker().getParentChecker())
+              .getTypeFactory()
+              .getTypeFactoryOfSubchecker(MustCallChecker.class);
+    }
     TypeElement typeElement = TypesUtils.getTypeElement(type);
     AnnotationMirror imcAnnotation =
         mcAtf.getDeclAnnotation(typeElement, InheritableMustCall.class);

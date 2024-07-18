@@ -262,7 +262,7 @@ public class ResourceLeakAnnotatedTypeFactory extends CalledMethodsAnnotatedType
    * @param node a node
    * @return the tempvar for node's expression, or null if one does not exist
    */
-  /*package-private*/ @Nullable LocalVariableNode getTempVarForNode(Node node) {
+  public @Nullable LocalVariableNode getTempVarForNode(Node node) {
     return tempVarToTree.inverse().get(node.getTree());
   }
 
@@ -272,7 +272,7 @@ public class ResourceLeakAnnotatedTypeFactory extends CalledMethodsAnnotatedType
    * @param node a node
    * @return true iff the given node is a temporary variable
    */
-  /*package-private*/ public boolean isTempVar(Node node) {
+  public boolean isTempVar(Node node) {
     return tempVarToTree.containsKey(node);
   }
 
@@ -282,7 +282,7 @@ public class ResourceLeakAnnotatedTypeFactory extends CalledMethodsAnnotatedType
    * @param node a node for a temporary variable
    * @return the tree for {@code node}
    */
-  /*package-private*/ Tree getTreeForTempVar(Node node) {
+  public Tree getTreeForTempVar(Node node) {
     if (!tempVarToTree.containsKey(node)) {
       throw new TypeSystemError(node + " must be a temporary variable");
     }
@@ -295,7 +295,7 @@ public class ResourceLeakAnnotatedTypeFactory extends CalledMethodsAnnotatedType
    * @param tmpVar a temporary variable
    * @param tree the tree of the expression the tempvar represents
    */
-  /*package-private*/ void addTempVar(LocalVariableNode tmpVar, Tree tree) {
+  public void addTempVar(LocalVariableNode tmpVar, Tree tree) {
     if (!tempVarToTree.containsValue(tree)) {
       tempVarToTree.put(tmpVar, tree);
     }

@@ -363,7 +363,10 @@ public class MustCallConsistencyAnalyzer {
      */
     private boolean canBeSatisfiedThrough(Tree tree) {
       for (ResourceAlias alias : resourceAliases) {
-        if (alias.tree.equals(tree)) {
+        if (alias.tree.equals(tree)
+            || ((tree instanceof ExpressionTree)
+                && JavaExpression.fromTree((ExpressionTree) tree) != null
+                && alias.reference.equals(JavaExpression.fromTree((ExpressionTree) tree)))) {
           return true;
         }
       }
@@ -638,10 +641,10 @@ public class MustCallConsistencyAnalyzer {
    *     so this constructor cannot get it directly.
    */
   public MustCallConsistencyAnalyzer(
-      CalledMethodsAnnotatedTypeFactory typeFactory, CalledMethodsAnalysis analysis) {
+      ResourceLeakAnnotatedTypeFactory typeFactory, CalledMethodsAnalysis analysis) {
     this.isLoopBodyAnalysis = true;
-    this.cmTypeFactory = typeFactory;
-    this.typeFactory = null;
+    this.cmTypeFactory = typeFactory.getTypeFactoryOfSubchecker(CalledMethodsChecker.class);
+    this.typeFactory = typeFactory;
     this.mcoeTypeFactory = null;
     this.cmoeTypeFactory = null;
     this.checker = null;
@@ -999,9 +1002,9 @@ public class MustCallConsistencyAnalyzer {
               if (ElementUtils.isStatic(memberElm)) {
                 checker.reportError(member, "owningarray.field.static", tree.getName());
               }
-              if (!ElementUtils.isPrivate(memberElm)) {
-                checker.reportError(member, "owningarray.field.static", tree.getName());
-              }
+              // if (!ElementUtils.isPrivate(memberElm)) {
+              //   checker.reportError(member, "owningarray.field.private", tree.getName());
+              // }
               if (!isArray && !isCollection) {
                 checker.reportError(member, "owningarray.nonarray", tree.getName());
               }
@@ -1919,7 +1922,7 @@ public class MustCallConsistencyAnalyzer {
     }
     // Use the temporary variable for the rhs if it exists.
     Node rhsExpr = NodeUtils.removeCasts(assignmentNode.getExpression());
-    Node rhs = isLoopBodyAnalysis ? null : getTempVarOrNode(rhsExpr);
+    Node rhs = getTempVarOrNode(rhsExpr);
     MethodTree enclosingMethod = cfg.getEnclosingMethod(assignmentNode.getTree());
     boolean inConstructor = enclosingMethod != null && TreeUtils.isConstructor(enclosingMethod);
 
@@ -2253,14 +2256,14 @@ public class MustCallConsistencyAnalyzer {
           // cases, use the tree associated with the temp var for the resource alias,
           // as that is the tree where errors should be reported.
           Tree treeForAlias =
-              typeFactory.isTempVar(lhsVar) && !isLoopBodyAnalysis
+              typeFactory.isTempVar(lhsVar)
                   ? typeFactory.getTreeForTempVar(lhsVar)
                   : node.getTree();
           aliasForAssignment = new ResourceAlias(new LocalVariable(lhsVar), treeForAlias);
         }
         newResourceAliasesForObligation.add(aliasForAssignment);
         // Remove temp vars from tracking once they are assigned to another location.
-        if (!isLoopBodyAnalysis && typeFactory.isTempVar(rhsVar)) {
+        if (typeFactory.isTempVar(rhsVar)) {
           ResourceAlias aliasForRhs = obligation.getResourceAlias(rhsVar);
           if (aliasForRhs != null) {
             newResourceAliasesForObligation.remove(aliasForRhs);
@@ -2924,7 +2927,12 @@ public class MustCallConsistencyAnalyzer {
                 + ((ExceptionBlock) currentBlock).getNode().getTree()
                 + " with exception type "
                 + exceptionType;
-    AccumulationStore regularStoreOfSuccessor = cmTypeFactory.getStoreBefore(successor);
+    // System.out.println("curr: " + currentBlock);
+    // System.out.println("succ: " + successor);
+    AccumulationStore regularStoreOfSuccessor =
+        isLoopBodyAnalysis
+            ? cmTypeFactory.getStoreBefore(successor)
+            : typeFactory.getStoreBefore(successor);
     MustCallAnnotatedTypeFactory mcAtf =
         isLoopBodyAnalysis ? null : typeFactory.getTypeFactoryOfSubchecker(MustCallChecker.class);
     CFStore mcCFStore = isLoopBodyAnalysis ? null : mcAtf.getStoreBefore(successor);

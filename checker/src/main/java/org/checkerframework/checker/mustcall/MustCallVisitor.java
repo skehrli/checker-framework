@@ -547,7 +547,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
         || ((IdentifierTree) idx).getName() != ((VariableTree) init).getName()) return;
     // ensure indexed array is the same as the one we took the length of in loop condition
     Name arrayNameInBody = nameFromExpression(arrayAccess.getExpression());
-    if (arrayNameInBody == null) {
+    if (arrayAccess.getExpression().getKind() != Tree.Kind.IDENTIFIER) {
       // expected array, but does not directly evaluate to an identifier
       checker.reportWarning(arrayAccess, "unexpected.array.expression");
       return;
@@ -1178,10 +1178,17 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
       MethodInvocationTree tree,
       AnnotatedTypeMirror methodDefinitionReceiver,
       AnnotatedTypeMirror methodCallReceiver) {
-    // It does not make sense for receivers to have must-call obligations. If the receiver of a
-    // method were to have a non-empty must-call obligation, then actually this method should
-    // be part of the must-call annotation on the class declaration! So skipping this check is
-    // always sound.
+    // If you think of the receiver of the method call as an implicit parameter, it has some
+    // MustCall
+    // type. For example, consider the method call:
+    //   void foo(@MustCall("bar") ThisClass this)
+    // If we now call o.foo() where o has @MustCall({"bar, baz"}), the receiver subtype check would
+    // throw
+    // an error, since o is not a subtype of @MustCall("bar"). However, since foo does not take
+    // ownership
+    // of its receiver, it does not matter what it 'thinks' the @MustCall methods of the receiver
+    // are.
+    // Hence, it is always sound to skip this check.
     return true;
   }
 

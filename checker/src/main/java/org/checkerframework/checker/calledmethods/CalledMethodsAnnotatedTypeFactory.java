@@ -31,6 +31,8 @@ import org.checkerframework.checker.calledmethods.qual.EnsuresCalledMethodsOnExc
 import org.checkerframework.checker.calledmethods.qual.EnsuresCalledMethodsVarargs;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.MustCallConsistencyAnalyzer;
+import org.checkerframework.checker.resourceleak.ResourceLeakAnnotatedTypeFactory;
+import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
 import org.checkerframework.common.accumulation.AccumulationAnnotatedTypeFactory;
 import org.checkerframework.common.accumulation.AccumulationStore;
 import org.checkerframework.common.basetype.BaseTypeChecker;
@@ -64,9 +66,6 @@ public class CalledMethodsAnnotatedTypeFactory extends AccumulationAnnotatedType
    * MustCallVisitor, which checks the header and (parts of the) body.
    */
   private static final Set<PotentiallyFulfillingLoop> potentiallyFulfillingLoops = new HashSet<>();
-
-  /** Used as argument to call the post-analyzer of the {@code CalledMethods} checker with. */
-  // private ResourceLeakAnnotatedTypeFactory rlAtf = null;
 
   /**
    * The builder frameworks (such as Lombok and AutoValue) supported by this instance of the Called
@@ -131,10 +130,6 @@ public class CalledMethodsAnnotatedTypeFactory extends AccumulationAnnotatedType
     List<String> disabledFrameworks =
         checker.getStringsOption(CalledMethodsChecker.DISABLE_BUILDER_FRAMEWORK_SUPPORTS, ',');
     enableFrameworks(disabledFrameworks);
-
-    // if (this instanceof ResourceLeakAnnotatedTypeFactory) {
-    //   if (rlAtf == null) rlAtf = (ResourceLeakAnnotatedTypeFactory) this;
-    // }
 
     this.useValueChecker = checker.hasOption(CalledMethodsChecker.USE_VALUE_CHECKER);
 
@@ -626,10 +621,14 @@ public class CalledMethodsAnnotatedTypeFactory extends AccumulationAnnotatedType
    */
   @Override
   public void postAnalyze(ControlFlowGraph cfg) {
-    // if (rlAtf != null && potentiallyFulfillingLoops.size() > 0) {
-    if (potentiallyFulfillingLoops.size() > 0) {
+    if (potentiallyFulfillingLoops.size() > 0
+        && !(this instanceof ResourceLeakAnnotatedTypeFactory)) {
+      ResourceLeakAnnotatedTypeFactory rlAtf =
+          (ResourceLeakAnnotatedTypeFactory)
+              ((ResourceLeakChecker) getChecker().getParentChecker()).getTypeFactory();
       MustCallConsistencyAnalyzer mustCallConsistencyAnalyzer =
-          new MustCallConsistencyAnalyzer(this, (CalledMethodsAnalysis) this.analysis);
+          // new MustCallConsistencyAnalyzer(this, (CalledMethodsAnalysis) this.analysis);
+          new MustCallConsistencyAnalyzer(rlAtf, (CalledMethodsAnalysis) this.analysis);
 
       // analyze loop bodies of all loops marked 'potentially-mcoe-obligation-fulfilling'
       Set<PotentiallyFulfillingLoop> analyzed = new HashSet<>();
