@@ -4,13 +4,13 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Set;
 import javax.lang.model.element.AnnotationMirror;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.signature.qual.ClassGetName;
 import org.checkerframework.dataflow.cfg.visualize.CFGVisualizer;
 import org.checkerframework.framework.qual.SubtypeOf;
-import org.checkerframework.framework.source.CompositeChecker;
 import org.checkerframework.framework.source.SourceChecker;
 import org.checkerframework.framework.type.AnnotatedTypeFactory;
 import org.checkerframework.framework.type.GenericAnnotatedTypeFactory;
@@ -64,7 +64,7 @@ import org.plumelib.util.StringsPlume;
  *
  * @checker_framework.manual #creating-compiler-interface The checker class
  */
-public abstract class BaseTypeChecker extends CompositeChecker {
+public abstract class BaseTypeChecker extends SourceChecker {
 
   /** An array containing just {@code BaseTypeChecker.class}. */
   protected static Class<?>[] baseTypeCheckerClassArray = new Class<?>[] {BaseTypeChecker.class};
@@ -175,8 +175,9 @@ public abstract class BaseTypeChecker extends CompositeChecker {
     if (super.shouldAddShutdownHook() || getTypeFactory().getCFGVisualizer() != null) {
       return true;
     }
-    for (BaseTypeChecker checker : getSubcheckers()) {
-      if (checker.getTypeFactory().getCFGVisualizer() != null) {
+    for (SourceChecker checker : getSubcheckers()) {
+      if ((checker instanceof BaseTypeChecker)
+          && ((BaseTypeChecker) checker).getTypeFactory().getCFGVisualizer() != null) {
         return true;
       }
     }
@@ -192,12 +193,23 @@ public abstract class BaseTypeChecker extends CompositeChecker {
       viz.shutdown();
     }
 
-    for (BaseTypeChecker checker : getSubcheckers()) {
-      viz = checker.getTypeFactory().getCFGVisualizer();
-      if (viz != null) {
-        viz.shutdown();
+    for (SourceChecker checker : getSubcheckers()) {
+      if (checker instanceof BaseTypeChecker) {
+        viz = ((BaseTypeChecker) checker).getTypeFactory().getCFGVisualizer();
+        if (viz != null) {
+          viz.shutdown();
+        }
       }
     }
+  }
+
+  @Override
+  protected Set<String> createSupportedLintOptions() {
+    Set<String> lintSet = super.createSupportedLintOptions();
+    lintSet.add("cast");
+    lintSet.add("cast:redundant");
+    lintSet.add("cast:unsafe");
+    return lintSet;
   }
 
   /** A cache for {@link #getUltimateParentChecker}. */
@@ -218,7 +230,6 @@ public abstract class BaseTypeChecker extends CompositeChecker {
         ultimateParentChecker = (BaseTypeChecker) ultimateParentChecker.getParentChecker();
       }
     }
-
     return ultimateParentChecker;
   }
 

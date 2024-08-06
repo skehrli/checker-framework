@@ -368,6 +368,9 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
     if (rlc == null) {
       rlc = (ResourceLeakChecker) checker.getParentChecker();
     }
+    if (rlc.getVisitor() != null) {
+      rlc.setRoot(root);
+    }
     return rlc;
   }
 

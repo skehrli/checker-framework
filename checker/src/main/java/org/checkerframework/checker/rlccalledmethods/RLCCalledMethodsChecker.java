@@ -1,15 +1,14 @@
 package org.checkerframework.checker.rlccalledmethods;
 
-import com.sun.source.tree.CompilationUnitTree;
 import java.util.Set;
 import org.checkerframework.checker.calledmethods.CalledMethodsChecker;
 import org.checkerframework.checker.mustcall.MustCallChecker;
 import org.checkerframework.checker.mustcall.MustCallNoCreatesMustCallForChecker;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
 import org.checkerframework.checker.resourceleak.SetOfTypes;
-import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.common.basetype.BaseTypeVisitor;
 import org.checkerframework.framework.qual.StubFiles;
+import org.checkerframework.framework.source.SourceChecker;
 
 /**
  * The entry point for the RLCCalledMethodsChecker. This checker is a modifed {@link
@@ -41,27 +40,15 @@ public class RLCCalledMethodsChecker extends CalledMethodsChecker {
   }
 
   @Override
-  protected Set<Class<? extends BaseTypeChecker>> getImmediateSubcheckerClasses() {
-    Set<Class<? extends BaseTypeChecker>> checkers = super.getImmediateSubcheckerClasses();
+  protected Set<Class<? extends SourceChecker>> getImmediateSubcheckerClasses() {
+    Set<Class<? extends SourceChecker>> checkers = super.getImmediateSubcheckerClasses();
 
-    if (this.processingEnv.getOptions().containsKey(MustCallChecker.NO_CREATES_MUSTCALLFOR)) {
+    if (hasOptionNoSubcheckers(MustCallChecker.NO_CREATES_MUSTCALLFOR)) {
       checkers.add(MustCallNoCreatesMustCallForChecker.class);
     } else {
       checkers.add(MustCallChecker.class);
     }
 
     return checkers;
-  }
-
-  /*
-   * Required in the RLC, since the RLC doesn't have its root set. The likely reason is that it
-   * doesn't have its own visitor. This way, the RLCCMC can set the root for the RLC.
-   */
-  @Override
-  public void setRoot(CompilationUnitTree newRoot) {
-    super.setRoot(newRoot);
-    if (parentChecker != null && (parentChecker instanceof ResourceLeakChecker)) {
-      ((ResourceLeakChecker) parentChecker).setRoot(newRoot);
-    }
   }
 }

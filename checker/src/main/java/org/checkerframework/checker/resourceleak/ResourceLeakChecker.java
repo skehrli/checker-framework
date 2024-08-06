@@ -3,6 +3,7 @@ package org.checkerframework.checker.resourceleak;
 import com.google.common.collect.ImmutableSet;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.NavigableSet;
 import java.util.Set;
@@ -16,9 +17,9 @@ import org.checkerframework.checker.mustcall.MustCallChecker;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsChecker;
-import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.framework.qual.StubFiles;
 import org.checkerframework.framework.source.CompositeChecker;
+import org.checkerframework.framework.source.SourceChecker;
 import org.checkerframework.framework.source.SupportedOptions;
 
 /**
@@ -137,11 +138,9 @@ public class ResourceLeakChecker extends CompositeChecker {
   private int numMustCallFailed = 0;
 
   @Override
-  protected Set<Class<? extends BaseTypeChecker>> getImmediateSubcheckerClasses() {
-    Set<Class<? extends BaseTypeChecker>> checkers = super.getImmediateSubcheckerClasses();
-
+  protected Set<Class<? extends SourceChecker>> getImmediateSubcheckerClasses() {
+    Set<Class<? extends SourceChecker>> checkers = new LinkedHashSet<>(1);
     checkers.add(RLCCalledMethodsChecker.class);
-
     return checkers;
   }
 
