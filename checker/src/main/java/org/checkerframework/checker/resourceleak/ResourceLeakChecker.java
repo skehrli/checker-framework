@@ -18,7 +18,7 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsChecker;
 import org.checkerframework.framework.qual.StubFiles;
-import org.checkerframework.framework.source.CompositeChecker;
+import org.checkerframework.framework.source.AggregateChecker;
 import org.checkerframework.framework.source.SourceChecker;
 import org.checkerframework.framework.source.SupportedOptions;
 
@@ -47,7 +47,7 @@ import org.checkerframework.framework.source.SupportedOptions;
   ResourceLeakChecker.ENABLE_WPI_FOR_RLC,
 })
 @StubFiles("IOUtils.astub")
-public class ResourceLeakChecker extends CompositeChecker {
+public class ResourceLeakChecker extends AggregateChecker {
 
   /** Creates a ResourceLeakChecker. */
   public ResourceLeakChecker() {}
