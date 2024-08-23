@@ -44,6 +44,128 @@ public class RLCCalledMethodsTransfer extends CalledMethodsTransfer {
   }
 
   @Override
+  public void accumulate(
+      Node node, TransferResult<AccumulationValue, AccumulationStore> result, String... values) {
+    super.accumulate(node, result, values);
+    updateStoreForIteratedCollectionElement(Arrays.asList(values), result, node);
+  }
+
+  /**
+   * Add the collection elements iterated over in potentially Mcoe-obligation-fulfilling loops to
+   * the store.
+   */
+  @Override
+  public AccumulationStore initialStore(
+      UnderlyingAST underlyingAST, List<LocalVariableNode> parameters) {
+    AccumulationStore store = super.initialStore(underlyingAST, parameters);
+    CalledMethodsAnnotatedTypeFactory cmAtf =
+        (CalledMethodsAnnotatedTypeFactory) this.analysis.getTypeFactory();
+    for (CalledMethodsAnnotatedTypeFactory.PotentiallyFulfillingLoop loop :
+        CalledMethodsAnnotatedTypeFactory.getPotentiallyFulfillingLoops()) {
+      IteratedCollectionElement collectionElementJx =
+          new IteratedCollectionElement(loop.collectionElementNode, loop.collectionElementTree);
+      store.insertValue(collectionElementJx, cmAtf.top);
+    }
+    return store;
+  }
+
+  /**
+   * Checks whether the given node is the element of a collection iterated over in a
+   * potentially-Mcoe-obligation-fulfilling loop. If it is, accumulates the called methods to this
+   * collection element.
+   *
+   * @param valuesAsList the list of called methods
+   * @param result the transfer result
+   * @param node a cfg node
+   */
+  private void updateStoreForIteratedCollectionElement(
+      List<String> valuesAsList,
+      TransferResult<AccumulationValue, AccumulationStore> result,
+      Node node) {
+    IteratedCollectionElement collectionElement =
+        result.getRegularStore().getIteratedCollectionElement(node, node.getTree());
+    if (collectionElement != null) {
+      AccumulationValue flowValue = result.getRegularStore().getValue(collectionElement);
+      if (flowValue != null) {
+        // Dataflow has already recorded information about the target.  Integrate it into
+        // the list of values in the new annotation.
+        AnnotationMirrorSet flowAnnos = flowValue.getAnnotations();
+        assert flowAnnos.size() <= 1;
+        for (AnnotationMirror anno : flowAnnos) {
+          if (atypeFactory.isAccumulatorAnnotation(anno)) {
+            List<String> oldFlowValues =
+                AnnotationUtils.getElementValueArray(anno, calledMethodsValueElement, String.class);
+            // valuesAsList cannot have its length changed -- it is backed by an
+            // array.  getElementValueArray returns a new, modifiable list.
+            oldFlowValues.addAll(valuesAsList);
+            valuesAsList = oldFlowValues;
+          }
+        }
+      }
+      AnnotationMirror newAnno = atypeFactory.createAccumulatorAnnotation(valuesAsList);
+      if (result.containsTwoStores()) {
+        updateValueAndInsertIntoStore(result.getThenStore(), collectionElement, valuesAsList);
+        updateValueAndInsertIntoStore(result.getElseStore(), collectionElement, valuesAsList);
+      } else {
+        updateValueAndInsertIntoStore(result.getRegularStore(), collectionElement, valuesAsList);
+      }
+      exceptionalStores.forEach(
+          (tm, s) ->
+              s.replaceValue(
+                  collectionElement,
+                  analysis.createSingleAnnotationValue(newAnno, collectionElement.getType())));
+    }
+  }
+
+  // private LocalVariableNode createLocalVariableNode(Node node) {
+  //   LocalVariableNode localVariableNode = null;
+  //   VariableTree temp = createTemporaryVar(node);
+  //   if (temp != null) {
+  //     IdentifierTree identifierTree = treeBuilder.buildVariableUse(temp);
+  //     localVariableNode = new LocalVariableNode(identifierTree);
+  //     localVariableNode.setInSource(true);
+  //   }
+  //   return localVariableNode;
+  // }
+
+  // /**
+  //  * Creates a variable declaration for the given expression node, if possible.
+  //  *
+  //  * <p>Note that error reporting code assumes that the names of temporary variables are not
+  // legal
+  //  * Java identifiers (see <a
+  //  * href="https://docs.oracle.com/javase/specs/jls/se17/html/jls-3.html#jls-3.8">JLS 3.8</a>).
+  // The
+  //  * temporary variable names generated here include an {@code '-'} character to make the names
+  //  * invalid.
+  //  *
+  //  * @param node an expression node
+  //  * @return a variable tree for the node, or null if an appropriate containing element cannot be
+  //  *     located
+  //  */
+  // private @Nullable VariableTree createTemporaryVar(Node node) {
+  //   ExpressionTree tree = (ExpressionTree) node.getTree();
+  //   TypeMirror treeType = TreeUtils.typeOf(tree);
+  //   Element enclosingElement;
+  //   TreePath path = atypeFactory.getPath(tree);
+  //   if (path == null) {
+  //     enclosingElement = TreeUtils.elementFromUse(tree).getEnclosingElement();
+  //   } else {
+  //     // Issue 6473
+  //     // Adjusts handling of nearest enclosing element for temporary variables.
+  //     // This approach ensures the correct enclosing element (method or class) is determined.
+  //     enclosingElement = TreePathUtil.findNearestEnclosingElement(path);
+  //   }
+  //   if (enclosingElement == null) {
+  //     return null;
+  //   }
+  //   // Declare and initialize a new, unique variable
+  //   VariableTree tmpVarTree =
+  //       treeBuilder.buildVariableDecl(treeType, uniqueName("temp-var"), enclosingElement, tree);
+  //   return tmpVarTree;
+  // }
+
+  @Override
   public TransferResult<AccumulationValue, AccumulationStore> visitTernaryExpression(
       TernaryExpressionNode node, TransferInput<AccumulationValue, AccumulationStore> input) {
     TransferResult<AccumulationValue, AccumulationStore> result =

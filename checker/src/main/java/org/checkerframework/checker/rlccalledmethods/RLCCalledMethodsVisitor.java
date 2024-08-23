@@ -21,12 +21,9 @@ import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
-import javax.tools.Diagnostic;
-import org.checkerframework.checker.calledmethods.CalledMethodsAnnotatedTypeFactory;
 import org.checkerframework.checker.calledmethods.CalledMethodsVisitor;
 import org.checkerframework.checker.calledmethods.EnsuresCalledMethodOnExceptionContract;
 import org.checkerframework.checker.calledmethods.qual.EnsuresCalledMethods;
-import org.checkerframework.checker.calledmethods.qual.EnsuresCalledMethodsVarargs;
 import org.checkerframework.checker.calledmethodsonelements.qual.EnsuresCalledMethodsOnElements;
 import org.checkerframework.checker.mustcall.CreatesMustCallForToJavaExpression;
 import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
@@ -47,7 +44,6 @@ import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.dataflow.expression.FieldAccess;
 import org.checkerframework.dataflow.expression.JavaExpression;
 import org.checkerframework.dataflow.qual.Pure;
-import org.checkerframework.framework.source.DiagMessage;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
 import org.checkerframework.framework.util.JavaExpressionParseUtil;
 import org.checkerframework.framework.util.StringToJavaExpression;
@@ -104,24 +100,6 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
       checkMustCallAliasAnnotationForConstructor(tree);
     } else {
       checkMustCallAliasAnnotationForMethod(tree, mcAtf);
-    }
-
-    AnnotationMirror ecmv = atypeFactory.getDeclAnnotation(elt, EnsuresCalledMethodsVarargs.class);
-    // Temporary, for backward compatibility.
-    if (ecmv == null) {
-      ecmv =
-          atypeFactory.getDeclAnnotation(
-              elt,
-              org.checkerframework.checker.calledmethods.qual.EnsuresCalledMethodsVarArgs.class);
-    }
-    if (ecmv != null) {
-      if (!elt.isVarArgs()) {
-        checker.report(tree, new DiagMessage(Diagnostic.Kind.ERROR, "ensuresvarargs.invalid"));
-      }
-    }
-    for (EnsuresCalledMethodOnExceptionContract postcond :
-        ((CalledMethodsAnnotatedTypeFactory) atypeFactory).getExceptionalPostconditions(elt)) {
-      checkExceptionalPostcondition(postcond, tree);
     }
 
     super.processMethodTree(tree);

@@ -59,6 +59,13 @@ import org.checkerframework.javacutil.TypeSystemError;
 public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotatedTypeFactory
     implements CreatesMustCallForElementSupplier {
 
+  /**
+   * Set of potentially mcoe-obligation-fulfilling loops, defined through a pair of the entry cfg
+   * block and the ExpressionTree of the element of the collection iterated over. Set in the
+   * MustCallVisitor, which checks the header and (parts of the) body.
+   */
+  private static final Set<PotentiallyFulfillingLoop> potentiallyFulfillingLoops = new HashSet<>();
+
   /** True if errors related to static owning fields should be suppressed. */
   public final boolean permitStaticOwning;
 
@@ -137,6 +144,15 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
     if (this.getClass() == RLCCalledMethodsAnnotatedTypeFactory.class) {
       this.postInit();
     }
+  }
+
+  /**
+   * Returns the analysis.
+   *
+   * @return the flow analysis
+   */
+  public CalledMethodsAnalysis getAnalysis() {
+    return (CalledMethodsAnalysis) analysis;
   }
 
   @Override
@@ -591,6 +607,28 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
   }
 
   /**
+   * Creates a @CalledMethods annotation whose values are the given strings.
+   *
+   * @param val the methods that have been called
+   * @return an annotation indicating that the given methods have been called
+   */
+  public AnnotationMirror createCalledMethods(String... val) {
+    return createAccumulatorAnnotation(Arrays.asList(val));
+  }
+
+  /**
+   * Fetches the store from the results of dataflow for {@code block}. The store after {@code block}
+   * is returned.
+   *
+   * @param block a block
+   * @return the appropriate CFStore, populated with CalledMethods annotations, from the results of
+   *     running dataflow
+   */
+  public AccumulationStore getStoreAfterBlock(Block block) {
+    return flowResult.getStoreAfter(block);
+  }
+
+  /**
    * Helper method to get the temporary variable that represents the given node, if one exists.
    *
    * @param node a node
@@ -633,5 +671,254 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
     if (!tempVarToTree.containsValue(tree)) {
       tempVarToTree.put(tmpVar, tree);
     }
+  }
+
+  /**
+   * Construct a {@code PotentiallyFulfillingLoop} and add it to the static set of such loop to have
+   * their loop body analyzed for possibly fulfilling {@code @MustCallOnElements} calling
+   * obligations.
+   *
+   * @param loopConditionBlock cfg {@code Block} for loop condition
+   * @param loopUpdateBlock {@code Block} for loop update
+   * @param condition AST {@code Tree} for loop condition
+   * @param collectionElementTree AST {@code Tree} for collection element iterated over
+   * @param collectionEltNode cfg {@code Node} for collection element iterated over
+   * @param collectionTree AST {@code Tree} for collection iterated over
+   */
+  public static void addPotentiallyFulfillingLoop(
+      Block loopConditionBlock,
+      Block loopUpdateBlock,
+      Tree condition,
+      ExpressionTree collectionElementTree,
+      Node collectionEltNode,
+      ExpressionTree collectionTree) {
+    potentiallyFulfillingLoops.add(
+        new PotentiallyFulfillingLoop(
+            collectionTree,
+            collectionElementTree,
+            condition,
+            loopConditionBlock,
+            loopUpdateBlock,
+            collectionEltNode));
+  }
+
+  /**
+   * Return the static set of {@code PotentiallyFulfillingLoop}s scheduled for analysis.
+   *
+   * @return the static set of {@code PotentiallyFulfillingLoop}s scheduled for analysis.
+   */
+  public static Set<PotentiallyFulfillingLoop> getPotentiallyFulfillingLoops() {
+    return potentiallyFulfillingLoops;
+  }
+
+  /**
+   * Wrapper class for a loop that might have an effect on the {@code @MustCallOnElements} type of a
+   * collection/array.
+   */
+  public abstract static class McoeObligationAlteringLoop {
+    /** Loop is either assigning or fulfilling. */
+    public static enum LoopKind {
+      /**
+       * Loop potentially assigns elements with non-empty {@code @MustCall} type to a collection.
+       */
+      ASSIGNING,
+
+      /** Loop potentially calls methods on all elements of a collection. */
+      FULFILLING
+    }
+
+    /** AST {@code Tree} for collection iterated over. */
+    public final ExpressionTree collectionTree;
+
+    /** AST {@code Tree} for collection element iterated over. */
+    public final ExpressionTree collectionElementTree;
+
+    /** AST {@code Tree} for loop condition. */
+    public final Tree condition;
+
+    /**
+     * methods associated with this loop. For assigning loops, these are methods that are to be
+     * added to the {@code MustCallOnElements} type and for fulfilling loops, methods that are to be
+     * removed from the {@code MustCallOnElements} and added to the {@code CalledMethodsOnElements}
+     * type.
+     */
+    protected final Set<String> associatedMethods;
+
+    /**
+     * Wether loop is assigning (elements with {@code MustCall} obligations to a collection) or
+     * fulfilling.
+     */
+    public final LoopKind loopKind;
+
+    /**
+     * Constructs a new {@code McoeObligationAlteringLoop}. Called by subclass constructor.
+     *
+     * @param collectionTree AST {@code Tree} for collection iterated over
+     * @param collectionElementTree AST {@code Tree} for collection element iterated over
+     * @param condition AST {@code Tree} for loop condition
+     * @param associatedMethods set of methods associated with this loop
+     * @param loopKind whether this is an assigning/fulfilling loop
+     */
+    protected McoeObligationAlteringLoop(
+        ExpressionTree collectionTree,
+        ExpressionTree collectionElementTree,
+        Tree condition,
+        Set<String> associatedMethods,
+        LoopKind loopKind) {
+      this.collectionTree = collectionTree;
+      this.collectionElementTree = collectionElementTree;
+      this.condition = condition;
+      this.loopKind = loopKind;
+      if (associatedMethods == null) {
+        associatedMethods = new HashSet<>();
+      }
+      this.associatedMethods = associatedMethods;
+    }
+
+    /**
+     * Add methods associated with this loop. For assigning loops, these are methods that are to be
+     * added to the {@code MustCallOnElements} type and for fulfilling loops, methods that are to be
+     * removed from the {@code MustCallOnElements} and added to the {@code CalledMethodsOnElements}
+     * type.
+     *
+     * @param methods the set of methods to add
+     */
+    public void addMethods(Set<String> methods) {
+      associatedMethods.addAll(methods);
+    }
+
+    /**
+     * Return methods associated with this loop. For assigning loops, these are methods that are to
+     * be added to the {@code MustCallOnElements} type and for fulfilling loops, methods that are to
+     * be removed from the {@code MustCallOnElements} and added to the {@code
+     * CalledMethodsOnElements} type.
+     *
+     * @return the set of associated methdos
+     */
+    public Set<String> getMethods() {
+      return associatedMethods;
+    }
+  }
+
+  /**
+   * Wrapper for a loop that potentially assigns elements with non-empty {@code MustCall}
+   * obligations to an array, thus creating {@code MustCallOnElements} obligations for the array.
+   */
+  public static class PotentiallyAssigningLoop extends McoeObligationAlteringLoop {
+    /** The AST tree for the assignment of the resource into the array in the loop. */
+    public final AssignmentTree assignment;
+
+    /**
+     * Constructs a new {@code PotentiallyAssigningLoop}
+     *
+     * @param collectionTree AST {@code Tree} for collection iterated over
+     * @param collectionElementTree AST {@code Tree} for collection element iterated over
+     * @param condition AST {@code Tree} for loop condition
+     * @param assignment AST tree for the assignment of the resource into the array in the loop
+     * @param methodsToCall set of methods that are to be added to the {@code MustCallOnElements}
+     *     type of the array iterated over.
+     */
+    public PotentiallyAssigningLoop(
+        ExpressionTree collectionTree,
+        ExpressionTree collectionElementTree,
+        Tree condition,
+        AssignmentTree assignment,
+        Set<String> methodsToCall) {
+      super(
+          collectionTree,
+          collectionElementTree,
+          condition,
+          Set.copyOf(methodsToCall),
+          McoeObligationAlteringLoop.LoopKind.ASSIGNING);
+      this.assignment = assignment;
+    }
+  }
+
+  /** Wrapper for a loop that potentially calls methods on all elements of a collection/array. */
+  public static class PotentiallyFulfillingLoop extends McoeObligationAlteringLoop {
+    /** cfg {@code Block} for the loop condition */
+    public final Block loopConditionBlock;
+
+    /** cfg {@code Block} for the loop update */
+    public final Block loopUpdateBlock;
+
+    /** cfg {@code Node} for the collection element iterated over */
+    public final Node collectionElementNode;
+
+    /**
+     * Constructs a new {@code PotentiallyFulfillingLoop}
+     *
+     * @param collectionTree AST {@link Tree} for collection iterated over
+     * @param collectionElementTree AST {@link Tree} for collection element iterated over
+     * @param condition AST {@link Tree} for loop condition
+     * @param loopConditionBlock cfg {@link Block} for the loop condition
+     * @param loopUpdateBlock cfg {@link Block} for the loop update
+     * @param collectionEltNode cfg {@link Node} for the collection element iterated over
+     */
+    public PotentiallyFulfillingLoop(
+        ExpressionTree collectionTree,
+        ExpressionTree collectionElementTree,
+        Tree condition,
+        Block loopConditionBlock,
+        Block loopUpdateBlock,
+        Node collectionEltNode) {
+      super(
+          collectionTree,
+          collectionElementTree,
+          condition,
+          new HashSet<>(),
+          McoeObligationAlteringLoop.LoopKind.FULFILLING);
+      this.loopConditionBlock = loopConditionBlock;
+      this.loopUpdateBlock = loopUpdateBlock;
+      this.collectionElementNode = collectionEltNode;
+    }
+  }
+
+  /**
+   * After running the called-methods analysis, call the consistency analyzer to analyze the loop
+   * bodys of 'potentially-mcoe-obligation-fulfilling-loops', as determined by a pre-pattern-match
+   * in the MustCallVisitor.
+   *
+   * <p>The analysis uses the CalledMethods type of the collection element iterated over to
+   * determine the methods the loop calls on the collection elements.
+   *
+   * @param cfg the cfg of the enclosing method
+   */
+  @Override
+  public void postAnalyze(ControlFlowGraph cfg) {
+    if (potentiallyFulfillingLoops.size() > 0
+        && !(this instanceof ResourceLeakAnnotatedTypeFactory)) {
+      ResourceLeakAnnotatedTypeFactory rlAtf =
+          (ResourceLeakAnnotatedTypeFactory)
+              ((ResourceLeakChecker) getChecker().getParentChecker()).getTypeFactory();
+      MustCallConsistencyAnalyzer mustCallConsistencyAnalyzer =
+          // new MustCallConsistencyAnalyzer(this, (CalledMethodsAnalysis) this.analysis);
+          new MustCallConsistencyAnalyzer(rlAtf, (CalledMethodsAnalysis) this.analysis);
+
+      // analyze loop bodies of all loops marked 'potentially-mcoe-obligation-fulfilling'
+      Set<PotentiallyFulfillingLoop> analyzed = new HashSet<>();
+      for (PotentiallyFulfillingLoop potentiallyFulfillingLoop : potentiallyFulfillingLoops) {
+        ExpressionTree collectionElementTree = potentiallyFulfillingLoop.collectionElementTree;
+        boolean loopContainedInThisMethod =
+            cfg.getNodesCorrespondingToTree(collectionElementTree) != null;
+        if (loopContainedInThisMethod) {
+          System.out.println("analyzing loop " + potentiallyFulfillingLoop.collectionTree);
+          mustCallConsistencyAnalyzer.analyzeObligationFulfillingLoop(
+              cfg, potentiallyFulfillingLoop);
+          analyzed.add(potentiallyFulfillingLoop);
+        }
+      }
+      potentiallyFulfillingLoops.removeAll(analyzed);
+
+      // Inferring owning annotations for @Owning fields/parameters, @EnsuresCalledMethods for
+      // finalizer methods and @InheritableMustCall annotations for the class declarations.
+      // if (getWholeProgramInference() != null) {
+      //   if (cfg.getUnderlyingAST().getKind() == UnderlyingAST.Kind.METHOD) {
+      //     MustCallInference.runMustCallInference(this, cfg, mustCallConsistencyAnalyzer);
+      //   }
+      // }
+    }
+
+    super.postAnalyze(cfg);
   }
 }
