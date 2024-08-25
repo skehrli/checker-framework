@@ -2,9 +2,13 @@ package org.checkerframework.checker.rlccalledmethods;
 
 import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
+import com.sun.source.tree.AssignmentTree;
+import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.Tree;
 import java.lang.annotation.Annotation;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import javax.lang.model.element.AnnotationMirror;
@@ -144,34 +148,6 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
     if (this.getClass() == RLCCalledMethodsAnnotatedTypeFactory.class) {
       this.postInit();
     }
-  }
-
-  /**
-   * Returns the analysis.
-   *
-   * @return the flow analysis
-   */
-  public CalledMethodsAnalysis getAnalysis() {
-    return (CalledMethodsAnalysis) analysis;
-  }
-
-  @Override
-  public void postAnalyze(ControlFlowGraph cfg) {
-    MustCallConsistencyAnalyzer mustCallConsistencyAnalyzer =
-        new MustCallConsistencyAnalyzer(getResourceLeakChecker());
-    mustCallConsistencyAnalyzer.analyze(cfg);
-
-    // Inferring owning annotations for @Owning fields/parameters, @EnsuresCalledMethods for
-    // finalizer methods and @InheritableMustCall annotations for the class declarations.
-    if (getWholeProgramInference() != null) {
-      if (cfg.getUnderlyingAST().getKind() == UnderlyingAST.Kind.METHOD) {
-        MustCallInference.runMustCallInference(
-            getResourceLeakChecker(), cfg, mustCallConsistencyAnalyzer);
-      }
-    }
-
-    super.postAnalyze(cfg);
-    // tempVarToTree.clear();
   }
 
   /**
@@ -607,16 +583,6 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
   }
 
   /**
-   * Creates a @CalledMethods annotation whose values are the given strings.
-   *
-   * @param val the methods that have been called
-   * @return an annotation indicating that the given methods have been called
-   */
-  public AnnotationMirror createCalledMethods(String... val) {
-    return createAccumulatorAnnotation(Arrays.asList(val));
-  }
-
-  /**
    * Fetches the store from the results of dataflow for {@code block}. The store after {@code block}
    * is returned.
    *
@@ -886,14 +852,10 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
    */
   @Override
   public void postAnalyze(ControlFlowGraph cfg) {
-    if (potentiallyFulfillingLoops.size() > 0
-        && !(this instanceof ResourceLeakAnnotatedTypeFactory)) {
-      ResourceLeakAnnotatedTypeFactory rlAtf =
-          (ResourceLeakAnnotatedTypeFactory)
-              ((ResourceLeakChecker) getChecker().getParentChecker()).getTypeFactory();
+    if (potentiallyFulfillingLoops.size() > 0) {
+      ResourceLeakChecker rlc = (ResourceLeakChecker) getChecker().getParentChecker();
       MustCallConsistencyAnalyzer mustCallConsistencyAnalyzer =
-          // new MustCallConsistencyAnalyzer(this, (CalledMethodsAnalysis) this.analysis);
-          new MustCallConsistencyAnalyzer(rlAtf, (CalledMethodsAnalysis) this.analysis);
+          new MustCallConsistencyAnalyzer(rlc, true);
 
       // analyze loop bodies of all loops marked 'potentially-mcoe-obligation-fulfilling'
       Set<PotentiallyFulfillingLoop> analyzed = new HashSet<>();
@@ -912,13 +874,13 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
 
       // Inferring owning annotations for @Owning fields/parameters, @EnsuresCalledMethods for
       // finalizer methods and @InheritableMustCall annotations for the class declarations.
-      // if (getWholeProgramInference() != null) {
-      //   if (cfg.getUnderlyingAST().getKind() == UnderlyingAST.Kind.METHOD) {
-      //     MustCallInference.runMustCallInference(this, cfg, mustCallConsistencyAnalyzer);
-      //   }
-      // }
+      if (getWholeProgramInference() != null) {
+        if (cfg.getUnderlyingAST().getKind() == UnderlyingAST.Kind.METHOD) {
+          MustCallInference.runMustCallInference(rlc, cfg, mustCallConsistencyAnalyzer);
+        }
+      }
+      // tempVarToTree.clear();
     }
-
     super.postAnalyze(cfg);
   }
 }

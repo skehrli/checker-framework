@@ -1,6 +1,7 @@
 package org.checkerframework.checker.rlccalledmethods;
 
 import com.sun.source.tree.MethodInvocationTree;
+import java.util.Arrays;
 import java.util.List;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.ExecutableElement;
@@ -13,13 +14,17 @@ import org.checkerframework.common.accumulation.AccumulationStore;
 import org.checkerframework.common.accumulation.AccumulationValue;
 import org.checkerframework.dataflow.analysis.TransferInput;
 import org.checkerframework.dataflow.analysis.TransferResult;
+import org.checkerframework.dataflow.cfg.UnderlyingAST;
 import org.checkerframework.dataflow.cfg.node.LocalVariableNode;
 import org.checkerframework.dataflow.cfg.node.MethodInvocationNode;
 import org.checkerframework.dataflow.cfg.node.Node;
 import org.checkerframework.dataflow.cfg.node.ObjectCreationNode;
 import org.checkerframework.dataflow.cfg.node.SwitchExpressionNode;
 import org.checkerframework.dataflow.cfg.node.TernaryExpressionNode;
+import org.checkerframework.dataflow.expression.IteratedCollectionElement;
 import org.checkerframework.dataflow.expression.JavaExpression;
+import org.checkerframework.javacutil.AnnotationMirrorSet;
+import org.checkerframework.javacutil.AnnotationUtils;
 import org.checkerframework.javacutil.ElementUtils;
 import org.checkerframework.javacutil.TreeUtils;
 import org.checkerframework.javacutil.TypesUtils;
@@ -58,10 +63,10 @@ public class RLCCalledMethodsTransfer extends CalledMethodsTransfer {
   public AccumulationStore initialStore(
       UnderlyingAST underlyingAST, List<LocalVariableNode> parameters) {
     AccumulationStore store = super.initialStore(underlyingAST, parameters);
-    CalledMethodsAnnotatedTypeFactory cmAtf =
-        (CalledMethodsAnnotatedTypeFactory) this.analysis.getTypeFactory();
-    for (CalledMethodsAnnotatedTypeFactory.PotentiallyFulfillingLoop loop :
-        CalledMethodsAnnotatedTypeFactory.getPotentiallyFulfillingLoops()) {
+    RLCCalledMethodsAnnotatedTypeFactory cmAtf =
+        (RLCCalledMethodsAnnotatedTypeFactory) this.analysis.getTypeFactory();
+    for (RLCCalledMethodsAnnotatedTypeFactory.PotentiallyFulfillingLoop loop :
+        RLCCalledMethodsAnnotatedTypeFactory.getPotentiallyFulfillingLoops()) {
       IteratedCollectionElement collectionElementJx =
           new IteratedCollectionElement(loop.collectionElementNode, loop.collectionElementTree);
       store.insertValue(collectionElementJx, cmAtf.top);

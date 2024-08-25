@@ -15,12 +15,7 @@ import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.TypeMirror;
-import org.checkerframework.checker.calledmethods.CalledMethodsAnnotatedTypeFactory.McoeObligationAlteringLoop;
-import org.checkerframework.checker.calledmethods.CalledMethodsAnnotatedTypeFactory.McoeObligationAlteringLoop.LoopKind;
-import org.checkerframework.checker.calledmethods.CalledMethodsAnnotatedTypeFactory.PotentiallyAssigningLoop;
-import org.checkerframework.checker.calledmethods.CalledMethodsAnnotatedTypeFactory.PotentiallyFulfillingLoop;
 import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
-import org.checkerframework.checker.mustcall.MustCallChecker;
 import org.checkerframework.checker.mustcall.qual.InheritableMustCall;
 import org.checkerframework.checker.mustcall.qual.MustCall;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
@@ -29,6 +24,10 @@ import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElementsUn
 import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
+import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.McoeObligationAlteringLoop;
+import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.McoeObligationAlteringLoop.LoopKind;
+import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyAssigningLoop;
+import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyFulfillingLoop;
 import org.checkerframework.dataflow.analysis.ConditionalTransferResult;
 import org.checkerframework.dataflow.analysis.RegularTransferResult;
 import org.checkerframework.dataflow.analysis.TransferInput;
@@ -241,9 +240,10 @@ public class CalledMethodsOnElementsTransfer extends CFTransfer {
   private List<String> getMustCallValuesForType(TypeMirror type) {
     if (mcAtf == null) {
       mcAtf =
-          ((ResourceLeakChecker) atypeFactory.getChecker().getParentChecker())
-              .getTypeFactory()
-              .getTypeFactoryOfSubchecker(MustCallChecker.class);
+          (MustCallAnnotatedTypeFactory)
+              ((ResourceLeakChecker) atypeFactory.getChecker().getParentChecker())
+                  .getMustCallChecker()
+                  .getTypeFactory();
     }
     TypeElement typeElement = TypesUtils.getTypeElement(type);
     AnnotationMirror imcAnnotation =

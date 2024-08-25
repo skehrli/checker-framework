@@ -12,11 +12,9 @@ import java.util.regex.Pattern;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
-import org.checkerframework.checker.calledmethods.CalledMethodsChecker;
 import org.checkerframework.checker.calledmethodsonelements.CalledMethodsOnElementsChecker;
 import org.checkerframework.checker.compilermsgs.qual.CompilerMessageKey;
 import org.checkerframework.checker.mustcall.MustCallChecker;
-import org.checkerframework.checker.mustcall.MustCallNoCreatesMustCallForChecker;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsChecker;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
@@ -145,7 +143,19 @@ public class ResourceLeakChecker extends AggregateChecker {
   protected Set<Class<? extends SourceChecker>> getImmediateSubcheckerClasses() {
     Set<Class<? extends SourceChecker>> checkers = new LinkedHashSet<>(1);
     checkers.add(RLCCalledMethodsChecker.class);
+    checkers.add(CalledMethodsOnElementsChecker.class);
+    checkers.add(MustCallOnElementsChecker.class);
+
     return checkers;
+  }
+
+  /**
+   * Returns the MustCallChecker.
+   *
+   * @return the MustCallChecker
+   */
+  public MustCallChecker getMustCallChecker() {
+    return getSubchecker(RLCCalledMethodsChecker.class).getSubchecker(MustCallChecker.class);
   }
 
   /**

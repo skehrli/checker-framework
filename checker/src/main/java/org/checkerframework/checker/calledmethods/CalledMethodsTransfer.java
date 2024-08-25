@@ -49,13 +49,13 @@ public class CalledMethodsTransfer extends AccumulationTransfer {
    * to read the CFStores; and then finally this field is then reset to null afterwards to prevent
    * it from being used somewhere it shouldn't be.
    */
-  private @Nullable Map<TypeMirror, AccumulationStore> exceptionalStores;
+  protected @Nullable Map<TypeMirror, AccumulationStore> exceptionalStores;
 
   /**
    * The element for the CalledMethods annotation's value element. Stored in a field in this class
    * to prevent the need to cast to CalledMethods ATF every time it's used.
    */
-  private final ExecutableElement calledMethodsValueElement;
+  protected final ExecutableElement calledMethodsValueElement;
 
   /** The type mirror for {@link Exception}. */
   protected final TypeMirror javaLangExceptionType;

@@ -39,6 +39,7 @@ import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElements;
 import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.MustCallConsistencyAnalyzer;
+import org.checkerframework.checker.resourceleak.MustCallConsistencyAnalyzer.MethodExitKind;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.dataflow.expression.FieldAccess;
@@ -382,7 +383,7 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
    */
   @Pure
   private static AnnotationMirrorSet getEnsuresCalledMethodsOnElementsAnnotations(
-      ExecutableElement elt, ResourceLeakAnnotatedTypeFactory atypeFactory) {
+      ExecutableElement elt, RLCCalledMethodsAnnotatedTypeFactory atypeFactory) {
     AnnotationMirror ensuresCmoeAnnos =
         atypeFactory.getDeclAnnotation(elt, EnsuresCalledMethodsOnElements.List.class);
     AnnotationMirrorSet result = new AnnotationMirrorSet();
@@ -436,7 +437,7 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
     if (varElement.getKind().isField() && !typeFactory.noLightweightOwnership) {
       if (typeFactory.getDeclAnnotation(varElement, Owning.class) != null) {
         checkOwningField(varElement);
-      } else if (rlTypeFactory.getDeclAnnotation(varElement, OwningArray.class) != null) {
+      } else if (typeFactory.getDeclAnnotation(varElement, OwningArray.class) != null) {
         checkOwningArrayField(varElement);
       }
     }
@@ -489,8 +490,7 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
    * @return the list of mustcall obligations for the type
    */
   private List<String> getMustCallValuesForType(TypeMirror type) {
-    MustCallAnnotatedTypeFactory mcAtf =
-        rlTypeFactory.getTypeFactoryOfSubchecker(MustCallChecker.class);
+    MustCallAnnotatedTypeFactory mcAtf = typeFactory.getMustCallAnnotatedTypeFactory();
     TypeElement typeElement = TypesUtils.getTypeElement(type);
     AnnotationMirror imcAnnotation =
         mcAtf.getDeclAnnotation(typeElement, InheritableMustCall.class);
@@ -531,7 +531,7 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
       for (AnnotationMirror anno : field.asType().getAnnotationMirrors()) {
         if (AnnotationUtils.areSameByName(anno, MustCallOnElements.class.getCanonicalName())) {
           MustCallOnElementsAnnotatedTypeFactory mcoeAtf =
-              rlTypeFactory.getTypeFactoryOfSubchecker(MustCallOnElementsChecker.class);
+              typeFactory.getTypeFactoryOfSubchecker(MustCallOnElementsChecker.class);
           AnnotationValue av =
               anno.getElementValues().get(mcoeAtf.getMustCallOnElementsValueElement());
           if (av != null) {
@@ -586,7 +586,7 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
 
     String error;
     Element enclosingElement = field.getEnclosingElement();
-    List<String> enclosingMustCallValues = rlTypeFactory.getMustCallValues(enclosingElement);
+    List<String> enclosingMustCallValues = typeFactory.getMustCallValues(enclosingElement);
 
     if (enclosingMustCallValues == null) {
       error =
@@ -608,19 +608,19 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
           ExecutableElement siblingMethod = (ExecutableElement) siblingElement;
 
           AnnotationMirrorSet allEnsuresCalledMethodsAnnos =
-              getEnsuresCalledMethodsOnElementsAnnotations(siblingMethod, rlTypeFactory);
+              getEnsuresCalledMethodsOnElementsAnnotations(siblingMethod, typeFactory);
           for (AnnotationMirror ensuresCalledMethodsAnno : allEnsuresCalledMethodsAnnos) {
             List<String> values =
                 AnnotationUtils.getElementValueArray(
                     ensuresCalledMethodsAnno,
-                    rlTypeFactory.ensuresCalledMethodsOnElementsValueElement,
+                    typeFactory.ensuresCalledMethodsOnElementsValueElement,
                     String.class);
             for (String value : values) {
               if (expressionEqualsField(value, field)) {
                 List<String> methods =
                     AnnotationUtils.getElementValueArray(
                         ensuresCalledMethodsAnno,
-                        rlTypeFactory.ensuresCalledMethodsOnElementsMethodsElement,
+                        typeFactory.ensuresCalledMethodsOnElementsMethodsElement,
                         String.class);
                 for (String method : methods) {
                   unsatisfiedMustCallObligationsOfOwningField.remove(
@@ -631,7 +631,7 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
             }
 
             Set<EnsuresCalledMethodOnExceptionContract> exceptionalPostconds =
-                rlTypeFactory.getExceptionalPostconditions(siblingMethod);
+                typeFactory.getExceptionalPostconditions(siblingMethod);
             for (EnsuresCalledMethodOnExceptionContract postcond : exceptionalPostconds) {
               if (expressionEqualsField(postcond.getExpression(), field)) {
                 unsatisfiedMustCallObligationsOfOwningField.remove(

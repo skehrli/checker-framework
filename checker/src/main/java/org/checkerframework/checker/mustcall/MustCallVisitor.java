@@ -44,8 +44,6 @@ import javax.lang.model.element.Name;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeMirror;
-import org.checkerframework.checker.calledmethods.CalledMethodsAnnotatedTypeFactory;
-import org.checkerframework.checker.calledmethods.CalledMethodsAnnotatedTypeFactory.PotentiallyAssigningLoop;
 import org.checkerframework.checker.mustcall.qual.InheritableMustCall;
 import org.checkerframework.checker.mustcall.qual.MustCall;
 import org.checkerframework.checker.mustcall.qual.MustCallAlias;
@@ -55,6 +53,8 @@ import org.checkerframework.checker.mustcall.qual.PolyMustCall;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
 import org.checkerframework.checker.nullness.qual.Nullable;
+import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory;
+import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyAssigningLoop;
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.common.basetype.BaseTypeVisitor;
 import org.checkerframework.dataflow.cfg.block.Block;
@@ -474,7 +474,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
       // analyze
       // them (call MustCallConsistencyAnalyzer.analyzeFulfillingLoops, which in turn adds the trees
       // to the static datastructure in McoeAtf)
-      CalledMethodsAnnotatedTypeFactory.addPotentiallyFulfillingLoop(
+      RLCCalledMethodsAnnotatedTypeFactory.addPotentiallyFulfillingLoop(
           loopConditionBlock,
           loopUpdateBlock,
           tree.getCondition(),

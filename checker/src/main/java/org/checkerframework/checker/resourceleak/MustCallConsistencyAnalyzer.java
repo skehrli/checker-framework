@@ -46,10 +46,6 @@ import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
-import org.checkerframework.checker.calledmethods.CalledMethodsAnalysis;
-import org.checkerframework.checker.calledmethods.CalledMethodsAnnotatedTypeFactory;
-import org.checkerframework.checker.calledmethods.CalledMethodsAnnotatedTypeFactory.PotentiallyFulfillingLoop;
-import org.checkerframework.checker.calledmethods.CalledMethodsChecker;
 import org.checkerframework.checker.calledmethods.qual.CalledMethods;
 import org.checkerframework.checker.calledmethodsonelements.CalledMethodsOnElementsAnnotatedTypeFactory;
 import org.checkerframework.checker.calledmethodsonelements.CalledMethodsOnElementsChecker;
@@ -68,6 +64,7 @@ import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnalysis;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory;
+import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyFulfillingLoop;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsChecker;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsVisitor;
 import org.checkerframework.common.accumulation.AccumulationStore;
@@ -647,7 +644,8 @@ public class MustCallConsistencyAnalyzer {
   //   this.checker = null;
   //   this.analysis = analysis;
   //   this.permitStaticOwning = typeFactory.getChecker().hasOption("permitStaticOwning");
-  //   this.permitInitializationLeak = typeFactory.getChecker().hasOption("permitInitializationLeak");
+  //   this.permitInitializationLeak =
+  // typeFactory.getChecker().hasOption("permitInitializationLeak");
   //   this.noLightweightOwnership =
   //       typeFactory.getChecker().hasOption(MustCallChecker.NO_LIGHTWEIGHT_OWNERSHIP);
   //   this.countMustCall = typeFactory.getChecker().hasOption(ResourceLeakChecker.COUNT_MUST_CALL);
@@ -659,7 +657,8 @@ public class MustCallConsistencyAnalyzer {
   //  * #analyze(ControlFlowGraph)}.
   //  *
   //  * @param typeFactory the type factory
-  //  * @param analysis the analysis from the type factory. Usually this would have protected access,
+  //  * @param analysis the analysis from the type factory. Usually this would have protected
+  // access,
   //  *     so this constructor cannot get it directly.
   //  */
   // /*package-private*/ MustCallConsistencyAnalyzer(
@@ -667,7 +666,8 @@ public class MustCallConsistencyAnalyzer {
   //   this.isLoopBodyAnalysis = false;
   //   this.typeFactory = typeFactory;
   //   this.cmTypeFactory = typeFactory.getTypeFactoryOfSubchecker(CalledMethodsChecker.class);
-  //   this.mcoeTypeFactory = typeFactory.getTypeFactoryOfSubchecker(MustCallOnElementsChecker.class);
+  //   this.mcoeTypeFactory =
+  // typeFactory.getTypeFactoryOfSubchecker(MustCallOnElementsChecker.class);
   //   this.cmoeTypeFactory =
   //       typeFactory.getTypeFactoryOfSubchecker(CalledMethodsOnElementsChecker.class);
   //   this.checker = (ResourceLeakChecker) typeFactory.getChecker();
@@ -683,15 +683,28 @@ public class MustCallConsistencyAnalyzer {
    * instantiate a new consistency analyzer using this constructor and then call {@link
    * #analyze(ControlFlowGraph)}.
    *
-   * @param typeFactory the type factory
-   * @param analysis the analysis from the type factory. Usually this would have protected access,
-   *     so this constructor cannot get it directly.
+   * @param rlc the ResourceLeakChecker
+   * @param isLoopBodyAnalysis true iff. this is a loop-body-analysis (which is run after the
+   *     RLCCm/Mc, but before the Mcoe/Cmoe checkers with entry point {@code void
+   *     analyzeObligationFulfillingLoop(ControlFlowGraph, PotentiallyFulfillingLoop)})
    */
-  public MustCallConsistencyAnalyzer(ResourceLeakChecker rlc) {
+  public MustCallConsistencyAnalyzer(ResourceLeakChecker rlc, boolean isLoopBodyAnalysis) {
+    this.isLoopBodyAnalysis = isLoopBodyAnalysis;
     this.cmAtf =
         (RLCCalledMethodsAnnotatedTypeFactory)
             rlc.getSubchecker(RLCCalledMethodsChecker.class).getTypeFactory();
     this.checker = rlc;
+    if (isLoopBodyAnalysis) {
+      this.mcoeTypeFactory = null;
+      this.cmoeTypeFactory = null;
+    } else {
+      this.mcoeTypeFactory =
+          (MustCallOnElementsAnnotatedTypeFactory)
+              checker.getSubchecker(MustCallOnElementsChecker.class).getTypeFactory();
+      this.cmoeTypeFactory =
+          (CalledMethodsOnElementsAnnotatedTypeFactory)
+              checker.getSubchecker(CalledMethodsOnElementsChecker.class).getTypeFactory();
+    }
     this.permitStaticOwning = rlc.hasOption("permitStaticOwning");
     this.permitInitializationLeak = rlc.hasOption("permitInitializationLeak");
     this.noLightweightOwnership = rlc.hasOption(MustCallChecker.NO_LIGHTWEIGHT_OWNERSHIP);
@@ -860,11 +873,11 @@ public class MustCallConsistencyAnalyzer {
     AccumulationStore store = null;
     if (lastLoopBodyBlock.getLastNode() == null) {
       // TODO is this really the right store? I think we need to get the then-or else store
-      store = cmTypeFactory.getStoreAfterBlock(lastLoopBodyBlock);
+      store = cmAtf.getStoreAfterBlock(lastLoopBodyBlock);
       // this.analysis.getInput(lastLoopBodyBlock).getRegularStore();
       // this.analysis.getStoreAfter(lastLoopBodyBlock);
     } else {
-      store = cmTypeFactory.getStoreAfter(lastLoopBodyBlock.getLastNode());
+      store = cmAtf.getStoreAfter(lastLoopBodyBlock.getLastNode());
     }
     Obligation collectionElementObligation =
         getObligationForVar(obligations, potentiallyFulfillingLoop.collectionElementTree);
@@ -913,7 +926,7 @@ public class MustCallConsistencyAnalyzer {
       for (AnnotationMirror anno : cmVal.getAnnotations()) {
         if (AnnotationUtils.areSameByName(
             anno, "org.checkerframework.checker.calledmethods.qual.CalledMethods")) {
-          return cmTypeFactory.getCalledMethods(anno);
+          return cmAtf.getCalledMethods(anno);
         }
       }
     }
@@ -996,7 +1009,7 @@ public class MustCallConsistencyAnalyzer {
   private void checkOwningArrayFields(ControlFlowGraph cfg) {
     if (cfg.getUnderlyingAST().getKind() == Kind.METHOD) {
       MethodTree method = ((UnderlyingAST.CFGMethod) cfg.getUnderlyingAST()).getMethod();
-      TreePath path = typeFactory.getPath(method);
+      TreePath path = cmAtf.getPath(method);
       ClassTree enclosingClass = TreePathUtil.enclosingClass(path);
       for (Tree member : enclosingClass.getMembers()) {
         if (member instanceof VariableTree) {
@@ -1004,8 +1017,8 @@ public class MustCallConsistencyAnalyzer {
           Element memberElm = TreeUtils.elementFromDeclaration(tree);
           boolean isCollection =
               MustCallOnElementsAnnotatedTypeFactory.isCollection(tree, cmoeTypeFactory);
-          boolean isOwningArray = memberElm != null && typeFactory.hasOwningArray(memberElm);
-          boolean isOwning = memberElm != null && typeFactory.hasOwning(memberElm);
+          boolean isOwningArray = memberElm != null && cmAtf.hasOwningArray(memberElm);
+          boolean isOwning = memberElm != null && cmAtf.hasOwning(memberElm);
           boolean isField = memberElm != null && memberElm.getKind().isField();
           boolean isArray =
               memberElm != null
@@ -1056,7 +1069,7 @@ public class MustCallConsistencyAnalyzer {
       boolean isOwningArray =
           receiver.getTree() != null
               && TreeUtils.elementFromTree(receiver.getTree()) != null
-              && typeFactory.hasOwningArray(TreeUtils.elementFromTree(receiver.getTree()));
+              && cmAtf.hasOwningArray(TreeUtils.elementFromTree(receiver.getTree()));
       if (isCollection && isOwningArray) {
         ExecutableElement method = man.getMethod();
         List<? extends VariableElement> parameters = method.getParameters();
@@ -1564,7 +1577,7 @@ public class MustCallConsistencyAnalyzer {
               // Transfer ownership!
               obligations.remove(localObligation);
             }
-          } else if (typeFactory.hasOwningArray(parameter) && node instanceof ObjectCreationNode) {
+          } else if (cmAtf.hasOwningArray(parameter) && node instanceof ObjectCreationNode) {
             // remove obligation for @OwningArray constructor call
             Obligation localObligation = getObligationForVar(obligations, local);
             obligations.remove(localObligation);
@@ -1761,9 +1774,9 @@ public class MustCallConsistencyAnalyzer {
     CFStore cmoeStore =
         cmoeTypeFactory == null ? null : cmoeTypeFactory.getStoreBefore(assignmentNode.getTree());
     boolean isOwningArray =
-        !noLightweightOwnership && !isLoopBodyAnalysis && typeFactory.hasOwningArray(lhsElement);
+        !noLightweightOwnership && !isLoopBodyAnalysis && cmAtf.hasOwningArray(lhsElement);
     boolean rhsIsOwningArray =
-        rhsElement != null && !isLoopBodyAnalysis && typeFactory.hasOwningArray(rhsElement);
+        rhsElement != null && !isLoopBodyAnalysis && cmAtf.hasOwningArray(rhsElement);
     boolean lhsIsField = lhsElement.getKind() == ElementKind.FIELD;
     boolean lhsIsMcoeUnknown =
         mcoeStore != null && mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, lhs.getTree());
@@ -2012,7 +2025,7 @@ public class MustCallConsistencyAnalyzer {
     } else if (lhs instanceof LocalVariableNode) {
       LocalVariableNode lhsVar = (LocalVariableNode) lhs;
       boolean isOwningArray =
-          !isLoopBodyAnalysis && !noLightweightOwnership && typeFactory.hasOwningArray(lhsElement);
+          !isLoopBodyAnalysis && !noLightweightOwnership && cmAtf.hasOwningArray(lhsElement);
       if (!isOwningArray) {
         updateObligationsForPseudoAssignment(obligations, assignmentNode, lhsVar, rhs);
       }
@@ -2783,7 +2796,7 @@ public class MustCallConsistencyAnalyzer {
     Node result = node.getResult();
     Tree tree = result == null ? null : result.getTree();
     Element elt = tree == null ? null : TreeUtils.elementFromTree(tree);
-    boolean isOwningArray = elt != null && typeFactory.hasOwningArray(elt);
+    boolean isOwningArray = elt != null && cmAtf.hasOwningArray(elt);
     if (isOwningArray) {
       checker.reportError(node.getTree(), "return.owningarray");
     }
@@ -2803,8 +2816,8 @@ public class MustCallConsistencyAnalyzer {
    */
   private void checkVariableDeclaration(VariableTree tree) {
     Element elt = tree == null ? null : TreeUtils.elementFromDeclaration(tree);
-    boolean isOwningArray = elt != null && typeFactory.hasOwningArray(elt);
-    boolean isOwning = elt != null && typeFactory.hasOwning(elt);
+    boolean isOwningArray = elt != null && cmAtf.hasOwningArray(elt);
+    boolean isOwning = elt != null && cmAtf.hasOwning(elt);
     boolean isArray =
         elt != null && elt.asType() != null && elt.asType().getKind() == TypeKind.ARRAY;
     boolean is1dArray =
@@ -3349,7 +3362,7 @@ public class MustCallConsistencyAnalyzer {
     for (ResourceAlias alias : obligation.resourceAliases) {
       List<String> mcoeValuesOfAlias =
           mcoeTypeFactory.getMustCallOnElementsObligations(mcoeStore, alias.tree);
-      boolean isOwningArray = alias.element != null && typeFactory.hasOwningArray(alias.element);
+      boolean isOwningArray = alias.element != null && cmAtf.hasOwningArray(alias.element);
       boolean hasRevokedOwnership = mcoeValuesOfAlias == null && isOwningArray;
       boolean isReadOnlyAlias = mcoeValuesOfAlias == null && !isOwningArray;
       if (hasRevokedOwnership) {
