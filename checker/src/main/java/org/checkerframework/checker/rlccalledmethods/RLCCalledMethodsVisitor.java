@@ -80,9 +80,11 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
    */
   public RLCCalledMethodsVisitor(BaseTypeChecker checker) {
     super(checker);
-    assert (checker.getParentChecker() instanceof ResourceLeakChecker);
+    assert (checker instanceof RLCCalledMethodsChecker);
     this.enableWpiForRlc =
-        checker.getParentChecker().hasOption(ResourceLeakChecker.ENABLE_WPI_FOR_RLC);
+        ((RLCCalledMethodsChecker) checker)
+            .getResourceLeakChecker()
+            .hasOption(ResourceLeakChecker.ENABLE_WPI_FOR_RLC);
     typeFactory = (RLCCalledMethodsAnnotatedTypeFactory) atypeFactory;
   }
 

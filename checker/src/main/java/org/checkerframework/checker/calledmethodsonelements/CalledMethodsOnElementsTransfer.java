@@ -241,7 +241,8 @@ public class CalledMethodsOnElementsTransfer extends CFTransfer {
     if (mcAtf == null) {
       mcAtf =
           (MustCallAnnotatedTypeFactory)
-              ((ResourceLeakChecker) atypeFactory.getChecker().getParentChecker())
+              ((ResourceLeakChecker)
+                      atypeFactory.getChecker().getParentChecker().getParentChecker())
                   .getMustCallChecker()
                   .getTypeFactory();
     }

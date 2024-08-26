@@ -51,4 +51,13 @@ public class RLCCalledMethodsChecker extends CalledMethodsChecker {
 
     return checkers;
   }
+
+  /**
+   * Returns the ResourceLeakChecker.
+   *
+   * @return the ResourceLeakChecker
+   */
+  public ResourceLeakChecker getResourceLeakChecker() {
+    return (ResourceLeakChecker) getParentChecker().getParentChecker();
+  }
 }

@@ -692,7 +692,9 @@ public class MustCallConsistencyAnalyzer {
     this.isLoopBodyAnalysis = isLoopBodyAnalysis;
     this.cmAtf =
         (RLCCalledMethodsAnnotatedTypeFactory)
-            rlc.getSubchecker(RLCCalledMethodsChecker.class).getTypeFactory();
+            rlc.getSubchecker(MustCallOnElementsChecker.class)
+                .getSubchecker(RLCCalledMethodsChecker.class)
+                .getTypeFactory();
     this.checker = rlc;
     if (isLoopBodyAnalysis) {
       this.mcoeTypeFactory = null;
@@ -703,7 +705,10 @@ public class MustCallConsistencyAnalyzer {
               checker.getSubchecker(MustCallOnElementsChecker.class).getTypeFactory();
       this.cmoeTypeFactory =
           (CalledMethodsOnElementsAnnotatedTypeFactory)
-              checker.getSubchecker(CalledMethodsOnElementsChecker.class).getTypeFactory();
+              checker
+                  .getSubchecker(MustCallOnElementsChecker.class)
+                  .getSubchecker(CalledMethodsOnElementsChecker.class)
+                  .getTypeFactory();
     }
     this.permitStaticOwning = rlc.hasOption("permitStaticOwning");
     this.permitInitializationLeak = rlc.hasOption("permitInitializationLeak");
@@ -2949,7 +2954,7 @@ public class MustCallConsistencyAnalyzer {
                 + " with exception type "
                 + exceptionType;
     MustCallAnnotatedTypeFactory mcAtf =
-        isLoopBodyAnalysis ? null : cmAtf.getTypeFactoryOfSubchecker(MustCallChecker.class);
+        isLoopBodyAnalysis ? null : cmAtf.getMustCallAnnotatedTypeFactory();
     CFStore mcCFStore = isLoopBodyAnalysis ? null : mcAtf.getStoreBefore(successor);
     // AccumulationStore regularStoreOfSuccessor = analysis.getInput(successor).getRegularStore();
     final CFStore mcoeStore =

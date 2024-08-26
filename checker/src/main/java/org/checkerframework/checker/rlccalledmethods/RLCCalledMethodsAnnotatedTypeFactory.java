@@ -396,7 +396,7 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
    */
   public ResourceLeakChecker getResourceLeakChecker() {
     if (rlc == null) {
-      rlc = (ResourceLeakChecker) checker.getParentChecker();
+      rlc = (ResourceLeakChecker) checker.getParentChecker().getParentChecker();
     }
     if (rlc.getVisitor() != null) {
       rlc.setRoot(root);
@@ -405,16 +405,25 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
   }
 
   /**
+   * Returns the MustCallChecker subchecker instance.
+   *
+   * @return the MustCallChecker subchecker instance.
+   */
+  public MustCallChecker getMustCallChecker() {
+    if (checker.getSubchecker(MustCallChecker.class) != null) {
+      return checker.getSubchecker(MustCallChecker.class);
+    } else {
+      return checker.getSubchecker(MustCallNoCreatesMustCallForChecker.class);
+    }
+  }
+
+  /**
    * Returns the MustCallAnnotatedTypeFactory of the MustCall subchecker.
    *
    * @return the MustCallAnnotatedTypeFactory of the MustCall subchecker.
    */
   public MustCallAnnotatedTypeFactory getMustCallAnnotatedTypeFactory() {
-    if (checker.getSubchecker(MustCallChecker.class) != null) {
-      return getTypeFactoryOfSubchecker(MustCallChecker.class);
-    } else {
-      return getTypeFactoryOfSubchecker(MustCallNoCreatesMustCallForChecker.class);
-    }
+    return (MustCallAnnotatedTypeFactory) getMustCallChecker().getTypeFactory();
   }
 
   /**
@@ -466,7 +475,7 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
    * @return whether there is an OwningArray annotation on the given element
    */
   public boolean hasOwningArray(Element elt) {
-    MustCallAnnotatedTypeFactory mcatf = getTypeFactoryOfSubchecker(MustCallChecker.class);
+    MustCallAnnotatedTypeFactory mcatf = getMustCallAnnotatedTypeFactory();
     return mcatf.getDeclAnnotation(elt, OwningArray.class) != null;
   }
 
@@ -851,9 +860,8 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
   @Override
   public void postAnalyze(ControlFlowGraph cfg) {
     if (potentiallyFulfillingLoops.size() > 0) {
-      ResourceLeakChecker rlc = (ResourceLeakChecker) getChecker().getParentChecker();
       MustCallConsistencyAnalyzer mustCallConsistencyAnalyzer =
-          new MustCallConsistencyAnalyzer(rlc, true);
+          new MustCallConsistencyAnalyzer(getResourceLeakChecker(), true);
 
       // analyze loop bodies of all loops marked 'potentially-mcoe-obligation-fulfilling'
       Set<PotentiallyFulfillingLoop> analyzed = new HashSet<>();
