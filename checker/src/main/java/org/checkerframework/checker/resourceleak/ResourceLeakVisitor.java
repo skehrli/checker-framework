@@ -128,7 +128,7 @@ public class ResourceLeakVisitor extends CalledMethodsVisitor {
       ecmv =
           atypeFactory.getDeclAnnotation(
               elt,
-              org.checkerframework.checker.calledmethods.qual.EnsuresCalledMethodsVarArgs.class);
+              org.checkerframework.checker.calledmethods.qual.EnsuresCalledMethodsVarargs.class);
     }
     if (ecmv != null) {
       if (!elt.isVarArgs()) {
