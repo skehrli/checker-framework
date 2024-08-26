@@ -627,57 +627,6 @@ public class MustCallConsistencyAnalyzer {
     }
   }
 
-  // /**
-  //  * Creates a consistency analyzer. Typically, the type factory's postAnalyze method would
-  //  * instantiate a new consistency analyzer using this constructor and then call {@link
-  //  * #analyze(ControlFlowGraph)}.
-  //  *
-  //  * @param rlc the ResourceLeakChecker
-  //  */
-  // public MustCallConsistencyAnalyzer(
-  //     ResourceLeakAnnotatedTypeFactory typeFactory, CalledMethodsAnalysis analysis) {
-  //   this.isLoopBodyAnalysis = true;
-  //   this.cmTypeFactory = typeFactory.getTypeFactoryOfSubchecker(CalledMethodsChecker.class);
-  //   this.typeFactory = typeFactory;
-  //   this.mcoeTypeFactory = null;
-  //   this.cmoeTypeFactory = null;
-  //   this.checker = null;
-  //   this.analysis = analysis;
-  //   this.permitStaticOwning = typeFactory.getChecker().hasOption("permitStaticOwning");
-  //   this.permitInitializationLeak =
-  // typeFactory.getChecker().hasOption("permitInitializationLeak");
-  //   this.noLightweightOwnership =
-  //       typeFactory.getChecker().hasOption(MustCallChecker.NO_LIGHTWEIGHT_OWNERSHIP);
-  //   this.countMustCall = typeFactory.getChecker().hasOption(ResourceLeakChecker.COUNT_MUST_CALL);
-  // }
-
-  // /**
-  //  * Creates a consistency analyzer. Typically, the type factory's postAnalyze method would
-  //  * instantiate a new consistency analyzer using this constructor and then call {@link
-  //  * #analyze(ControlFlowGraph)}.
-  //  *
-  //  * @param typeFactory the type factory
-  //  * @param analysis the analysis from the type factory. Usually this would have protected
-  // access,
-  //  *     so this constructor cannot get it directly.
-  //  */
-  // /*package-private*/ MustCallConsistencyAnalyzer(
-  //     ResourceLeakAnnotatedTypeFactory typeFactory, ResourceLeakAnalysis analysis) {
-  //   this.isLoopBodyAnalysis = false;
-  //   this.typeFactory = typeFactory;
-  //   this.cmTypeFactory = typeFactory.getTypeFactoryOfSubchecker(CalledMethodsChecker.class);
-  //   this.mcoeTypeFactory =
-  // typeFactory.getTypeFactoryOfSubchecker(MustCallOnElementsChecker.class);
-  //   this.cmoeTypeFactory =
-  //       typeFactory.getTypeFactoryOfSubchecker(CalledMethodsOnElementsChecker.class);
-  //   this.checker = (ResourceLeakChecker) typeFactory.getChecker();
-  //   this.analysis = analysis;
-  //   this.permitStaticOwning = checker.hasOption("permitStaticOwning");
-  //   this.permitInitializationLeak = checker.hasOption("permitInitializationLeak");
-  //   this.noLightweightOwnership = checker.hasOption(MustCallChecker.NO_LIGHTWEIGHT_OWNERSHIP);
-  //   this.countMustCall = checker.hasOption(ResourceLeakChecker.COUNT_MUST_CALL);
-  // }
-
   /**
    * Creates a consistency analyzer. Typically, the type factory's postAnalyze method would
    * instantiate a new consistency analyzer using this constructor and then call {@link
