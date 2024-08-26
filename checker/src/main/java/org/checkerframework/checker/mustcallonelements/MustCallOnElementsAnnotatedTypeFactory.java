@@ -38,6 +38,7 @@ import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElementsUn
 import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.MustCallConsistencyAnalyzer;
+import org.checkerframework.checker.resourceleak.MustCallInference;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.McoeObligationAlteringLoop;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyAssigningLoop;
@@ -45,6 +46,7 @@ import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTy
 import org.checkerframework.common.basetype.BaseAnnotatedTypeFactory;
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.dataflow.cfg.ControlFlowGraph;
+import org.checkerframework.dataflow.cfg.UnderlyingAST;
 import org.checkerframework.dataflow.cfg.block.Block;
 import org.checkerframework.dataflow.cfg.node.LocalVariableNode;
 import org.checkerframework.dataflow.cfg.node.Node;
@@ -809,9 +811,18 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
 
   @Override
   public void postAnalyze(ControlFlowGraph cfg) {
+    ResourceLeakChecker rlc = (ResourceLeakChecker) checker.getParentChecker();
     MustCallConsistencyAnalyzer mustCallConsistencyAnalyzer =
-        new MustCallConsistencyAnalyzer((ResourceLeakChecker) checker.getParentChecker(), false);
+        new MustCallConsistencyAnalyzer(rlc, false);
     mustCallConsistencyAnalyzer.analyze(cfg);
+
+    // Inferring owning annotations for @Owning fields/parameters, @EnsuresCalledMethods for
+    // finalizer methods and @InheritableMustCall annotations for the class declarations.
+    if (getWholeProgramInference() != null) {
+      if (cfg.getUnderlyingAST().getKind() == UnderlyingAST.Kind.METHOD) {
+        MustCallInference.runMustCallInference(rlc, cfg, mustCallConsistencyAnalyzer);
+      }
+    }
 
     super.postAnalyze(cfg);
   }

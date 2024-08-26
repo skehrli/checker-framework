@@ -2955,6 +2955,7 @@ public class MustCallConsistencyAnalyzer {
     final CFStore mcoeStore =
         isLoopBodyAnalysis ? null : mcoeTypeFactory.getStoreForBlock(true, successor, null);
     // Computed outside the Obligation loop for efficiency.
+    // AccumulationStore regularStoreOfSuccessor = cmAtf.getInput(successor).getRegularStore();
     AccumulationStore regularStoreOfSuccessor = cmAtf.getInput(successor).getRegularStore();
     for (Obligation obligation : obligations) {
       // This boolean is true if there is no evidence that the Obligation does not go out
