@@ -1787,7 +1787,7 @@ public class MustCallConsistencyAnalyzer {
           // this is an allowed assignment case. "final" enforces that there is only one
           // assignment overall
         } else {
-          // enforces 7. assignment rule
+          // enforces 1. assignment rule
           // any other assignment to @OwningArray field is not allowed
           checker.reportError(assignmentNode.getTree(), "illegal.owningarray.field.assignment");
         }
@@ -2760,7 +2760,7 @@ public class MustCallConsistencyAnalyzer {
    * Ensures for the declaration given by the {@code VariableTree} that it is not:
    *
    * <ul>
-   *   <li>{@code @OwningArray} and NOT an array/collection
+   *   <li>{@code @OwningArray} and NOT a 1D-array/collection
    *   <li>{@code @Owning} and an array/collection
    * </ul>
    *
