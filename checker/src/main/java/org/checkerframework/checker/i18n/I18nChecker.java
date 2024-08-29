@@ -4,6 +4,7 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 import org.checkerframework.framework.source.AggregateChecker;
 import org.checkerframework.framework.source.SourceChecker;
+import org.plumelib.util.CollectionsPlume;
 
 /**
  * A type-checker that enforces (and finds the violations of) two properties:
@@ -20,12 +21,13 @@ import org.checkerframework.framework.source.SourceChecker;
  */
 public class I18nChecker extends AggregateChecker {
 
-  /** Default constructor. */
+  /** Create an I18nChecker. */
   public I18nChecker() {}
 
   @Override
   protected Set<Class<? extends SourceChecker>> getImmediateSubcheckerClasses() {
-    Set<Class<? extends SourceChecker>> checkers = new LinkedHashSet<>(2);
+    Set<Class<? extends SourceChecker>> checkers =
+        new LinkedHashSet<>(CollectionsPlume.mapCapacity(2));
     checkers.add(I18nSubchecker.class);
     checkers.add(LocalizableKeyChecker.class);
     return checkers;
