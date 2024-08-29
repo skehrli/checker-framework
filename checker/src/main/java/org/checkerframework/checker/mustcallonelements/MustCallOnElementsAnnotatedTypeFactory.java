@@ -225,12 +225,12 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
 
   /**
    * Returns the {@link
-   * org.checkerframework.checker.calledmethods.CalledMethodsAnnotatedTypeFactory.McoeObligationAlteringLoop}
+   * org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.McoeObligationAlteringLoop}
    * for which the given tree is the loop condition or null if there is no such loop.
    *
    * @param tree the loop condition tree
    * @return the {@link
-   *     org.checkerframework.checker.calledmethods.CalledMethodsAnnotatedTypeFactory.McoeObligationAlteringLoop}
+   *     org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.McoeObligationAlteringLoop}
    *     for which the given tree is the loop condition or null if there is no such loop.
    */
   public static McoeObligationAlteringLoop getLoopForCondition(Tree tree) {
