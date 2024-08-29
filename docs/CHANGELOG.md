@@ -5,7 +5,12 @@ Version 3.46.1 (September 3, 2024)
 
 The Checker Framework runs under JDK 22 -- that is, it runs on a version 22 JVM.
 
+Aggregate Checkers now interleave error messages so that all errors about a line of code apear
+together.
+
 **Implementation details:**
+
+Renamed `AggreateChecker#getSupportedCheckers` to `getImmediateSubcheckerClasses`.
 
 **Closed issues:**
 

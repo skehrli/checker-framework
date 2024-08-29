@@ -1,7 +1,12 @@
 package org.checkerframework.checker.mustcallonelements;
 
+import java.util.LinkedHashSet;
+import java.util.Set;
+import org.checkerframework.checker.calledmethodsonelements.CalledMethodsOnElementsChecker;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElements;
+import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsChecker;
 import org.checkerframework.common.basetype.BaseTypeChecker;
+import org.checkerframework.framework.source.SourceChecker;
 import org.checkerframework.framework.source.SupportedOptions;
 
 /**
@@ -22,5 +27,14 @@ public class MustCallOnElementsChecker extends BaseTypeChecker {
   /** Returns a {@code MustCallOnElementsChecker} */
   public MustCallOnElementsChecker() {
     super();
+  }
+
+  @Override
+  protected Set<Class<? extends SourceChecker>> getImmediateSubcheckerClasses() {
+    Set<Class<? extends SourceChecker>> checkers = new LinkedHashSet<>(2);
+    checkers.add(RLCCalledMethodsChecker.class);
+    checkers.add(CalledMethodsOnElementsChecker.class);
+
+    return checkers;
   }
 }

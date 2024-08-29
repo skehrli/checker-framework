@@ -48,7 +48,7 @@ public class CalledMethodsAnalysis extends AccumulationAnalysis {
    *     {@code false} otherwise
    */
   @Override
-  public boolean isIgnoredExceptionType(TypeMirror exceptionType) {
+  protected boolean isIgnoredExceptionType(TypeMirror exceptionType) {
     return ignoredExceptionTypes.contains(
         ((Type) exceptionType).tsym.getQualifiedName().toString());
   }
