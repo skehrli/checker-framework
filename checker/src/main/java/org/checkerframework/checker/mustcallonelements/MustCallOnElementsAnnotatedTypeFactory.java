@@ -14,7 +14,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -48,8 +47,6 @@ import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.dataflow.cfg.ControlFlowGraph;
 import org.checkerframework.dataflow.cfg.UnderlyingAST;
 import org.checkerframework.dataflow.cfg.block.Block;
-import org.checkerframework.dataflow.cfg.node.LocalVariableNode;
-import org.checkerframework.dataflow.cfg.node.Node;
 import org.checkerframework.dataflow.expression.JavaExpression;
 import org.checkerframework.framework.flow.CFStore;
 import org.checkerframework.framework.flow.CFValue;
@@ -85,30 +82,6 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
 
   /** The {@code @}{@link MustCallOnElements} annotation. It is the default in unannotated code. */
   public final AnnotationMirror BOTTOM;
-
-  /**
-   * Map from trees representing expressions to the temporary variables that represent them in the
-   * store.
-   *
-   * <p>Consider the following code, adapted from Apache Zookeeper:
-   *
-   * <pre>
-   *   sock = SocketChannel.open();
-   *   sock.socket().setSoLinger(false, -1);
-   * </pre>
-   *
-   * This code is safe from resource leaks: sock is an unconnected socket and therefore has no
-   * must-call obligation. The expression sock.socket() similarly has no must-call obligation
-   * because it is a resource alias, but without a temporary variable that represents that
-   * expression in the store, the resource leak checker wouldn't be able to determine that.
-   *
-   * <p>These temporary variables are only created once---here---but are used by all three parts of
-   * the resource leak checker by calling {@link #getTempVar(Node)}. The temporary variables are
-   * shared in the same way that subcheckers share CFG structure; see {@link
-   * #getSharedCFGForTree(Tree)}.
-   */
-  /*package-private*/ final IdentityHashMap<Tree, LocalVariableNode> tempVars =
-      new IdentityHashMap<>(100);
 
   /** The MustCallOnElements.value field/element. */
   private final ExecutableElement mustCallOnElementsValueElement =
@@ -205,16 +178,6 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
    */
   protected boolean isWpiEnabledForRLC() {
     return enableWpiForRlc;
-  }
-
-  /**
-   * Return the temporary variable for node, if it exists. See {@code #tempVars}.
-   *
-   * @param node a CFG node
-   * @return the corresponding temporary variable, or null if there is not one
-   */
-  public @Nullable LocalVariableNode getTempVar(Node node) {
-    return tempVars.get(node.getTree());
   }
 
   @Override
@@ -658,10 +621,6 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   @Override
   public void setRoot(@Nullable CompilationUnitTree root) {
     super.setRoot(root);
-    // TODO: This should probably be guarded by isSafeToClearSharedCFG from
-    // GenericAnnotatedTypeFactory, but this works here because we know the Must Call Checker is
-    // always the first subchecker that's sharing tempvars.
-    tempVars.clear();
   }
 
   @Override
