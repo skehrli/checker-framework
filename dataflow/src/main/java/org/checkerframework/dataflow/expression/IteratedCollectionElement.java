@@ -28,6 +28,7 @@ public class IteratedCollectionElement extends JavaExpression {
     this.tree = tree;
   }
 
+  @SuppressWarnings("interning:not.interned")
   @Override
   public boolean equals(@Nullable Object obj) {
     if (!(obj instanceof IteratedCollectionElement)) {

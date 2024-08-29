@@ -785,6 +785,7 @@ public class MustCallConsistencyAnalyzer {
             successorAndExceptionType.second,
             visited,
             worklist);
+        @SuppressWarnings("interning:not.interned")
         boolean isLastBlockOfBody = successorAndExceptionType.first == loopUpdateBlock;
         if (isLastBlockOfBody) {
           Set<String> calledMethodsAfterBlock =

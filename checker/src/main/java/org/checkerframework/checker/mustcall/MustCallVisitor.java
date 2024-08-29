@@ -230,9 +230,9 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
    */
   private boolean loopHeaderConsistentWithCollection(Name idInHeader, Name collectionName) {
     if (idInHeader == null || collectionName == null) return false;
-    boolean namesAreEqual = collectionName.equals(idInHeader);
+    boolean namesAreEqual = collectionName == idInHeader;
     Name initSize = arrayInitializationSize.get(collectionName);
-    boolean idInHeaderIsSizeOfCollection = initSize != null && initSize.equals(idInHeader);
+    boolean idInHeaderIsSizeOfCollection = initSize != null && initSize == idInHeader;
     return namesAreEqual || idInHeaderIsSizeOfCollection;
   }
 
@@ -247,7 +247,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
   private boolean isIthCollectionElement(Tree tree, Name index) {
     if (tree == null || index == null) return false;
     if (tree.getKind() == Tree.Kind.METHOD_INVOCATION
-        && index.equals(nameFromExpression(TreeUtils.isGetCall(tree)))) {
+        && index == nameFromExpression(TreeUtils.isGetCall(tree))) {
       MethodInvocationTree mit = (MethodInvocationTree) tree;
       ExpressionTree methodSelect = mit.getMethodSelect();
       assert methodSelect.getKind() == Tree.Kind.MEMBER_SELECT
@@ -355,7 +355,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
               case POSTFIX_DECREMENT:
               case PREFIX_INCREMENT:
               case POSTFIX_INCREMENT:
-                if (nameFromExpression(tree.getExpression()).equals(iterator)) {
+                if (nameFromExpression(tree.getExpression()) == iterator) {
                   blockIsIllegal.set(true);
                 }
                 break;
@@ -367,7 +367,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
 
           @Override
           public Void visitCompoundAssignment(CompoundAssignmentTree tree, Void p) {
-            if (nameFromExpression(tree.getVariable()).equals(iterator)) {
+            if (nameFromExpression(tree.getVariable()) == iterator) {
               blockIsIllegal.set(true);
             }
             return super.visitCompoundAssignment(tree, p);
@@ -375,7 +375,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
 
           @Override
           public Void visitAssignment(AssignmentTree tree, Void p) {
-            if (nameFromExpression(tree.getVariable()).equals(iterator)) {
+            if (nameFromExpression(tree.getVariable()) == iterator) {
               blockIsIllegal.set(true);
             }
             return super.visitAssignment(tree, p);
@@ -407,7 +407,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
           // check whether corresponds to arr[i]
           @Override
           public Void visitArrayAccess(ArrayAccessTree aat, Void p) {
-            boolean isIthArrayElement = nameFromExpression(aat.getIndex()).equals(iterator);
+            boolean isIthArrayElement = nameFromExpression(aat.getIndex()) == iterator;
             if (isIthArrayElement
                 && loopHeaderConsistentWithCollection(
                     identifierInHeader, nameFromExpression(aat))) {
@@ -879,15 +879,10 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
       }
       // verify that condition is of the form: i < something
       if (!(condition.getLeftOperand() instanceof IdentifierTree)) return null;
-      if (!initVar
-              .getName()
-              .equals(
-                  ((IdentifierTree) condition.getLeftOperand())
-                      .getName()) // i=0 and i<n are same "i"
-          || !initVar
-              .getName()
-              .equals(
-                  ((IdentifierTree) inc.getExpression()).getName())) { // i=0 and i++ are same "i"
+      if (initVar.getName()
+              != ((IdentifierTree) condition.getLeftOperand()).getName() // i=0 and i<n are same "i"
+          || initVar.getName()
+              != ((IdentifierTree) inc.getExpression()).getName()) { // i=0 and i++ are same "i"
         return null;
       }
       if (TreeUtils.isArrayLengthAccess(condition.getRightOperand())) {
