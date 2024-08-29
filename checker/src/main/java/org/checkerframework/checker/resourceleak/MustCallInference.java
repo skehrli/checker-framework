@@ -71,7 +71,7 @@ import org.plumelib.util.CollectionsPlume;
  *
  * <p>Each instance of this class corresponds to a single control flow graph (CFG), typically
  * representing a method. The entry method of this class is {@link
- * #runMustCallInference(ResourceLeakChecker, ControlFlowGraph, MustCallConsistencyAnalyzer)},
+ * #runMustCallInference(RLCCalledMethodsChecker, ControlFlowGraph, MustCallConsistencyAnalyzer)},
  * invoked from the {@link RLCCalledMethodsAnnotatedTypeFactory#postAnalyze} method when Whole
  * Program Inference is enabled.
  *
@@ -170,15 +170,13 @@ public class MustCallInference {
   /**
    * Creates a MustCallInference instance.
    *
-   * @param rlc the checker
+   * @param rlccmc the checker
    * @param cfg the control flow graph of the method to check
    * @param mcca the MustCallConsistencyAnalyzer
    */
   public MustCallInference(
-      ResourceLeakChecker rlc, ControlFlowGraph cfg, MustCallConsistencyAnalyzer mcca) {
-    this.cmAtf =
-        (RLCCalledMethodsAnnotatedTypeFactory)
-            rlc.getSubchecker(RLCCalledMethodsChecker.class).getTypeFactory();
+      RLCCalledMethodsChecker rlccmc, ControlFlowGraph cfg, MustCallConsistencyAnalyzer mcca) {
+    this.cmAtf = (RLCCalledMethodsAnnotatedTypeFactory) rlccmc.getTypeFactory();
     this.mcca = mcca;
     this.cfg = cfg;
     this.OWNING = AnnotationBuilder.fromClass(cmAtf.getElementUtils(), Owning.class);
@@ -202,13 +200,13 @@ public class MustCallInference {
    * the {@link RLCCalledMethodsAnnotatedTypeFactory#postAnalyze} method if Whole Program Inference
    * is enabled.
    *
-   * @param rlc the checker
+   * @param rlccmc the checker
    * @param cfg the control flow graph of the method to check
    * @param mcca the MustCallConsistencyAnalyzer
    */
   public static void runMustCallInference(
-      ResourceLeakChecker rlc, ControlFlowGraph cfg, MustCallConsistencyAnalyzer mcca) {
-    MustCallInference mustCallInferenceLogic = new MustCallInference(rlc, cfg, mcca);
+      RLCCalledMethodsChecker rlccmc, ControlFlowGraph cfg, MustCallConsistencyAnalyzer mcca) {
+    MustCallInference mustCallInferenceLogic = new MustCallInference(rlccmc, cfg, mcca);
     mustCallInferenceLogic.runInference();
   }
 

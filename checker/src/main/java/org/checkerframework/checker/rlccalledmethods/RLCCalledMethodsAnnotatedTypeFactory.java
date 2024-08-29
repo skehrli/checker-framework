@@ -35,12 +35,14 @@ import org.checkerframework.checker.mustcall.qual.Owning;
 import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.MustCallConsistencyAnalyzer;
+import org.checkerframework.checker.resourceleak.MustCallInference;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
 import org.checkerframework.common.accumulation.AccumulationStore;
 import org.checkerframework.common.accumulation.AccumulationValue;
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.dataflow.analysis.TransferInput;
 import org.checkerframework.dataflow.cfg.ControlFlowGraph;
+import org.checkerframework.dataflow.cfg.UnderlyingAST;
 import org.checkerframework.dataflow.cfg.block.Block;
 import org.checkerframework.dataflow.cfg.node.LocalVariableNode;
 import org.checkerframework.dataflow.cfg.node.MethodInvocationNode;
@@ -859,10 +861,19 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
    */
   @Override
   public void postAnalyze(ControlFlowGraph cfg) {
-    if (potentiallyFulfillingLoops.size() > 0) {
-      MustCallConsistencyAnalyzer mustCallConsistencyAnalyzer =
-          new MustCallConsistencyAnalyzer(getResourceLeakChecker(), true);
+    MustCallConsistencyAnalyzer mustCallConsistencyAnalyzer =
+        new MustCallConsistencyAnalyzer(getResourceLeakChecker(), true);
 
+    // Inferring owning annotations for @Owning fields/parameters, @EnsuresCalledMethods for
+    // finalizer methods and @InheritableMustCall annotations for the class declarations.
+    if (getWholeProgramInference() != null) {
+      if (cfg.getUnderlyingAST().getKind() == UnderlyingAST.Kind.METHOD) {
+        MustCallInference.runMustCallInference(
+            (RLCCalledMethodsChecker) checker, cfg, mustCallConsistencyAnalyzer);
+      }
+    }
+
+    if (potentiallyFulfillingLoops.size() > 0) {
       // analyze loop bodies of all loops marked 'potentially-mcoe-obligation-fulfilling'
       Set<PotentiallyFulfillingLoop> analyzed = new HashSet<>();
       for (PotentiallyFulfillingLoop potentiallyFulfillingLoop : potentiallyFulfillingLoops) {
@@ -877,16 +888,8 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
         }
       }
       potentiallyFulfillingLoops.removeAll(analyzed);
-
-      // // Inferring owning annotations for @Owning fields/parameters, @EnsuresCalledMethods for
-      // // finalizer methods and @InheritableMustCall annotations for the class declarations.
-      // if (getWholeProgramInference() != null) {
-      //   if (cfg.getUnderlyingAST().getKind() == UnderlyingAST.Kind.METHOD) {
-      //     MustCallInference.runMustCallInference(rlc, cfg, mustCallConsistencyAnalyzer);
-      //   }
-      // }
-      // // tempVarToTree.clear();
     }
+
     super.postAnalyze(cfg);
   }
 }
