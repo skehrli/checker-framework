@@ -58,6 +58,7 @@ import com.sun.source.util.TreePath;
 import com.sun.source.util.TreeScanner;
 import com.sun.source.util.Trees;
 import com.sun.tools.javac.code.Type;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -67,6 +68,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
@@ -882,7 +884,7 @@ public class CFGTranslationPhaseOne extends TreeScanner<Node, Void> {
   /* --------------------------------------------------------- */
 
   /** The UID for the next unique name. */
-  protected static long uid = 0;
+  protected static final AtomicReference<BigInteger> uid = new AtomicReference<>(BigInteger.ZERO);
 
   /**
    * Returns a unique name starting with {@code prefix}.
@@ -891,7 +893,7 @@ public class CFGTranslationPhaseOne extends TreeScanner<Node, Void> {
    * @return a unique name starting with {@code prefix}
    */
   protected String uniqueName(String prefix) {
-    return prefix + "#num" + uid++;
+    return prefix + "#num" + uid.getAndUpdate(current -> current.add(BigInteger.ONE));
   }
 
   /**
