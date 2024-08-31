@@ -408,7 +408,10 @@ public class MustCallOnElementsTransfer extends CFTransfer {
       // this loop fulfills an obligation - remove that methodname from
       // the MustCallOnElements type of the array
       CFValue oldTypeValue = elseStore.getValue(receiverReceiver);
-      assert oldTypeValue != null : "Array " + arrayTree + " not in Store.";
+      if (oldTypeValue == null) {
+        // collection is not in store - thus it cannot have mustcallonelements obligations
+        return res;
+      }
       AnnotationMirror oldType = oldTypeValue.getAnnotations().first();
       List<String> mcoeMethods = new ArrayList<>();
       if (oldType.getElementValues().get(atypeFactory.getMustCallOnElementsValueElement())

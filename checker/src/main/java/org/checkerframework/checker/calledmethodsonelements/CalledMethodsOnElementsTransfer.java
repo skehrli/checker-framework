@@ -303,8 +303,8 @@ public class CalledMethodsOnElementsTransfer extends CFTransfer {
       CFStore elseStore = res.getElseStore();
       JavaExpression target = JavaExpression.fromTree(arrayTree);
       CFValue oldTypeValue = elseStore.getValue(target);
-      assert oldTypeValue != null : "Array " + arrayTree + " not in Store.";
-      AnnotationMirror oldType = oldTypeValue.getAnnotations().first();
+      AnnotationMirror oldType =
+          oldTypeValue == null ? atypeFactory.TOP : oldTypeValue.getAnnotations().first();
       AnnotationMirror newType =
           getUpdatedCalledMethodsOnElementsType(oldType, new ArrayList<>(calledMethods));
       elseStore.clearValue(target);
@@ -399,9 +399,7 @@ public class CalledMethodsOnElementsTransfer extends CFTransfer {
    *     argument
    */
   public AnnotationMirror createAccumulatorAnnotation(String value, AnnotationMirror type) {
-    AnnotationBuilder builder = new AnnotationBuilder(this.env, type);
-    builder.setValue("value", Collections.singletonList(value));
-    return builder.build();
+    return createAccumulatorAnnotation(Collections.singletonList(value), type);
   }
 
   /**
