@@ -778,13 +778,17 @@ public class MustCallConsistencyAnalyzer {
             updateObligationsForAssignment(obligations, cfg, (AssignmentNode) node);
           }
         }
-        propagateObligationsToSuccessorBlock(
-            obligations,
-            currentBlock,
-            successorAndExceptionType.first,
-            successorAndExceptionType.second,
-            visited,
-            worklist);
+        try {
+          propagateObligationsToSuccessorBlock(
+              obligations,
+              currentBlock,
+              successorAndExceptionType.first,
+              successorAndExceptionType.second,
+              visited,
+              worklist);
+        } catch (InvalidLoopBodyAnalysisException e) {
+          return;
+        }
         @SuppressWarnings("interning:not.interned")
         boolean isLastBlockOfBody = successorAndExceptionType.first == loopUpdateBlock;
         if (isLastBlockOfBody) {
@@ -802,7 +806,7 @@ public class MustCallConsistencyAnalyzer {
       }
     }
     // now put the loop into the static datastructure if it calls any methods on the element
-    System.out.println("called methods (loop-body-analysis): " + calledMethodsInLoop);
+    // System.out.println("called methods (loop-body-analysis): " + calledMethodsInLoop);
     if (calledMethodsInLoop != null && calledMethodsInLoop.size() > 0) {
       potentiallyFulfillingLoop.addMethods(calledMethodsInLoop);
       MustCallOnElementsAnnotatedTypeFactory.markFulfillingLoop(potentiallyFulfillingLoop);
@@ -944,13 +948,20 @@ public class MustCallConsistencyAnalyzer {
         // tracking.
       }
 
-      propagateObligationsToSuccessorBlock(
-          obligations,
-          currentBlock,
-          successorAndExceptionType.first,
-          successorAndExceptionType.second,
-          visited,
-          worklist);
+      try {
+        propagateObligationsToSuccessorBlock(
+            obligations,
+            currentBlock,
+            successorAndExceptionType.first,
+            successorAndExceptionType.second,
+            visited,
+            worklist);
+      } catch (InvalidLoopBodyAnalysisException e) {
+        // this method is never called in the loop body analysis, therefore this exception can be
+        // ignored
+        assert !isLoopBodyAnalysis
+            : "propagateObligationsToSuccessorBlocks should not be called in loop body analysis";
+      }
     }
   }
 
@@ -2044,7 +2055,7 @@ public class MustCallConsistencyAnalyzer {
     if (oldObligation != null && newObligation != null) {
       obligations.remove(oldObligation);
       obligations.add(newObligation);
-      System.out.println("added obligation (loop-body-analysis): " + newObligation);
+      // System.out.println("added obligation (loop-body-analysis): " + newObligation);
     }
   }
 
@@ -2865,6 +2876,28 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
+   * If this exception is thrown, it indicates to the caller of the method that the loop body
+   * analysis should be aborted and immediately return. This happens if a {@code Block} is
+   * encountered, which does not have an incoming store, meaning the analysis is not supposed to
+   * reach it. However, in the loop body analysis, such a store may be explicitly explored (if a
+   * potentially fulfilling loop is in an unreachable {@code Block}). It is then impossible to
+   * proceed with the analysis, since stores for these {@code Block}s don't exist. Hence, the
+   * analysis should abort.
+   */
+  @SuppressWarnings("serial")
+  private static class InvalidLoopBodyAnalysisException extends Exception {
+
+    /**
+     * Construct an InvalidLoopBodyAnalysisException
+     *
+     * @param message the error message
+     */
+    public InvalidLoopBodyAnalysisException(String message) {
+      super(message);
+    }
+  }
+
+  /**
    * Helper for {@link #propagateObligationsToSuccessorBlocks(ControlFlowGraph, Set, Block, Set,
    * Deque)} that propagates obligations along a single edge.
    *
@@ -2883,7 +2916,8 @@ public class MustCallConsistencyAnalyzer {
       Block successor,
       @Nullable TypeMirror exceptionType,
       Set<BlockWithObligations> visited,
-      Deque<BlockWithObligations> worklist) {
+      Deque<BlockWithObligations> worklist)
+      throws InvalidLoopBodyAnalysisException {
     List<Node> currentBlockNodes = currentBlock.getNodes();
     // successorObligations eventually contains the Obligations to propagate to successor.
     // The loop below mutates it.
@@ -2906,11 +2940,26 @@ public class MustCallConsistencyAnalyzer {
     MustCallAnnotatedTypeFactory mcAtf =
         isLoopBodyAnalysis ? null : cmAtf.getMustCallAnnotatedTypeFactory();
     CFStore mcCFStore = isLoopBodyAnalysis ? null : mcAtf.getStoreBefore(successor);
-    // AccumulationStore regularStoreOfSuccessor = analysis.getInput(successor).getRegularStore();
     final CFStore mcoeStore =
         isLoopBodyAnalysis ? null : mcoeTypeFactory.getStoreForBlock(true, successor, null);
     // Computed outside the Obligation loop for efficiency.
-    // AccumulationStore regularStoreOfSuccessor = cmAtf.getInput(successor).getRegularStore();
+    if (isLoopBodyAnalysis && cmAtf.getInput(successor) == null) {
+      // there are CFG nodes that have no incoming store. In the consistency analysis,
+      // these are not explored. However, in the loop body analysis, such a node may be explicitly
+      // explored
+      // (if a potentially fulfilling loop is in an unreachable block). Hence it is safe to return
+      // here and
+      // not propagate obligations, since the state is not reached by the analysis anyways.
+      // Not just that, but note that if this state is reached, the entire loop is in an state
+      // unreachable
+      // by the analysis. If the beginning of the loop was reachable, the analysis wouldn't have
+      // taken a path that is
+      // unreachable for it. Hence, the entire loop body analysis can be aborted here.
+      // The thrown exception is caught in the caller and the loop body analysis aborts, i.e.
+      // returns
+      // immediately.
+      throw new InvalidLoopBodyAnalysisException("Block with no incoming store.");
+    }
     AccumulationStore regularStoreOfSuccessor = cmAtf.getInput(successor).getRegularStore();
     for (Obligation obligation : obligations) {
       // This boolean is true if there is no evidence that the Obligation does not go out
@@ -3348,25 +3397,25 @@ public class MustCallConsistencyAnalyzer {
     }
     ResourceAlias firstAlias = obligation.resourceAliases.iterator().next();
     if (isExit) {
-      System.out.println(
-          "verifying exit "
-              + obligation.hashCode()
-              + ": "
-              + obligation
-              + " "
-              + mcoeValues
-              + "\n        -> "
-              + cmoeValues);
+      // System.out.println(
+      // "verifying exit "
+      //     + obligation.hashCode()
+      //     + ": "
+      //     + obligation
+      //     + " "
+      //     + mcoeValues
+      //     + "\n        -> "
+      //     + cmoeValues);
     } else {
-      System.out.println(
-          "verifying assignmentloop "
-              + obligation.hashCode()
-              + ": "
-              + obligation
-              + " "
-              + mcoeValues
-              + "\n        -> "
-              + cmoeValues);
+      // System.out.println(
+      // "verifying assignmentloop "
+      //     + obligation.hashCode()
+      //     + ": "
+      //     + obligation
+      //     + " "
+      //     + mcoeValues
+      //     + "\n        -> "
+      //     + cmoeValues);
     }
     mcoeValues.removeAll(cmoeValues);
     if (!mcoeValues.isEmpty()) {
