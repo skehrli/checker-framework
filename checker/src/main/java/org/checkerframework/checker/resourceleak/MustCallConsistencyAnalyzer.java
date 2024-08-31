@@ -707,7 +707,7 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * analyze the loop bodys of 'potentially-mcoe-obligation-fulfilling-loops', as determined by a
+   * Analyze the loop body of a 'potentially-mcoe-obligation-fulfilling-loop', as determined by a
    * pre-pattern-match in the MustCallVisitor.
    *
    * <p>The analysis uses the CalledMethods type of the collection element iterated over to
@@ -720,32 +720,28 @@ public class MustCallConsistencyAnalyzer {
    */
   public void analyzeObligationFulfillingLoop(
       ControlFlowGraph cfg, PotentiallyFulfillingLoop potentiallyFulfillingLoop) {
+
+    // ensure checked loop is initialized in a valid way
+    Objects.requireNonNull(
+        potentiallyFulfillingLoop.collectionElementTree,
+        "CollectionElementAccess tree provided to analyze loop body of an mcoe-obligation-fulfilling loop is null.");
+    Objects.requireNonNull(
+        potentiallyFulfillingLoop.loopConditionBlock,
+        "Block provided to analyze loop body of an mcoe-obligation-fulfilling loop is null.");
+    Objects.requireNonNull(
+        potentiallyFulfillingLoop.loopUpdateBlock,
+        "Block provided to analyze loop body of an mcoe-obligation-fulfilling loop is null.");
+
     Block loopConditionBlock = potentiallyFulfillingLoop.loopConditionBlock;
     Block loopUpdateBlock = potentiallyFulfillingLoop.loopUpdateBlock;
     ExpressionTree collectionElementAccess = potentiallyFulfillingLoop.collectionElementTree;
-    if (collectionElementAccess == null) {
-      throw new BugInCF(
-          "CollectionElementAccess tree provided to analyze loop body of an mcoe-obligation-fulfilling loop is null.");
-    }
-    if (collectionElementAccess == null) {
-      throw new BugInCF(
-          "CollectionTree provided to analyze loop body of an mcoe-obligation-fulfilling loop is null.");
-    }
-    if (loopConditionBlock == null) {
-      throw new BugInCF(
-          "Block provided to analyze loop body of an mcoe-obligation-fulfilling loop is null.");
-    }
-    if (loopUpdateBlock == null) {
-      throw new BugInCF(
-          "Block provided to analyze loop body of an mcoe-obligation-fulfilling loop is null.");
-    }
+
     // The `visited` set contains everything that has been added to the worklist, even if it has
     // not yet been removed and analyzed.
     Set<BlockWithObligations> visited = new HashSet<>();
     Deque<BlockWithObligations> worklist = new ArrayDeque<>();
 
     // Add an obligation for the element of the collection iterated over
-    // Node collectionElementNode = potentiallyFulfillingLoop.collectionElementNode;
     Obligation collectionElementObligation =
         new Obligation(
             ImmutableSet.of(
@@ -754,6 +750,7 @@ public class MustCallConsistencyAnalyzer {
                     TreeUtils.elementFromTree(collectionElementAccess),
                     collectionElementAccess)),
             Collections.singleton(MethodExitKind.NORMAL_RETURN));
+
     assert (loopConditionBlock instanceof SingleSuccessorBlock);
     Block conditionalBlock = ((SingleSuccessorBlock) loopConditionBlock).getSuccessor();
     assert (conditionalBlock instanceof ConditionalBlock);
@@ -761,6 +758,7 @@ public class MustCallConsistencyAnalyzer {
     BlockWithObligations loopBodyEntry =
         new BlockWithObligations(
             loopBodyEntryBlock, Collections.singleton(collectionElementObligation));
+
     worklist.add(loopBodyEntry);
     visited.add(loopBodyEntry);
     Set<String> calledMethodsInLoop = null;
@@ -805,6 +803,7 @@ public class MustCallConsistencyAnalyzer {
         }
       }
     }
+
     // now put the loop into the static datastructure if it calls any methods on the element
     // System.out.println("called methods (loop-body-analysis): " + calledMethodsInLoop);
     if (calledMethodsInLoop != null && calledMethodsInLoop.size() > 0) {
