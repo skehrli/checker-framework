@@ -1726,7 +1726,7 @@ public final class TreeUtils {
    * @param tree the tree to check
    * @return ExpressionTree of index variable if tree is collection.get(index) and null else
    */
-  public static ExpressionTree isGetCall(Tree tree) {
+  public static @Nullable ExpressionTree isGetCall(Tree tree) {
     if (tree.getKind() == Tree.Kind.METHOD_INVOCATION
         && isNamedMethodCall("get", (MethodInvocationTree) tree)) {
       return ((MethodInvocationTree) tree).getArguments().get(0);
