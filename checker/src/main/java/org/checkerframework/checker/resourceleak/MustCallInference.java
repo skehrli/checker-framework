@@ -311,6 +311,8 @@ public class MustCallInference {
     assert wpi != null : "MustCallInference is running without WPI.";
     for (VariableElement fieldElt : getOwningFields()) {
       wpi.addFieldDeclarationAnnotation(fieldElt, OWNING);
+      System.out.println("adding owning annos for: " + fieldElt);
+      System.out.println("wpi: " + wpi);
     }
     if (!disposedFields.isEmpty()) {
       addEnsuresCalledMethodsForDisposedFields();
@@ -426,6 +428,7 @@ public class MustCallInference {
             : "The must-call set of " + nodeElt + "should be a singleton: " + mustCallValues;
         disposedFields.put((VariableElement) nodeElt, mustCallValues.get(0));
         owningFields.add((VariableElement) nodeElt);
+        System.out.println("adding owning field: " + node + " " + invocation);
       }
     }
   }

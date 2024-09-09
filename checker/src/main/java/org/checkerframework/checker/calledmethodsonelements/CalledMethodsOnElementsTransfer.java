@@ -18,26 +18,22 @@ import javax.lang.model.type.TypeMirror;
 import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcall.qual.InheritableMustCall;
 import org.checkerframework.checker.mustcall.qual.MustCall;
-import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElements;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElementsUnknown;
 import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
 import org.checkerframework.checker.nullness.qual.Nullable;
+import org.checkerframework.checker.resourceleak.CollectionTransfer;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
-import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.McoeObligationAlteringLoop;
-import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.McoeObligationAlteringLoop.LoopKind;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyAssigningLoop;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyFulfillingLoop;
 import org.checkerframework.dataflow.analysis.ConditionalTransferResult;
 import org.checkerframework.dataflow.analysis.RegularTransferResult;
 import org.checkerframework.dataflow.analysis.TransferInput;
 import org.checkerframework.dataflow.analysis.TransferResult;
-import org.checkerframework.dataflow.cfg.node.LessThanNode;
 import org.checkerframework.dataflow.cfg.node.MethodInvocationNode;
 import org.checkerframework.dataflow.cfg.node.Node;
 import org.checkerframework.dataflow.expression.JavaExpression;
 import org.checkerframework.framework.flow.CFStore;
-import org.checkerframework.framework.flow.CFTransfer;
 import org.checkerframework.framework.flow.CFValue;
 import org.checkerframework.javacutil.AnnotationBuilder;
 import org.checkerframework.javacutil.AnnotationUtils;
@@ -45,7 +41,7 @@ import org.checkerframework.javacutil.TypesUtils;
 import org.plumelib.util.CollectionsPlume;
 
 /** A transfer function that accumulates the names of methods called. */
-public class CalledMethodsOnElementsTransfer extends CFTransfer {
+public class CalledMethodsOnElementsTransfer extends CollectionTransfer {
   /**
    * The element for the CalledMethodsOnElements annotation's value element. Stored in a field in
    * this class to prevent the need to cast to CalledMethodsOnElements ATF every time it's used.
@@ -73,7 +69,7 @@ public class CalledMethodsOnElementsTransfer extends CFTransfer {
    * @param analysis the analysis
    */
   public CalledMethodsOnElementsTransfer(CalledMethodsOnElementsAnalysis analysis) {
-    super(analysis);
+    super(analysis, analysis.getTypeFactory());
     if (analysis.getTypeFactory() instanceof CalledMethodsOnElementsAnnotatedTypeFactory) {
       atypeFactory = (CalledMethodsOnElementsAnnotatedTypeFactory) analysis.getTypeFactory();
     } else {
@@ -173,6 +169,7 @@ public class CalledMethodsOnElementsTransfer extends CFTransfer {
   public TransferResult<CFValue, CFStore> visitMethodInvocation(
       MethodInvocationNode node, TransferInput<CFValue, CFStore> input) {
     TransferResult<CFValue, CFStore> res = super.visitMethodInvocation(node, input);
+
     ExecutableElement method = node.getTarget().getMethod();
     List<? extends VariableElement> params = method.getParameters();
     List<Node> args = node.getArguments();
@@ -232,6 +229,30 @@ public class CalledMethodsOnElementsTransfer extends CFTransfer {
   }
 
   /**
+   * The abstract transformer for {@code Collection.add(E)}. Resets the {@code
+   * CalledMethodsOnElements} type of the recipient {@code Collection} to {@code
+   * CalledMethodsOnElementsBottom}.
+   *
+   * @param node the {@code MethodInvocationNode}
+   * @param res the {@code TransferResult} containing the store to be edited
+   * @param receiver JavaExpression of the collection, whose type should be changed
+   * @return updated {@code TransferResult}
+   */
+  @Override
+  protected TransferResult<CFValue, CFStore> transformCollectionAdd(
+      MethodInvocationNode node, TransferResult<CFValue, CFStore> res, JavaExpression receiver) {
+    List<Node> args = node.getArguments();
+    assert args.size() == 1
+        : "calling abstract transformer for Collection.add(E), but params are: " + args;
+    CFStore store = res.getRegularStore();
+    AnnotationMirror newAnno =
+        createAccumulatorAnnotation(Collections.emptyList(), atypeFactory.TOP);
+    store.clearValue(receiver);
+    store.insertValue(receiver, newAnno);
+    return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
+  }
+
+  /**
    * Returns the list of mustcall obligations for a type.
    *
    * @param type the type
@@ -274,7 +295,8 @@ public class CalledMethodsOnElementsTransfer extends CFTransfer {
    * @param res the transfer result to update
    * @return the updated {@code TransferResult}
    */
-  private TransferResult<CFValue, CFStore> updateTransferResultForAllocatingForLoop(
+  @Override
+  protected TransferResult<CFValue, CFStore> transformAssigningLoop(
       PotentiallyAssigningLoop loop, TransferResult<CFValue, CFStore> res) {
     ExpressionTree arrayTree = loop.collectionTree;
     JavaExpression target = JavaExpression.fromTree(arrayTree);
@@ -294,7 +316,8 @@ public class CalledMethodsOnElementsTransfer extends CFTransfer {
    * @param res the transfer result to update
    * @return the updated transfer result
    */
-  private TransferResult<CFValue, CFStore> updateTransferResultForFulfillingForLoop(
+  @Override
+  protected TransferResult<CFValue, CFStore> transformFulfillingLoop(
       PotentiallyFulfillingLoop loop, TransferResult<CFValue, CFStore> res) {
     ExpressionTree arrayTree = loop.collectionTree;
     Set<String> calledMethods = loop.getMethods();
@@ -314,45 +337,35 @@ public class CalledMethodsOnElementsTransfer extends CFTransfer {
     return res;
   }
 
-  /**
-   * update {@code @CalledMethodsOnElements} type for pattern-matched loop that has a LessThan as
-   * its condition.
-   */
-  @Override
-  public TransferResult<CFValue, CFStore> visitLessThan(
-      LessThanNode node, TransferInput<CFValue, CFStore> input) {
-    TransferResult<CFValue, CFStore> res = super.visitLessThan(node, input);
-    McoeObligationAlteringLoop loop =
-        MustCallOnElementsAnnotatedTypeFactory.getLoopForCondition(node.getTree());
-    if (loop != null) {
-      if (loop.loopKind == LoopKind.ASSIGNING) {
-        res = updateTransferResultForAllocatingForLoop((PotentiallyAssigningLoop) loop, res);
-      } else if (loop.loopKind == LoopKind.FULFILLING) {
-        res = updateTransferResultForFulfillingForLoop((PotentiallyFulfillingLoop) loop, res);
-      }
-    }
-    return res;
-    // if (TreeUtils.statementIsSynthetic(node.getTree())) {
-    //   BinaryTree lessThanTree = node.getTree();
-    //   System.out.println("ltTree: " + lessThanTree);
-    //     Node rhs = node.getRightOperand();
-    //     System.out.println("rhs: " + rhs);
-    //     if (rhs instanceof FieldAccessNode) {
-    //       FieldAccessNode accessNode = (FieldAccessNode) rhs;
-    //       if (accessNode.getFieldName().equals("length")) {
-    //         MustCallAnnotatedTypeFactory mcatf =
-    //             new MustCallAnnotatedTypeFactory(atypeFactory.getChecker());
-    //         Node collectionNode = accessNode.getReceiver();
-    //         System.out.println("receiver: " + collectionNode);
-    //         if (mcatf.getDeclAnnotation(
-    //                 TreeUtils.elementFromTree(collectionNode.getTree()), OwningArray.class)
-    //             != null) {
-    //           System.out.println("collectionNode: " + accessNode.getFieldName());
-    //         }
-    //       }
-    //     }
-    // }
-  }
+  // /**
+  //  * update {@code @CalledMethodsOnElements} type for pattern-matched loop that has a LessThan as
+  //  * its condition.
+  //  */
+  // @Override
+  // public TransferResult<CFValue, CFStore> visitLessThan(
+  //     LessThanNode node, TransferInput<CFValue, CFStore> input) {
+  //   TransferResult<CFValue, CFStore> res = super.visitLessThan(node, input);
+  //   if (TreeUtils.statementIsSynthetic(node.getTree())) {
+  //     BinaryTree lessThanTree = node.getTree();
+  //     System.out.println("ltTree: " + lessThanTree);
+  //       Node rhs = node.getRightOperand();
+  //       System.out.println("rhs: " + rhs);
+  //       if (rhs instanceof FieldAccessNode) {
+  //         FieldAccessNode accessNode = (FieldAccessNode) rhs;
+  //         if (accessNode.getFieldName().equals("length")) {
+  //           MustCallAnnotatedTypeFactory mcatf =
+  //               new MustCallAnnotatedTypeFactory(atypeFactory.getChecker());
+  //           Node collectionNode = accessNode.getReceiver();
+  //           System.out.println("receiver: " + collectionNode);
+  //           if (mcatf.getDeclAnnotation(
+  //                   TreeUtils.elementFromTree(collectionNode.getTree()), OwningArray.class)
+  //               != null) {
+  //             System.out.println("collectionNode: " + accessNode.getFieldName());
+  //           }
+  //         }
+  //       }
+  //   }
+  // }
 
   /**
    * Extract the current called-methods type from {@code currentType}, and then add {@code

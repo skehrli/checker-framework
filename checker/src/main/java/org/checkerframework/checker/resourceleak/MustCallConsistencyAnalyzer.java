@@ -94,6 +94,7 @@ import org.checkerframework.dataflow.cfg.node.SuperNode;
 import org.checkerframework.dataflow.cfg.node.ThisNode;
 import org.checkerframework.dataflow.cfg.node.TypeCastNode;
 import org.checkerframework.dataflow.expression.FieldAccess;
+import org.checkerframework.dataflow.expression.IteratedCollectionElement;
 import org.checkerframework.dataflow.expression.JavaExpression;
 import org.checkerframework.dataflow.expression.LocalVariable;
 import org.checkerframework.dataflow.expression.ThisReference;
@@ -792,6 +793,9 @@ public class MustCallConsistencyAnalyzer {
         if (isLastBlockOfBody) {
           Set<String> calledMethodsAfterBlock =
               analyzeTypeOfCollectionElement(currentBlock, potentiallyFulfillingLoop, obligations);
+          // System.out.println("successor is: " + loopUpdateBlock);
+          // System.out.println("exception status is: " + successorAndExceptionType.second);
+          // System.out.println("called methods after block: " + calledMethodsAfterBlock);
           // intersect the called methods after this block with the accumulated ones so far.
           // This is required because there may be multiple "back edges" of the loop, in which
           // case we must intersect the called methods between those.
@@ -805,7 +809,7 @@ public class MustCallConsistencyAnalyzer {
     }
 
     // now put the loop into the static datastructure if it calls any methods on the element
-    // System.out.println("called methods (loop-body-analysis): " + calledMethodsInLoop);
+    System.out.println("called methods (loop-body-analysis): " + calledMethodsInLoop);
     if (calledMethodsInLoop != null && calledMethodsInLoop.size() > 0) {
       potentiallyFulfillingLoop.addMethods(calledMethodsInLoop);
       MustCallOnElementsAnnotatedTypeFactory.markFulfillingLoop(potentiallyFulfillingLoop);
@@ -832,10 +836,12 @@ public class MustCallConsistencyAnalyzer {
     if (lastLoopBodyBlock.getLastNode() == null) {
       // TODO is this really the right store? I think we need to get the then-or else store
       store = cmAtf.getStoreAfterBlock(lastLoopBodyBlock);
+      System.out.println("store after last node: " + store);
       // this.analysis.getInput(lastLoopBodyBlock).getRegularStore();
       // this.analysis.getStoreAfter(lastLoopBodyBlock);
     } else {
       store = cmAtf.getStoreAfter(lastLoopBodyBlock.getLastNode());
+      System.out.println("store after last block: " + store);
     }
     Obligation collectionElementObligation =
         getObligationForVar(obligations, potentiallyFulfillingLoop.collectionElementTree);
@@ -846,18 +852,21 @@ public class MustCallConsistencyAnalyzer {
     }
 
     Set<String> calledMethodsAfterThisBlock = new HashSet<>();
-    // IteratedCollectionElement ice =
-    // store.getIteratedCollectionElement(potentiallyFulfillingLoop.collectionElementNode,
-    //
-    // potentiallyFulfillingLoop.collectionElementTree);
-    // if (ice != null) {
-    //   AccumulationValue cmValOfIce = store.getValue(ice);
-    //   List<String> calledMethods = getCalledMethods(cmValOfIce);
-    //   if (calledMethods != null && calledMethods.size() > 0) {
-    //     calledMethodsAfterThisBlock.addAll(calledMethods);
-    //     System.out.println(calledMethods);
-    //   }
-    // }
+
+    // add the called methods of the ICE
+    IteratedCollectionElement ice =
+        store.getIteratedCollectionElement(
+            potentiallyFulfillingLoop.collectionElementNode,
+            potentiallyFulfillingLoop.collectionElementTree);
+    if (ice != null) {
+      AccumulationValue cmValOfIce = store.getValue(ice);
+      List<String> calledMethods = getCalledMethods(cmValOfIce);
+      if (calledMethods != null && calledMethods.size() > 0) {
+        calledMethodsAfterThisBlock.addAll(calledMethods);
+      }
+    }
+
+    // add the called methods of possible aliases of the collection element
     for (ResourceAlias alias : collectionElementObligation.resourceAliases) {
       AccumulationValue cmValOfAlias = store.getValue(alias.reference);
       if (cmValOfAlias == null) continue;
@@ -1044,14 +1053,19 @@ public class MustCallConsistencyAnalyzer {
                 + parameters.stream()
                     .map(param -> param.asType().toString())
                     .collect(Collectors.joining(",", "(", ")"));
+        System.out.println("method sig " + methodSignature);
         switch (methodSignature) {
           case "add(E)":
             assert args.size() == 1
                 : "expected one argument for Collection.add(E), but args are: " + args;
-            assert (args.get(0) instanceof LocalVariableNode)
+            Node argExpr = NodeUtils.removeCasts(args.get(0));
+            Node argVar = getTempVarOrNode(argExpr);
+            assert (argVar instanceof LocalVariableNode)
                 : "arg of Collection.add(E) expected to be LocalVariableNode, but is: "
-                    + args.get(0).getClass();
-            removeObligationForNode(obligations, (LocalVariableNode) args.get(0));
+                    + argVar.getClass();
+            System.out.println("removing obligation for " + argVar);
+
+            removeObligationForNode(obligations, (LocalVariableNode) argVar);
             break;
             // case "add(int,E)":
             //   res = transformCollectionAddWithIdx(node, res, parameters);
@@ -1738,7 +1752,7 @@ public class MustCallConsistencyAnalyzer {
         mcoeTypeFactory == null ? null : mcoeTypeFactory.getStoreBefore(assignmentNode.getTree());
     CFStore cmoeStore =
         cmoeTypeFactory == null ? null : cmoeTypeFactory.getStoreBefore(assignmentNode.getTree());
-    boolean isOwningArray =
+    boolean lhsIsOwningArray =
         !noLightweightOwnership && !isLoopBodyAnalysis && cmAtf.hasOwningArray(lhsElement);
     boolean rhsIsOwningArray =
         rhsElement != null && !isLoopBodyAnalysis && cmAtf.hasOwningArray(rhsElement);
@@ -1747,11 +1761,11 @@ public class MustCallConsistencyAnalyzer {
         mcoeStore != null && mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, lhs.getTree());
     MethodTree enclosingMethod = cfg.getEnclosingMethod(assignmentNode.getTree());
     boolean inConstructor = enclosingMethod != null && TreeUtils.isConstructor(enclosingMethod);
-    if (!isOwningArray && rhsIsOwningArray && !(rhsExpr instanceof ArrayAccessNode)) {
+    if (!lhsIsOwningArray && rhsIsOwningArray && !(rhsExpr instanceof ArrayAccessNode)) {
       // enforces 7. assignment rule:
       checker.reportError(assignmentNode.getTree(), "illegal.aliasing");
     }
-    if (isOwningArray) {
+    if (lhsIsOwningArray) {
       if (enclosingMethod == null) {
         // this is a declaration-definition of an @OwningArray field. nothing to check.
       } else if (inConstructor && lhsIsField) {
@@ -1798,14 +1812,17 @@ public class MustCallConsistencyAnalyzer {
           // this is an allowed assignment case. "final" enforces that there is only one
           // assignment overall
         } else {
-          // enforces 1. assignment rule
-          // any other assignment to @OwningArray field is not allowed
-          checker.reportError(assignmentNode.getTree(), "illegal.owningarray.field.assignment");
+          // check whether rhs is new collection
+          boolean rhsIsNewCollection = isNewCollection(rhsExpr);
+          if (!rhsIsNewCollection) {
+            // any other assignment to @OwningArray field is not allowed (enforce 1. rule)
+            checker.reportError(assignmentNode.getTree(), "illegal.owningarray.field.assignment");
+          }
         }
       } else {
-        // enforce 2. assignment rule:
-        // @OwningArray field may not be assigned (neither its elements) outside of constructor
         if (lhsIsField) {
+          // enforce 2. assignment rule:
+          // @OwningArray field may not be assigned (neither its elements) outside of constructor
           checker.reportError(
               assignmentNode.getTree(), "owningarray.field.assigned.outside.constructor");
         } else if (lhs.getTree() instanceof IdentifierTree
@@ -1854,7 +1871,7 @@ public class MustCallConsistencyAnalyzer {
             }
           }
           // definition/declaration of @OwningArray.
-          if (!(rhs instanceof ArrayCreationNode)) {
+          if (!(rhs instanceof ArrayCreationNode) && !isNewCollection(rhsExpr)) {
             // enforces 3. assignment rule:
             // assigning an @OwningArray to anything else is not allowed outside of constructor
             checker.reportError(
@@ -1893,6 +1910,28 @@ public class MustCallConsistencyAnalyzer {
         }
       }
     }
+  }
+
+  /**
+   * Returns true if {@code node} is of the syntactic form {@code new C(...)} where {@code C} is
+   * part of the Java Collection framework.
+   *
+   * @param node the node
+   * @return true if {@code node} is of the syntactic form {@code new C(...)} where {@code C} is
+   *     part of the Java Collection framework.
+   */
+  private boolean isNewCollection(Node node) {
+    if (node.getTree() != null && node.getTree().getKind() == Tree.Kind.NEW_CLASS) {
+      NewClassTree nctree = (NewClassTree) node.getTree();
+      ExpressionTree constructedClassName = nctree.getIdentifier();
+      boolean isCollection =
+          MustCallOnElementsAnnotatedTypeFactory.isCollection(
+              constructedClassName, mcoeTypeFactory);
+      if (isCollection) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -3396,25 +3435,25 @@ public class MustCallConsistencyAnalyzer {
     }
     ResourceAlias firstAlias = obligation.resourceAliases.iterator().next();
     if (isExit) {
-      // System.out.println(
-      // "verifying exit "
-      //     + obligation.hashCode()
-      //     + ": "
-      //     + obligation
-      //     + " "
-      //     + mcoeValues
-      //     + "\n        -> "
-      //     + cmoeValues);
+      System.out.println(
+          "verifying exit "
+              + obligation.hashCode()
+              + ": "
+              + obligation
+              + " "
+              + mcoeValues
+              + "\n        -> "
+              + cmoeValues);
     } else {
-      // System.out.println(
-      // "verifying assignmentloop "
-      //     + obligation.hashCode()
-      //     + ": "
-      //     + obligation
-      //     + " "
-      //     + mcoeValues
-      //     + "\n        -> "
-      //     + cmoeValues);
+      System.out.println(
+          "verifying assignmentloop "
+              + obligation.hashCode()
+              + ": "
+              + obligation
+              + " "
+              + mcoeValues
+              + "\n        -> "
+              + cmoeValues);
     }
     mcoeValues.removeAll(cmoeValues);
     if (!mcoeValues.isEmpty()) {

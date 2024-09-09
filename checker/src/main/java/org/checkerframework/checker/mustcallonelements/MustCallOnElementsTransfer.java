@@ -1,7 +1,6 @@
 package org.checkerframework.checker.mustcallonelements;
 
 import com.sun.source.tree.ArrayAccessTree;
-import com.sun.source.tree.BinaryTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.Tree;
 import java.util.ArrayList;
@@ -9,7 +8,6 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
@@ -20,21 +18,21 @@ import org.checkerframework.checker.mustcall.qual.InheritableMustCall;
 import org.checkerframework.checker.mustcall.qual.MustCall;
 import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
 import org.checkerframework.checker.nullness.qual.Nullable;
+import org.checkerframework.checker.resourceleak.CollectionTransfer;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
+import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyAssigningLoop;
+import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyFulfillingLoop;
 import org.checkerframework.dataflow.analysis.ConditionalTransferResult;
 import org.checkerframework.dataflow.analysis.RegularTransferResult;
 import org.checkerframework.dataflow.analysis.TransferInput;
 import org.checkerframework.dataflow.analysis.TransferResult;
 import org.checkerframework.dataflow.cfg.node.AssignmentNode;
-import org.checkerframework.dataflow.cfg.node.LessThanNode;
-import org.checkerframework.dataflow.cfg.node.MethodAccessNode;
 import org.checkerframework.dataflow.cfg.node.MethodInvocationNode;
 import org.checkerframework.dataflow.cfg.node.Node;
 import org.checkerframework.dataflow.cfg.node.ObjectCreationNode;
 import org.checkerframework.dataflow.expression.JavaExpression;
 import org.checkerframework.framework.flow.CFAnalysis;
 import org.checkerframework.framework.flow.CFStore;
-import org.checkerframework.framework.flow.CFTransfer;
 import org.checkerframework.framework.flow.CFValue;
 import org.checkerframework.javacutil.AnnotationBuilder;
 import org.checkerframework.javacutil.AnnotationUtils;
@@ -43,7 +41,7 @@ import org.checkerframework.javacutil.TypesUtils;
 import org.plumelib.util.CollectionsPlume;
 
 /** Transfer function for the MustCallOnElements type system. */
-public class MustCallOnElementsTransfer extends CFTransfer {
+public class MustCallOnElementsTransfer extends CollectionTransfer {
 
   /** The type factory. */
   private final MustCallOnElementsAnnotatedTypeFactory atypeFactory;
@@ -60,7 +58,7 @@ public class MustCallOnElementsTransfer extends CFTransfer {
    * @param analysis the analysis
    */
   public MustCallOnElementsTransfer(CFAnalysis analysis) {
-    super(analysis);
+    super(analysis, analysis.getTypeFactory());
     if (analysis.getTypeFactory() instanceof MustCallOnElementsAnnotatedTypeFactory) {
       atypeFactory = (MustCallOnElementsAnnotatedTypeFactory) analysis.getTypeFactory();
     } else {
@@ -225,20 +223,21 @@ public class MustCallOnElementsTransfer extends CFTransfer {
   }
 
   /**
-   * The abstract transformer for Collection.add(E)
+   * The abstract transformer for {@code Collection.add(E)}.
    *
    * @param node the {@code MethodInvocationNode}
    * @param res the {@code TransferResult} containing the store to be edited
    * @param receiver JavaExpression of the collection, whose type should be changed
    * @return updated {@code TransferResult}
    */
-  private TransferResult<CFValue, CFStore> transformCollectionAdd(
+  @Override
+  protected TransferResult<CFValue, CFStore> transformCollectionAdd(
       MethodInvocationNode node, TransferResult<CFValue, CFStore> res, JavaExpression receiver) {
     List<Node> args = node.getArguments();
     assert args.size() == 1
         : "calling abstract transformer for Collection.add(E), but params are: " + args;
-    Node arg = args.get(0);
-    List<String> mcValues = getMustCallValues(arg);
+    Node argVar = getNodeOrTempVar(args.get(0));
+    List<String> mcValues = getMustCallValues(argVar);
     CFStore store = res.getRegularStore();
     CFValue oldTypeValue = store.getValue(receiver);
     assert oldTypeValue != null : "Collection " + receiver + " not in Store.";
@@ -267,63 +266,8 @@ public class MustCallOnElementsTransfer extends CFTransfer {
   //   return res;
   // }
 
-  /**
-   * Responsible for abstract transformers of all methods called on a collection. If the transformer
-   * for a method is not specifically implemented, it reports a checker error.
-   *
-   * @param node a {@code MethodInvocationNode}
-   * @param res the {@code TransferResult} containing the store to be edited
-   * @return updated {@code TransferResult}
-   */
-  private TransferResult<CFValue, CFStore> updateStoreForMethodInvocationOnCollection(
-      MethodInvocationNode node, TransferResult<CFValue, CFStore> res) {
-    MethodAccessNode methodAccessNode = node.getTarget();
-    Node receiver = methodAccessNode.getReceiver();
-    boolean isCollection =
-        receiver.getTree() != null
-            && MustCallOnElementsAnnotatedTypeFactory.isCollection(
-                receiver.getTree(), atypeFactory);
-    boolean isOwningArray =
-        receiver.getTree() != null
-            && TreeUtils.elementFromTree(receiver.getTree()) != null
-            && TreeUtils.elementFromTree(receiver.getTree()).getAnnotation(OwningArray.class)
-                != null;
-    JavaExpression receiverJx = JavaExpression.fromNode(receiver);
-    Tree receiverTree = receiver.getTree();
-    boolean isAlias =
-        receiverTree != null // ensure tree for collection is valid
-            && res.getRegularStore() != null // ensure store exists
-            && atypeFactory.isMustCallOnElementsUnknown(res.getRegularStore(), receiverTree);
-    if (isCollection && (isOwningArray || isAlias)) {
-      ExecutableElement method = methodAccessNode.getMethod();
-      List<? extends VariableElement> parameters = method.getParameters();
-      String methodSignature =
-          method.getSimpleName().toString()
-              + parameters.stream()
-                  .map(param -> param.asType().toString())
-                  .collect(Collectors.joining(",", "(", ")"));
-      System.out.println("methodsignature: " + methodSignature);
-      switch (methodSignature) {
-        case "add(E)":
-          res = transformCollectionAdd(node, res, receiverJx);
-          break;
-          // case "add(int,E)":
-          //   res = transformCollectionAddWithIdx(node, res, parameters);
-          //   break;
-        case "size()":
-        case "get(int)":
-          return res;
-        default:
-          atypeFactory.getChecker().reportError(node.getTree(), "unsafe.method", methodSignature);
-      }
-    }
-    return res;
-  }
-
   /*
-   * Responsible for:
-   *
-   * Abstract transformers of all methods called on a collection.
+   * Responsible for abstract transformers of all methods called on a collection.
    * If the transformer for a method is not specifically implemented, it reports a checker error.
    *
    * Emptying the @MustCallOnElements type of arguments passed as @OwningArray parameters to the
@@ -335,10 +279,6 @@ public class MustCallOnElementsTransfer extends CFTransfer {
   public TransferResult<CFValue, CFStore> visitMethodInvocation(
       MethodInvocationNode node, TransferInput<CFValue, CFStore> input) {
     TransferResult<CFValue, CFStore> res = super.visitMethodInvocation(node, input);
-
-    // checks if method is called on a collection, in which case it calls the transformer of the
-    // respective method on the collection
-    res = updateStoreForMethodInvocationOnCollection(node, res);
 
     // ensure method call args respects ownership consistency
     // also, empty mcoe type of @OwningArray args that are passed as @OwningArray params
@@ -376,58 +316,118 @@ public class MustCallOnElementsTransfer extends CFTransfer {
     return res;
   }
 
+  /**
+   * Updates the type of the corresponding collection in the else store of the {@code
+   * TransferResult} based on the information in the loop wrapper.
+   *
+   * @param loop the {@code PotentiallyAssigningLoop}
+   * @param res the transfer result to update
+   * @return the updated transfer result
+   */
   @Override
-  public TransferResult<CFValue, CFStore> visitLessThan(
-      LessThanNode node, TransferInput<CFValue, CFStore> input) {
-    TransferResult<CFValue, CFStore> res = super.visitLessThan(node, input);
-    BinaryTree tree = node.getTree();
-    assert (tree.getKind() == Tree.Kind.LESS_THAN)
-        : "failed assumption: binaryTree in calledmethodsonelements transfer function is not lessthan tree";
-    Set<String> newMustCallMethods =
-        MustCallOnElementsAnnotatedTypeFactory.whichObligationsDoesLoopWithThisConditionCreate(
-            tree);
-    Set<String> calledMethods =
-        MustCallOnElementsAnnotatedTypeFactory.whichMethodsDoesLoopWithThisConditionCall(tree);
-    ExpressionTree arrayTree =
-        MustCallOnElementsAnnotatedTypeFactory.getCollectionTreeForLoopWithThisCondition(tree);
-    if (arrayTree == null) return res;
+  protected TransferResult<CFValue, CFStore> transformAssigningLoop(
+      PotentiallyAssigningLoop loop, TransferResult<CFValue, CFStore> res) {
+    ExpressionTree arrayTree = loop.collectionTree;
+    JavaExpression arrayJx = JavaExpression.fromTree(arrayTree);
+    AnnotationMirror newType = getMustCallOnElementsType(loop.getMethods());
+    CFValue newCFVal = analysis.createSingleAnnotationValue(newType, arrayJx.getType());
     CFStore elseStore = res.getElseStore();
-    JavaExpression receiverReceiver = JavaExpression.fromTree(arrayTree);
-    if (newMustCallMethods != null) {
-      // this is an obligation-creating loop
-      AnnotationMirror newType = getMustCallOnElementsType(newMustCallMethods);
-      CFValue oldCFVal = elseStore.getValue(receiverReceiver);
-      CFValue newCFVal = analysis.createSingleAnnotationValue(newType, receiverReceiver.getType());
-      newCFVal =
-          oldCFVal == null
-              ? newCFVal
-              : oldCFVal.leastUpperBound(newCFVal, receiverReceiver.getType());
-      elseStore.replaceValue(receiverReceiver, newCFVal);
-      return new ConditionalTransferResult<>(res.getResultValue(), res.getThenStore(), elseStore);
-    } else if (calledMethods != null && calledMethods.size() > 0) {
-      // this loop fulfills an obligation - remove that methodname from
-      // the MustCallOnElements type of the array
-      CFValue oldTypeValue = elseStore.getValue(receiverReceiver);
-      if (oldTypeValue == null) {
-        // collection is not in store - thus it cannot have mustcallonelements obligations
-        return res;
-      }
-      AnnotationMirror oldType = oldTypeValue.getAnnotations().first();
-      List<String> mcoeMethods = new ArrayList<>();
-      if (oldType.getElementValues().get(atypeFactory.getMustCallOnElementsValueElement())
-          != null) {
-        mcoeMethods =
-            AnnotationUtils.getElementValueArray(
-                oldType, atypeFactory.getMustCallOnElementsValueElement(), String.class);
-      }
-      mcoeMethods.removeAll(calledMethods);
-      AnnotationMirror newType = getMustCallOnElementsType(new HashSet<>(mcoeMethods));
-      elseStore.clearValue(receiverReceiver);
-      elseStore.insertValue(receiverReceiver, newType);
-      return new ConditionalTransferResult<>(res.getResultValue(), res.getThenStore(), elseStore);
-    }
-    return res;
+    elseStore.replaceValue(arrayJx, newCFVal);
+    return new ConditionalTransferResult<>(res.getResultValue(), res.getThenStore(), elseStore);
   }
+
+  /**
+   * Removes the methods that {@code loop} calls on the elements of the collection corresponding to
+   * {@code loop.collectionTree} from the collections Mcoe type.
+   *
+   * @param loop the {@code PotentiallyFulfillingLoop}
+   * @param res the transfer result to update
+   * @return the updated transfer result
+   */
+  @Override
+  protected TransferResult<CFValue, CFStore> transformFulfillingLoop(
+      PotentiallyFulfillingLoop loop, TransferResult<CFValue, CFStore> res) {
+    ExpressionTree collectionTree = loop.collectionTree;
+    JavaExpression collectionJx = JavaExpression.fromTree(collectionTree);
+
+    // this loop fulfills an obligation - remove that methodname from
+    // the MustCallOnElements type of the collection
+    CFStore elseStore = res.getElseStore();
+    CFValue oldTypeValue = elseStore.getValue(collectionJx);
+    if (oldTypeValue == null) {
+      // collection is not in store - thus it cannot have mustcallonelements obligations
+      return res;
+    }
+    AnnotationMirror oldType = oldTypeValue.getAnnotations().first();
+    List<String> mcoeMethods = new ArrayList<>();
+    if (oldType.getElementValues().get(atypeFactory.getMustCallOnElementsValueElement()) != null) {
+      mcoeMethods =
+          AnnotationUtils.getElementValueArray(
+              oldType, atypeFactory.getMustCallOnElementsValueElement(), String.class);
+    }
+    mcoeMethods.removeAll(loop.getMethods());
+    AnnotationMirror newType = getMustCallOnElementsType(new HashSet<>(mcoeMethods));
+    elseStore.clearValue(collectionJx);
+    elseStore.insertValue(collectionJx, newType);
+    return new ConditionalTransferResult<>(res.getResultValue(), res.getThenStore(), elseStore);
+  }
+
+  // @Override
+  // public TransferResult<CFValue, CFStore> visitLessThan(
+  //     LessThanNode node, TransferInput<CFValue, CFStore> input) {
+  //   TransferResult<CFValue, CFStore> res = super.visitLessThan(node, input);
+  //   BinaryTree tree = node.getTree();
+  //   assert (tree.getKind() == Tree.Kind.LESS_THAN)
+  //       : "failed assumption: binaryTree in calledmethodsonelements transfer function is not
+  // lessthan tree";
+  //   Set<String> newMustCallMethods =
+  //       MustCallOnElementsAnnotatedTypeFactory.whichObligationsDoesLoopWithThisConditionCreate(
+  //           tree);
+  //   Set<String> calledMethods =
+  //       MustCallOnElementsAnnotatedTypeFactory.whichMethodsDoesLoopWithThisConditionCall(tree);
+  //   ExpressionTree arrayTree =
+  //       MustCallOnElementsAnnotatedTypeFactory.getCollectionTreeForLoopWithThisCondition(tree);
+  //   if (arrayTree == null) return res;
+  //   CFStore elseStore = res.getElseStore();
+  //   JavaExpression receiverReceiver = JavaExpression.fromTree(arrayTree);
+  //   if (newMustCallMethods != null) {
+  //     // this is an obligation-creating loop
+  //     AnnotationMirror newType = getMustCallOnElementsType(newMustCallMethods);
+  //     CFValue oldCFVal = elseStore.getValue(receiverReceiver);
+  //     CFValue newCFVal = analysis.createSingleAnnotationValue(newType,
+  // receiverReceiver.getType());
+  //     newCFVal =
+  //         oldCFVal == null
+  //             ? newCFVal
+  //             : oldCFVal.leastUpperBound(newCFVal, receiverReceiver.getType());
+  //     elseStore.replaceValue(receiverReceiver, newCFVal);
+  //     return new ConditionalTransferResult<>(res.getResultValue(), res.getThenStore(),
+  // elseStore);
+  //   } else if (calledMethods != null && calledMethods.size() > 0) {
+  //     // this loop fulfills an obligation - remove that methodname from
+  //     // the MustCallOnElements type of the array
+  //     CFValue oldTypeValue = elseStore.getValue(receiverReceiver);
+  //     if (oldTypeValue == null) {
+  //       // collection is not in store - thus it cannot have mustcallonelements obligations
+  //       return res;
+  //     }
+  //     AnnotationMirror oldType = oldTypeValue.getAnnotations().first();
+  //     List<String> mcoeMethods = new ArrayList<>();
+  //     if (oldType.getElementValues().get(atypeFactory.getMustCallOnElementsValueElement())
+  //         != null) {
+  //       mcoeMethods =
+  //           AnnotationUtils.getElementValueArray(
+  //               oldType, atypeFactory.getMustCallOnElementsValueElement(), String.class);
+  //     }
+  //     mcoeMethods.removeAll(calledMethods);
+  //     AnnotationMirror newType = getMustCallOnElementsType(new HashSet<>(mcoeMethods));
+  //     elseStore.clearValue(receiverReceiver);
+  //     elseStore.insertValue(receiverReceiver, newType);
+  //     return new ConditionalTransferResult<>(res.getResultValue(), res.getThenStore(),
+  // elseStore);
+  //   }
+  //   return res;
+  // }
 
   /**
    * Generate an annotation from a list of method names.

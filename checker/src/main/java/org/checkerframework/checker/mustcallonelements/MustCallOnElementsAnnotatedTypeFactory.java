@@ -39,6 +39,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.MustCallConsistencyAnalyzer;
 import org.checkerframework.checker.resourceleak.MustCallInference;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
+import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.McoeObligationAlteringLoop;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyAssigningLoop;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyFulfillingLoop;
@@ -781,10 +782,29 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
     if (getWholeProgramInference() != null) {
       if (cfg.getUnderlyingAST().getKind() == UnderlyingAST.Kind.METHOD) {
         MustCallInference.runMustCallInference(
-            checker.getSubchecker(RLCCalledMethodsChecker.class), cfg, mustCallConsistencyAnalyzer);
+            getRLCCalledMethodsChecker(), cfg, mustCallConsistencyAnalyzer);
       }
     }
 
     super.postAnalyze(cfg);
+  }
+
+  /**
+   * Returns the RLCCalledMethodsChecker.
+   *
+   * @return the RLCCalledMethodsChecker.
+   */
+  /* package-private */ RLCCalledMethodsChecker getRLCCalledMethodsChecker() {
+    return checker.getSubchecker(RLCCalledMethodsChecker.class);
+  }
+
+  /**
+   * Returns the RLCCalledMethodsAnnotatedTypeFactory.
+   *
+   * @return the RLCCalledMethodsAnnotatedTypeFactory.
+   */
+  /* package-private */ RLCCalledMethodsAnnotatedTypeFactory
+      getRLCCalledMethodsAnnotatedTypeFactory() {
+    return getTypeFactoryOfSubchecker(RLCCalledMethodsChecker.class);
   }
 }
