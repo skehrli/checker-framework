@@ -252,7 +252,6 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
     AnnotationMirror newType = getMustCallOnElementsType(new HashSet<>(mcoeMethods));
     store.clearValue(receiver);
     store.insertValue(receiver, newType);
-    System.out.println("inserted into store: " + receiver + " " + newType);
     return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
   }
 
@@ -318,7 +317,19 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
 
   /**
    * Updates the type of the corresponding collection in the else store of the {@code
-   * TransferResult} based on the information in the loop wrapper.
+   * TransferResult}.
+   *
+   * <p>An assigning loop is of the form {@code for (int i = 0; i < n; i++) collection[i] = new
+   * Resource();}. This transformer now sets the {@code MustCallOnElements} type of {@code
+   * collection} to the {@code MustCall} type of {@code Resource} upper bounded with the previous
+   * {@code MustCallOnElements} type of {@code collection}.
+   *
+   * <p>The reason for that is that as a pre-condition for the loop, the {@code MustCallOnElements}
+   * type of {@code collection} must be empty. Thus, if the pre-condition is fulfilled, this upper
+   * bounding has no effect. However, {@code collection} could have revoked ownership (encoded as
+   * having {@code MustCallOnElementsUnknown}, the top type). Then, the type would stay the same and
+   * the revoked ownership is correctly preserved through the loop. In this case, the loop will be
+   * flagged illegal and have an error reported later in the consistency analyzer.
    *
    * @param loop the {@code PotentiallyAssigningLoop}
    * @param res the transfer result to update
@@ -330,8 +341,10 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
     ExpressionTree arrayTree = loop.collectionTree;
     JavaExpression arrayJx = JavaExpression.fromTree(arrayTree);
     AnnotationMirror newType = getMustCallOnElementsType(loop.getMethods());
-    CFValue newCFVal = analysis.createSingleAnnotationValue(newType, arrayJx.getType());
     CFStore elseStore = res.getElseStore();
+    CFValue oldCFVal = elseStore.getValue(arrayJx);
+    CFValue newCFVal = analysis.createSingleAnnotationValue(newType, arrayJx.getType());
+    newCFVal = oldCFVal == null ? newCFVal : oldCFVal.leastUpperBound(newCFVal, arrayJx.getType());
     elseStore.replaceValue(arrayJx, newCFVal);
     return new ConditionalTransferResult<>(res.getResultValue(), res.getThenStore(), elseStore);
   }
@@ -371,63 +384,6 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
     elseStore.insertValue(collectionJx, newType);
     return new ConditionalTransferResult<>(res.getResultValue(), res.getThenStore(), elseStore);
   }
-
-  // @Override
-  // public TransferResult<CFValue, CFStore> visitLessThan(
-  //     LessThanNode node, TransferInput<CFValue, CFStore> input) {
-  //   TransferResult<CFValue, CFStore> res = super.visitLessThan(node, input);
-  //   BinaryTree tree = node.getTree();
-  //   assert (tree.getKind() == Tree.Kind.LESS_THAN)
-  //       : "failed assumption: binaryTree in calledmethodsonelements transfer function is not
-  // lessthan tree";
-  //   Set<String> newMustCallMethods =
-  //       MustCallOnElementsAnnotatedTypeFactory.whichObligationsDoesLoopWithThisConditionCreate(
-  //           tree);
-  //   Set<String> calledMethods =
-  //       MustCallOnElementsAnnotatedTypeFactory.whichMethodsDoesLoopWithThisConditionCall(tree);
-  //   ExpressionTree arrayTree =
-  //       MustCallOnElementsAnnotatedTypeFactory.getCollectionTreeForLoopWithThisCondition(tree);
-  //   if (arrayTree == null) return res;
-  //   CFStore elseStore = res.getElseStore();
-  //   JavaExpression receiverReceiver = JavaExpression.fromTree(arrayTree);
-  //   if (newMustCallMethods != null) {
-  //     // this is an obligation-creating loop
-  //     AnnotationMirror newType = getMustCallOnElementsType(newMustCallMethods);
-  //     CFValue oldCFVal = elseStore.getValue(receiverReceiver);
-  //     CFValue newCFVal = analysis.createSingleAnnotationValue(newType,
-  // receiverReceiver.getType());
-  //     newCFVal =
-  //         oldCFVal == null
-  //             ? newCFVal
-  //             : oldCFVal.leastUpperBound(newCFVal, receiverReceiver.getType());
-  //     elseStore.replaceValue(receiverReceiver, newCFVal);
-  //     return new ConditionalTransferResult<>(res.getResultValue(), res.getThenStore(),
-  // elseStore);
-  //   } else if (calledMethods != null && calledMethods.size() > 0) {
-  //     // this loop fulfills an obligation - remove that methodname from
-  //     // the MustCallOnElements type of the array
-  //     CFValue oldTypeValue = elseStore.getValue(receiverReceiver);
-  //     if (oldTypeValue == null) {
-  //       // collection is not in store - thus it cannot have mustcallonelements obligations
-  //       return res;
-  //     }
-  //     AnnotationMirror oldType = oldTypeValue.getAnnotations().first();
-  //     List<String> mcoeMethods = new ArrayList<>();
-  //     if (oldType.getElementValues().get(atypeFactory.getMustCallOnElementsValueElement())
-  //         != null) {
-  //       mcoeMethods =
-  //           AnnotationUtils.getElementValueArray(
-  //               oldType, atypeFactory.getMustCallOnElementsValueElement(), String.class);
-  //     }
-  //     mcoeMethods.removeAll(calledMethods);
-  //     AnnotationMirror newType = getMustCallOnElementsType(new HashSet<>(mcoeMethods));
-  //     elseStore.clearValue(receiverReceiver);
-  //     elseStore.insertValue(receiverReceiver, newType);
-  //     return new ConditionalTransferResult<>(res.getResultValue(), res.getThenStore(),
-  // elseStore);
-  //   }
-  //   return res;
-  // }
 
   /**
    * Generate an annotation from a list of method names.
