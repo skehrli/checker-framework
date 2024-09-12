@@ -1,13 +1,10 @@
 package org.checkerframework.checker.resourceleak;
 
 import com.sun.source.tree.Tree;
-import java.util.List;
-import java.util.stream.Collectors;
-import javax.lang.model.element.ExecutableElement;
-import javax.lang.model.element.VariableElement;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsChecker;
 import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
+import org.checkerframework.checker.resourceleak.RLCUtils.MethodSigType;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.McoeObligationAlteringLoop;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.McoeObligationAlteringLoop.LoopKind;
@@ -27,6 +24,7 @@ import org.checkerframework.framework.flow.CFStore;
 import org.checkerframework.framework.flow.CFTransfer;
 import org.checkerframework.framework.flow.CFValue;
 import org.checkerframework.framework.type.AnnotatedTypeFactory;
+import org.checkerframework.javacutil.BugInCF;
 import org.checkerframework.javacutil.TreeUtils;
 
 /**
@@ -88,8 +86,7 @@ public abstract class CollectionTransfer extends CFTransfer {
       MethodInvocationNode node, TransferResult<CFValue, CFStore> res, JavaExpression receiver);
 
   /**
-   * Responsible for abstract transformers of all methods called on a collection. If the transformer
-   * for a called method is not implemented, a checker error is reported.
+   * Responsible for calling abstract transformers of all methods called on a collection.
    *
    * @param node a {@code MethodInvocationNode}
    * @param input the {@code TransferInput}
@@ -102,42 +99,34 @@ public abstract class CollectionTransfer extends CFTransfer {
 
     MethodAccessNode methodAccessNode = node.getTarget();
     Node receiver = methodAccessNode.getReceiver();
-    boolean isCollection =
-        receiver.getTree() != null
-            && MustCallOnElementsAnnotatedTypeFactory.isCollection(
-                receiver.getTree(), atypeFactory);
-    boolean isOwningArray =
-        receiver.getTree() != null
-            && TreeUtils.elementFromTree(receiver.getTree()) != null
-            && TreeUtils.elementFromTree(receiver.getTree()).getAnnotation(OwningArray.class)
-                != null;
-    JavaExpression receiverJx = JavaExpression.fromNode(receiver);
     Tree receiverTree = receiver.getTree();
-    boolean isAlias =
-        receiverTree != null // ensure tree for collection is valid
+    boolean isCollection =
+        receiverTree != null
+            && MustCallOnElementsAnnotatedTypeFactory.isCollection(receiverTree, atypeFactory);
+    boolean isOwningArray =
+        receiverTree != null
+            && TreeUtils.elementFromTree(receiverTree) != null
+            && TreeUtils.elementFromTree(receiverTree).getAnnotation(OwningArray.class) != null;
+    JavaExpression receiverJx = JavaExpression.fromNode(receiver);
+    boolean isRoAlias =
+        receiverTree != null
             && res.getRegularStore() != null // ensure store exists
             && ((MustCallOnElementsAnnotatedTypeFactory)
                     RLCUtils.getTypeFactory(MustCallOnElementsChecker.class, atypeFactory))
                 .isMustCallOnElementsUnknown(res.getRegularStore(), receiverTree);
-    if (isCollection && (isOwningArray || isAlias)) {
-      ExecutableElement method = methodAccessNode.getMethod();
-      List<? extends VariableElement> parameters = method.getParameters();
-      String methodSignature =
-          method.getSimpleName().toString()
-              + parameters.stream()
-                  .map(param -> param.asType().toString())
-                  .collect(Collectors.joining(",", "(", ")"));
-      System.out.println("methodsignature collection transfer: " + methodSignature);
-      switch (methodSignature) {
-        case "add(E)":
+    if (isCollection && (isOwningArray || isRoAlias)) {
+      MethodSigType methodSigType = RLCUtils.getMethodSigType(methodAccessNode.getMethod());
+      switch (methodSigType) {
+        case SAFE:
+          break;
+        case UNSAFE:
+          break;
+        case ADD_E:
           return transformCollectionAdd(node, res, receiverJx);
           // case "add(int,E)":
           //   return transformCollectionAddWithIdx(node, res, parameters);
-        case "size()":
-        case "get(int)":
-          return res;
         default:
-          atypeFactory.getChecker().reportError(node.getTree(), "unsafe.method", methodSignature);
+          throw new BugInCF("unhandled MethodSigType " + methodSigType);
       }
     }
     return res;

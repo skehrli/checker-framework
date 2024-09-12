@@ -33,7 +33,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.StringJoiner;
-import java.util.stream.Collectors;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.AnnotationValue;
@@ -62,6 +61,7 @@ import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotat
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsChecker;
 import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
 import org.checkerframework.checker.nullness.qual.Nullable;
+import org.checkerframework.checker.resourceleak.RLCUtils.MethodSigType;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnalysis;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyFulfillingLoop;
@@ -809,7 +809,6 @@ public class MustCallConsistencyAnalyzer {
     }
 
     // now put the loop into the static datastructure if it calls any methods on the element
-    System.out.println("called methods (loop-body-analysis): " + calledMethodsInLoop);
     if (calledMethodsInLoop != null && calledMethodsInLoop.size() > 0) {
       potentiallyFulfillingLoop.addMethods(calledMethodsInLoop);
       MustCallOnElementsAnnotatedTypeFactory.markFulfillingLoop(potentiallyFulfillingLoop);
@@ -836,12 +835,8 @@ public class MustCallConsistencyAnalyzer {
     if (lastLoopBodyBlock.getLastNode() == null) {
       // TODO is this really the right store? I think we need to get the then-or else store
       store = cmAtf.getStoreAfterBlock(lastLoopBodyBlock);
-      System.out.println("store after last node: " + store);
-      // this.analysis.getInput(lastLoopBodyBlock).getRegularStore();
-      // this.analysis.getStoreAfter(lastLoopBodyBlock);
     } else {
       store = cmAtf.getStoreAfter(lastLoopBodyBlock.getLastNode());
-      System.out.println("store after last block: " + store);
     }
     Obligation collectionElementObligation =
         getObligationForVar(obligations, potentiallyFulfillingLoop.collectionElementTree);
@@ -1045,17 +1040,15 @@ public class MustCallConsistencyAnalyzer {
               && TreeUtils.elementFromTree(receiver.getTree()) != null
               && cmAtf.hasOwningArray(TreeUtils.elementFromTree(receiver.getTree()));
       if (isCollection && isOwningArray) {
-        ExecutableElement method = man.getMethod();
-        List<? extends VariableElement> parameters = method.getParameters();
         List<Node> args = min.getArguments();
-        String methodSignature =
-            method.getSimpleName().toString()
-                + parameters.stream()
-                    .map(param -> param.asType().toString())
-                    .collect(Collectors.joining(",", "(", ")"));
-        System.out.println("method sig " + methodSignature);
-        switch (methodSignature) {
-          case "add(E)":
+        MethodSigType methodSigType = RLCUtils.getMethodSigType(man.getMethod());
+        switch (methodSigType) {
+          case SAFE:
+            break;
+          case UNSAFE:
+            checker.reportError(man.getTree(), "unsafe.method", man);
+            break;
+          case ADD_E:
             assert args.size() == 1
                 : "expected one argument for Collection.add(E), but args are: " + args;
             Node argExpr = NodeUtils.removeCasts(args.get(0));
