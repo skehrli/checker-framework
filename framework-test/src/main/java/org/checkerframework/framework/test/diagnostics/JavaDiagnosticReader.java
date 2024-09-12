@@ -28,9 +28,9 @@ import org.checkerframework.dataflow.qual.Pure;
  */
 public class JavaDiagnosticReader implements Iterator<TestDiagnosticLine>, Closeable {
 
-  ///
-  /// This class begins with the public static methods that clients use to read diagnostics.
-  ///
+  //
+  // This class begins with the public static methods that clients use to read diagnostics.
+  //
 
   /**
    * Returns all the diagnostics in any of the Java source files.
@@ -83,9 +83,9 @@ public class JavaDiagnosticReader implements Iterator<TestDiagnosticLine>, Close
     return result;
   }
 
-  ///
-  /// End of public static methods, start of private static methods.
-  ///
+  //
+  // End of public static methods, start of private static methods.
+  //
 
   /**
    * Reads all the diagnostics in the file.
@@ -149,9 +149,9 @@ public class JavaDiagnosticReader implements Iterator<TestDiagnosticLine>, Close
     TestDiagnosticLine createTestDiagnosticLine(String filename, String line, long lineNumber);
   }
 
-  ///
-  /// End of static methods, start of per-instance state.
-  ///
+  //
+  // End of static methods, start of per-instance state.
+  //
 
   /** Converts a file line into a TestDiagnosticLine. */
   private final StringToTestDiagnosticLine codec;
