@@ -3016,6 +3016,7 @@ public class CFGTranslationPhaseOne extends TreeScanner<Node, Void> {
       // annotations, so save the expression in the node so that the full type can be
       // found later.
       nextCallNode.setIterableExpression(expression);
+      nextCallNode.setEnhancedForLoop(tree);
       nextCallNode.setInSource(false);
       extendWithNode(nextCallNode);
 
@@ -3024,6 +3025,7 @@ public class CFGTranslationPhaseOne extends TreeScanner<Node, Void> {
       // translateAssignment() scans variable and creates new nodes, so set the expression
       // there, too.
       ((MethodInvocationNode) assignNode.getExpression()).setIterableExpression(expression);
+      ((MethodInvocationNode) assignNode.getExpression()).setEnhancedForLoop(tree);
 
       assert statement != null;
       scan(statement, p);
@@ -3126,6 +3128,7 @@ public class CFGTranslationPhaseOne extends TreeScanner<Node, Void> {
         // conversion. Treat that as an iterator.
         MethodInvocationNode boxingNode = (MethodInvocationNode) arrayAccessAssignNodeExpr;
         boxingNode.setIterableExpression(expression);
+        boxingNode.setEnhancedForLoop(tree);
       }
 
       assert statement != null;
