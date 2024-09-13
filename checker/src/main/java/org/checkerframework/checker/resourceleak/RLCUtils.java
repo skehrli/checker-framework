@@ -25,11 +25,11 @@ public class RLCUtils {
   public static List<String> rlcCheckers =
       new ArrayList<>(
           Arrays.asList(
-              "ResourceLeakChecker",
-              "RLCCalledMethodsChecker",
-              "MustCallChecker",
-              "MustCallOnElementsChecker",
-              "CalledMethodsOnElementsChecker"));
+              ResourceLeakChecker.class.getCanonicalName(),
+              RLCCalledMethodsChecker.class.getCanonicalName(),
+              MustCallChecker.class.getCanonicalName(),
+              MustCallOnElementsChecker.class.getCanonicalName(),
+              CalledMethodsOnElementsChecker.class.getCanonicalName()));
 
   /**
    * Defines the different classifications of method signatures with respect to their safety in the
@@ -64,10 +64,12 @@ public class RLCUtils {
     switch (methodSignature) {
       case "add(E)":
         return MethodSigType.ADD_E;
+      case "iterator()":
       case "size()":
       case "get(int)":
         return MethodSigType.SAFE;
       default:
+        System.out.println("unhandled method " + methodSignature);
         return MethodSigType.UNSAFE;
     }
   }
