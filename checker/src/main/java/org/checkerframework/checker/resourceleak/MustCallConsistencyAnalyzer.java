@@ -7,6 +7,7 @@ import com.google.common.collect.Iterables;
 import com.sun.source.tree.ArrayAccessTree;
 import com.sun.source.tree.AssignmentTree;
 import com.sun.source.tree.ClassTree;
+import com.sun.source.tree.EnhancedForLoopTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.MethodInvocationTree;
@@ -303,6 +304,50 @@ public class MustCallConsistencyAnalyzer {
     }
 
     /**
+     * Returns a new Obligation.
+     *
+     * <p>We need this method since we frequently need to replace obligations and if the old
+     * obligation was a CollectionObligation we want the replacement to be as well. Dynamic method
+     * dispatch then allows us to simply call getReplacement() on an obligation and get the
+     * replacement of the right (sub)class.
+     *
+     * @param resourceAliases set of resource aliases for the new obligation
+     * @return a new Obligation with the passed traits
+     */
+    public Obligation getReplacement(
+        Set<ResourceAlias> resourceAliases, Set<MethodExitKind> whenToEnforce) {
+      return new Obligation(resourceAliases, whenToEnforce);
+    }
+
+    /**
+     * Creates and returns an obligation derived from the given tree that is either an {@code
+     * ExpressionTree} or a {@code VariableTree}.
+     *
+     * @param tree the tree from which the Obligation is to be created. Must be ExpressionTree or
+     *     VariableTree.
+     * @return an obligation derived from the given tree
+     */
+    public static Obligation fromTree(Tree tree) {
+      JavaExpression jx = null;
+      Element elem = null;
+      if (tree instanceof ExpressionTree) {
+        jx = JavaExpression.fromTree((ExpressionTree) tree);
+        elem = TreeUtils.elementFromTree((ExpressionTree) tree);
+      } else if (tree instanceof VariableTree) {
+        jx = JavaExpression.fromVariableTree((VariableTree) tree);
+        elem = TreeUtils.elementFromDeclaration((VariableTree) tree);
+      } else if (tree instanceof VariableTree) {
+
+      } else {
+        throw new IllegalArgumentException(
+            "Tree must be ExpressionTree or VariableTree but is " + tree.getClass());
+      }
+      return new Obligation(
+          ImmutableSet.of(new ResourceAlias(jx, elem, tree)),
+          Collections.singleton(MethodExitKind.NORMAL_RETURN));
+    }
+
+    /**
      * Returns the resource alias in this Obligation's resource alias set corresponding to {@code
      * localVariableNode} if one is present. Otherwise, returns null.
      *
@@ -494,6 +539,7 @@ public class MustCallConsistencyAnalyzer {
 
   /** Obligation for a collection. To be fulfilled on its elements. */
   static class CollectionObligation extends Obligation {
+
     /**
      * Create a CollectionObligation from a set of resource aliases.
      *
@@ -503,6 +549,44 @@ public class MustCallConsistencyAnalyzer {
     public CollectionObligation(
         Set<ResourceAlias> resourceAliases, Set<MethodExitKind> whenToEnforce) {
       super(resourceAliases, whenToEnforce);
+    }
+
+    /**
+     * Create a CollectionObligation from an Obligation
+     *
+     * @param obligation the obligation to create a CollectionObligation from
+     */
+    private CollectionObligation(Obligation obligation) {
+      super(obligation.resourceAliases, obligation.whenToEnforce);
+    }
+
+    /**
+     * Creates and returns a CollectionObligation derived from the given tree that is either an
+     * {@code ExpressionTree} or a {@code VariableTree}.
+     *
+     * @param tree the tree from which the CollectionObligation is to be created. Must be
+     *     ExpressionTree or VariableTree.
+     * @return a CollectionObligation derived from the given tree
+     */
+    public static CollectionObligation fromTree(Tree tree) {
+      return new CollectionObligation(Obligation.fromTree(tree));
+    }
+
+    /**
+     * Returns a new CollectionObligation.
+     *
+     * <p>We need this method since we frequently need to replace obligations and if the old
+     * obligation was a CollectionObligation we want the replacement to be as well. Dynamic method
+     * dispatch then allows us to simply call getReplacement() on an obligation and get the
+     * replacement of the right class.
+     *
+     * @param resourceAliases set of resource aliases for the new obligation
+     * @return a new CollectionObligation with the passed traits
+     */
+    @Override
+    public CollectionObligation getReplacement(
+        Set<ResourceAlias> resourceAliases, Set<MethodExitKind> whenToEnforce) {
+      return new CollectionObligation(resourceAliases, whenToEnforce);
     }
   }
 
@@ -735,7 +819,7 @@ public class MustCallConsistencyAnalyzer {
 
     Block loopConditionBlock = potentiallyFulfillingLoop.loopConditionBlock;
     Block loopUpdateBlock = potentiallyFulfillingLoop.loopUpdateBlock;
-    ExpressionTree collectionElementAccess = potentiallyFulfillingLoop.collectionElementTree;
+    Tree collectionElement = potentiallyFulfillingLoop.collectionElementTree;
 
     // The `visited` set contains everything that has been added to the worklist, even if it has
     // not yet been removed and analyzed.
@@ -743,14 +827,7 @@ public class MustCallConsistencyAnalyzer {
     Deque<BlockWithObligations> worklist = new ArrayDeque<>();
 
     // Add an obligation for the element of the collection iterated over
-    Obligation collectionElementObligation =
-        new Obligation(
-            ImmutableSet.of(
-                new ResourceAlias(
-                    JavaExpression.fromTree(collectionElementAccess),
-                    TreeUtils.elementFromTree(collectionElementAccess),
-                    collectionElementAccess)),
-            Collections.singleton(MethodExitKind.NORMAL_RETURN));
+    Obligation collectionElementObligation = Obligation.fromTree(collectionElement);
 
     assert (loopConditionBlock instanceof SingleSuccessorBlock);
     Block conditionalBlock = ((SingleSuccessorBlock) loopConditionBlock).getSuccessor();
@@ -942,9 +1019,12 @@ public class MustCallConsistencyAnalyzer {
           verifyReturnStatement((ReturnNode) node);
         } else if (node instanceof MethodInvocationNode || node instanceof ObjectCreationNode) {
           updateObligationsForInvocation(obligations, node, successorAndExceptionType.second);
+          if (node instanceof MethodInvocationNode) {
+            patternMatchEnhancedForLoop((MethodInvocationNode) node);
+          }
         } else if (node instanceof LessThanNode) {
           verifyAllocatingForLoop((LessThanNode) node, obligations);
-          verifyFulfillingForLoop((LessThanNode) node, obligations);
+          // verifyFulfillingForLoop((LessThanNode) node, obligations);
         }
         // All other types of nodes are ignored. This is safe, because other kinds of
         // nodes cannot create or modify the resource-alias sets that the algorithm is
@@ -965,6 +1045,31 @@ public class MustCallConsistencyAnalyzer {
         assert !isLoopBodyAnalysis
             : "propagateObligationsToSuccessorBlocks should not be called in loop body analysis";
       }
+    }
+  }
+
+  private void patternMatchEnhancedForLoop(MethodInvocationNode methodInvocationNode) {
+    ExpressionTree iterableExpression = methodInvocationNode.getIterableExpression();
+    if (iterableExpression != null) {
+      // this is the Iterator.next() call desugared from an enhanced-for-loop
+      EnhancedForLoopTree loop = methodInvocationNode.getEnhancedForLoop();
+      assert loop != null
+          : "MethodInvocationNode.iterableExpression should be non-null iff MethodInvocationNode.enhancedForLoop is non-null";
+      VariableTree loopVariable = loop.getVariable();
+      System.out.println("var name: " + loopVariable.getName());
+      System.out.println("var name expr: " + loopVariable.getNameExpression());
+      // add the blocks into a static datastructure in the calledmethodsatf, such that it can
+      // analyze
+      // them (call MustCallConsistencyAnalyzer.analyzeFulfillingLoops, which in turn adds the trees
+      // to the static datastructure in McoeAtf)
+      // RLCCalledMethodsAnnotatedTypeFactory.addPotentiallyFulfillingLoop(
+      //     loopConditionBlock,
+      //     loopUpdateBlock,
+      //     tree.getCondition(),
+      //     loop.,
+      //     nodeForCollectionElt,
+      //     collectionTreeFromExpression(collectionElementTree));
+      // return super.visitEnhancedForLoop(tree, p);
     }
   }
 
@@ -1046,7 +1151,7 @@ public class MustCallConsistencyAnalyzer {
           case SAFE:
             break;
           case UNSAFE:
-            checker.reportError(man.getTree(), "unsafe.method", man);
+            checker.reportError(node.getTree(), "unsafe.method", man);
             break;
           case ADD_E:
             assert args.size() == 1
@@ -1219,12 +1324,7 @@ public class MustCallConsistencyAnalyzer {
                   "tried to remove multiple sets containing a reset expression at once");
             }
             toRemove = obligation;
-            boolean isCollectionObligation = obligation instanceof CollectionObligation;
-            if (isCollectionObligation) {
-              toAdd = new CollectionObligation(ImmutableSet.of(alias), obligation.whenToEnforce);
-            } else {
-              toAdd = new Obligation(ImmutableSet.of(alias), obligation.whenToEnforce);
-            }
+            toAdd = obligation.getReplacement(ImmutableSet.of(alias), obligation.whenToEnforce);
           }
         }
 
@@ -1352,17 +1452,9 @@ public class MustCallConsistencyAnalyzer {
                     .append(tmpVarAsResourceAlias)
                     .toSet();
             obligations.remove(obligationContainingMustCallAlias);
-            boolean isCollectionObligation =
-                obligationContainingMustCallAlias instanceof CollectionObligation;
-            if (isCollectionObligation) {
-              obligations.add(
-                  new CollectionObligation(
-                      newResourceAliasSet, obligationContainingMustCallAlias.whenToEnforce));
-            } else {
-              obligations.add(
-                  new Obligation(
-                      newResourceAliasSet, obligationContainingMustCallAlias.whenToEnforce));
-            }
+            obligations.add(
+                obligationContainingMustCallAlias.getReplacement(
+                    newResourceAliasSet, obligationContainingMustCallAlias.whenToEnforce));
             // It is not an error if there is no Obligation containing the must-call
             // alias. In that case, what has usually happened is that no Obligation was
             // created in the first place.
@@ -1818,53 +1910,38 @@ public class MustCallConsistencyAnalyzer {
           // @OwningArray field may not be assigned (neither its elements) outside of constructor
           checker.reportError(
               assignmentNode.getTree(), "owningarray.field.assigned.outside.constructor");
-        } else if (lhs.getTree() instanceof IdentifierTree
-            || lhs.getTree() instanceof VariableTree) {
-          JavaExpression arrayJx =
-              (lhs.getTree() instanceof VariableTree)
-                  ? JavaExpression.fromVariableTree((VariableTree) lhs.getTree())
-                  : JavaExpression.fromTree((IdentifierTree) lhs.getTree());
-          Element element =
-              (lhs.getTree() instanceof VariableTree)
-                  ? TreeUtils.elementFromDeclaration((VariableTree) lhs.getTree())
-                  : TreeUtils.elementFromTree((IdentifierTree) lhs.getTree());
-
-          if (lhs.getTree() instanceof VariableTree) {
-            // declaration of local @OwningArray. Can't be field since we're in the else clause
-            VariableTree owningArrayDeclarationTree = (VariableTree) lhs.getTree();
-            Obligation newObligation =
-                new CollectionObligation(
-                    ImmutableSet.of(
-                        new ResourceAlias(arrayJx, element, owningArrayDeclarationTree)),
-                    Collections.singleton(MethodExitKind.NORMAL_RETURN));
+        } else if (lhs.getTree() instanceof VariableTree) {
+          // declaration of local @OwningArray. Can't be field since we're in the else clause
+          if ((rhs instanceof ArrayCreationNode) || isNewCollection(rhsExpr)) {
+            Obligation newObligation = Obligation.fromTree(lhs.getTree());
             obligations.add(newObligation);
           } else {
-            // definition of local @OwningArray. If the array was previously assigned, the old
-            // (in-memory) array goes out of scope and must be checked.
-            // The new one needs an obligation, add it.
-            Obligation obligation = getObligationForVar(obligations, lhs.getTree());
-            if (obligation != null) {
-              checkMustCallOnElements(
-                  obligation,
-                  mcoeStore,
-                  cmoeStore,
-                  true,
-                  lhs.getTree(),
-                  "array is reassigned at " + assignmentNode.getTree());
-              obligations.remove(obligation);
-            }
-            IdentifierTree owningArrayDefinitionTree = (IdentifierTree) lhs.getTree();
-            if (rhs instanceof ArrayCreationNode) {
-              Obligation newObligation =
-                  new CollectionObligation(
-                      ImmutableSet.of(
-                          new ResourceAlias(arrayJx, element, owningArrayDefinitionTree)),
-                      Collections.singleton(MethodExitKind.NORMAL_RETURN));
-              obligations.add(newObligation);
-            }
+            // enforces 3. assignment rule:
+            // assigning an @OwningArray to anything else is not allowed outside of constructor
+            checker.reportError(
+                assignmentNode.getTree(),
+                "illegal.owningarray.assignment",
+                lhs.getTree().toString());
           }
-          // definition/declaration of @OwningArray.
-          if (!(rhs instanceof ArrayCreationNode) && !isNewCollection(rhsExpr)) {
+        } else if (lhs.getTree() instanceof IdentifierTree) {
+          // definition of local @OwningArray. If the array was previously assigned, the old
+          // (in-memory) array goes out of scope and must be checked.
+          // The new one needs an obligation, add it.
+          Obligation obligation = getObligationForVar(obligations, lhs.getTree());
+          if (obligation != null) {
+            checkMustCallOnElements(
+                obligation,
+                mcoeStore,
+                cmoeStore,
+                true,
+                lhs.getTree(),
+                "array is reassigned at " + assignmentNode.getTree());
+            obligations.remove(obligation);
+          }
+          if (rhs instanceof ArrayCreationNode || isNewCollection(rhsExpr)) {
+            Obligation newObligation = Obligation.fromTree(lhs.getTree());
+            obligations.add(newObligation);
+          } else {
             // enforces 3. assignment rule:
             // assigning an @OwningArray to anything else is not allowed outside of constructor
             checker.reportError(
@@ -1917,12 +1994,8 @@ public class MustCallConsistencyAnalyzer {
     if (node.getTree() != null && node.getTree().getKind() == Tree.Kind.NEW_CLASS) {
       NewClassTree nctree = (NewClassTree) node.getTree();
       ExpressionTree constructedClassName = nctree.getIdentifier();
-      boolean isCollection =
-          MustCallOnElementsAnnotatedTypeFactory.isCollection(
-              constructedClassName, mcoeTypeFactory);
-      if (isCollection) {
-        return true;
-      }
+      return MustCallOnElementsAnnotatedTypeFactory.isCollection(
+          constructedClassName, mcoeTypeFactory);
     }
     return false;
   }
@@ -2129,18 +2202,11 @@ public class MustCallConsistencyAnalyzer {
 
     while (it.hasNext()) {
       Obligation obligation = it.next();
-      boolean isCollectionObligation = obligation instanceof CollectionObligation;
       if (obligation.canBeSatisfiedThrough(var)) {
         it.remove();
-
         Set<ResourceAlias> newAliases = new LinkedHashSet<>(obligation.resourceAliases);
         newAliases.add(newAlias);
-
-        if (isCollectionObligation) {
-          newObligations.add(new CollectionObligation(newAliases, obligation.whenToEnforce));
-        } else {
-          newObligations.add(new Obligation(newAliases, obligation.whenToEnforce));
-        }
+        newObligations.add(obligation.getReplacement(newAliases, obligation.whenToEnforce));
       }
     }
 
@@ -2210,13 +2276,8 @@ public class MustCallConsistencyAnalyzer {
         Set<MethodExitKind> whenToEnforce = new HashSet<>(obligation.whenToEnforce);
         whenToEnforce.removeAll(whatToClear);
 
-        boolean isCollectionObligation = obligation instanceof CollectionObligation;
         if (!whenToEnforce.isEmpty()) {
-          if (isCollectionObligation) {
-            newObligations.add(new CollectionObligation(obligation.resourceAliases, whenToEnforce));
-          } else {
-            newObligations.add(new Obligation(obligation.resourceAliases, whenToEnforce));
-          }
+          newObligations.add(obligation.getReplacement(obligation.resourceAliases, whenToEnforce));
         }
       }
     }
@@ -2309,16 +2370,9 @@ public class MustCallConsistencyAnalyzer {
             "variable overwritten by assignment " + node.getTree());
         replacements.put(obligation, null);
       } else {
-        boolean isCollectionObligation = obligation instanceof CollectionObligation;
-        if (isCollectionObligation) {
-          replacements.put(
-              obligation,
-              new CollectionObligation(newResourceAliasesForObligation, obligation.whenToEnforce));
-        } else {
-          replacements.put(
-              obligation,
-              new Obligation(newResourceAliasesForObligation, obligation.whenToEnforce));
-        }
+        replacements.put(
+            obligation,
+            obligation.getReplacement(newResourceAliasesForObligation, obligation.whenToEnforce));
       }
     }
 
@@ -2877,34 +2931,34 @@ public class MustCallConsistencyAnalyzer {
     }
   }
 
-  /**
-   * Check whether the given node is the condition of an mcoe-obligation-fulfilling-loop. and
-   * whether the loop actually fulfills all the methods it promises to call by checking the
-   * {@code @CalledMethods} type of the collection/array element in the loop body. Also, add an
-   * obligation for the array/collection element iterated over.
-   *
-   * @param node lessthannode that may be the condition of a mcoe fulfilling for loop
-   * @param obligations the set of tracked obligations in the analysis
-   */
-  private void verifyFulfillingForLoop(LessThanNode node, Set<Obligation> obligations) {
-    ExpressionTree collectionAccess =
-        MustCallOnElementsAnnotatedTypeFactory.getCollectionAccessTreeForLoopWithThisCondition(
-            node.getTree());
-    Set<String> calledMethods =
-        MustCallOnElementsAnnotatedTypeFactory.whichMethodsDoesLoopWithThisConditionCall(
-            node.getTree());
-    boolean isFulfillingForLoop = calledMethods != null && calledMethods.size() > 0;
-    if (collectionAccess != null && isFulfillingForLoop) {
-      // Element elt = TreeUtils.elementFromTree(collectionAccess);
-      if (obligations != null) {}
-      // obligations.add(
-      //     new Obligation(
-      //         ImmutableSet.of(
-      //             new ResourceAlias(
-      //                 JavaExpression.fromTree(collectionAccess), elt, collectionAccess)),
-      //         Collections.singleton(MethodExitKind.NORMAL_RETURN)));
-    }
-  }
+  // /**
+  //  * Check whether the given node is the condition of an mcoe-obligation-fulfilling-loop. and
+  //  * whether the loop actually fulfills all the methods it promises to call by checking the
+  //  * {@code @CalledMethods} type of the collection/array element in the loop body. Also, add an
+  //  * obligation for the array/collection element iterated over.
+  //  *
+  //  * @param node lessthannode that may be the condition of a mcoe fulfilling for loop
+  //  * @param obligations the set of tracked obligations in the analysis
+  //  */
+  // private void verifyFulfillingForLoop(LessThanNode node, Set<Obligation> obligations) {
+  //   ExpressionTree collectionAccess =
+  //       MustCallOnElementsAnnotatedTypeFactory.getCollectionAccessTreeForLoopWithThisCondition(
+  //           node.getTree());
+  //   Set<String> calledMethods =
+  //       MustCallOnElementsAnnotatedTypeFactory.whichMethodsDoesLoopWithThisConditionCall(
+  //           node.getTree());
+  //   boolean isFulfillingForLoop = calledMethods != null && calledMethods.size() > 0;
+  //   if (collectionAccess != null && isFulfillingForLoop) {
+  //     // Element elt = TreeUtils.elementFromTree(collectionAccess);
+  //     if (obligations != null) {}
+  //     // obligations.add(
+  //     //     new Obligation(
+  //     //         ImmutableSet.of(
+  //     //             new ResourceAlias(
+  //     //                 JavaExpression.fromTree(collectionAccess), elt, collectionAccess)),
+  //     //         Collections.singleton(MethodExitKind.NORMAL_RETURN)));
+  //   }
+  // }
 
   /**
    * If this exception is thrown, it indicates to the caller of the method that the loop body
@@ -3179,13 +3233,8 @@ public class MustCallConsistencyAnalyzer {
             alias ->
                 !aliasInScopeInSuccessor(regularStoreOfSuccessor, mcoeStore, mcCFStore, alias)
                     && !isLoopBodyAnalysis);
-        boolean isCollectionObligation = obligation instanceof CollectionObligation;
-        if (isCollectionObligation) {
-          successorObligations.add(
-              new CollectionObligation(copyOfResourceAliases, obligation.whenToEnforce));
-        } else {
-          successorObligations.add(new Obligation(copyOfResourceAliases, obligation.whenToEnforce));
-        }
+        successorObligations.add(
+            obligation.getReplacement(copyOfResourceAliases, obligation.whenToEnforce));
       }
     }
 
