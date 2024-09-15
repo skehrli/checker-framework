@@ -58,6 +58,8 @@ import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTy
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.common.basetype.BaseTypeVisitor;
 import org.checkerframework.dataflow.cfg.block.Block;
+import org.checkerframework.dataflow.cfg.block.ConditionalBlock;
+import org.checkerframework.dataflow.cfg.block.SingleSuccessorBlock;
 import org.checkerframework.dataflow.cfg.node.Node;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedDeclaredType;
@@ -247,7 +249,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
   private boolean isIthCollectionElement(Tree tree, Name index) {
     if (tree == null || index == null) return false;
     if (tree.getKind() == Tree.Kind.METHOD_INVOCATION
-        && index == nameFromExpression(TreeUtils.isGetCall(tree))) {
+        && index == nameFromExpression(TreeUtils.getIdxForGetCall(tree))) {
       MethodInvocationTree mit = (MethodInvocationTree) tree;
       ExpressionTree methodSelect = mit.getMethodSelect();
       assert methodSelect.getKind() == Tree.Kind.MEMBER_SELECT
@@ -474,8 +476,12 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
       // analyze
       // them (call MustCallConsistencyAnalyzer.analyzeFulfillingLoops, which in turn adds the trees
       // to the static datastructure in McoeAtf)
+      assert (loopConditionBlock instanceof SingleSuccessorBlock);
+      Block conditionalBlock = ((SingleSuccessorBlock) loopConditionBlock).getSuccessor();
+      assert (conditionalBlock instanceof ConditionalBlock);
+      Block loopBodyEntryBlock = ((ConditionalBlock) conditionalBlock).getThenSuccessor();
       RLCCalledMethodsAnnotatedTypeFactory.addPotentiallyFulfillingLoop(
-          loopConditionBlock,
+          loopBodyEntryBlock,
           loopUpdateBlock,
           tree.getCondition(),
           collectionElementTree,

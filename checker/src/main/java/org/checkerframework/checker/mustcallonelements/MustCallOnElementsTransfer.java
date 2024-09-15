@@ -250,6 +250,8 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
     }
     mcoeMethods.addAll(mcValues);
     AnnotationMirror newType = getMustCallOnElementsType(new HashSet<>(mcoeMethods));
+    // System.out.println("newtype in transformcollectionadd: " + newType);
+    // System.out.println("for receiver: " + receiver);
     store.clearValue(receiver);
     store.insertValue(receiver, newType);
     return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);

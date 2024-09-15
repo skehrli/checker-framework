@@ -168,6 +168,16 @@ public final class TreeUtils {
   }
 
   /**
+   * Checks if the method invocation is a call to hasNext.
+   *
+   * @param tree a tree defining a method invocation
+   * @return true iff tree describes a call to hasNext
+   */
+  public static boolean isHasNextCall(MethodInvocationTree tree) {
+    return isNamedMethodCall("hasNext", tree);
+  }
+
+  /**
    * Checks if the method invocation is a call to super.
    *
    * @param tree a tree defining a method invocation
@@ -1720,13 +1730,13 @@ public final class TreeUtils {
    * If the given tree is a call to "get", this method returns the expression tree of the first
    * argument and null else.
    *
-   * <p>Assuming it's a call to List.get(), this will be the iterator. For example, if the tree is
-   * Collection.get(i), the method returns i.
+   * <p>Assuming it's a call to List.get(), this will be the iterator variable. For example, if the
+   * tree is {@code Collection.get(i)}, the method returns {@code i}.
    *
    * @param tree the tree to check
-   * @return ExpressionTree of index variable if tree is collection.get(index) and null else
+   * @return ExpressionTree of {@code idx} if tree is {@code Collection.get(idx)} and null else
    */
-  public static @Nullable ExpressionTree isGetCall(Tree tree) {
+  public static @Nullable ExpressionTree getIdxForGetCall(Tree tree) {
     if (tree.getKind() == Tree.Kind.METHOD_INVOCATION
         && isNamedMethodCall("get", (MethodInvocationTree) tree)) {
       return ((MethodInvocationTree) tree).getArguments().get(0);

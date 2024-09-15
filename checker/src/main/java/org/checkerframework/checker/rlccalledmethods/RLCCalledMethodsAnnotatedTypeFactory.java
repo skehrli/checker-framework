@@ -651,7 +651,7 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
    * their loop body analyzed for possibly fulfilling {@code @MustCallOnElements} calling
    * obligations.
    *
-   * @param loopConditionBlock cfg {@code Block} for loop condition
+   * @param loopBodyEntryBlock cfg {@code Block} for loop body entry
    * @param loopUpdateBlock {@code Block} for loop update
    * @param condition AST {@code Tree} for loop condition
    * @param collectionElementTree AST {@code Tree} for collection element iterated over
@@ -659,10 +659,10 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
    * @param collectionTree AST {@code Tree} for collection iterated over
    */
   public static void addPotentiallyFulfillingLoop(
-      Block loopConditionBlock,
+      Block loopBodyEntryBlock,
       Block loopUpdateBlock,
       Tree condition,
-      ExpressionTree collectionElementTree,
+      Tree collectionElementTree,
       Node collectionEltNode,
       ExpressionTree collectionTree) {
     potentiallyFulfillingLoops.add(
@@ -670,7 +670,7 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
             collectionTree,
             collectionElementTree,
             condition,
-            loopConditionBlock,
+            loopBodyEntryBlock,
             loopUpdateBlock,
             collectionEltNode));
   }
@@ -704,7 +704,7 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
     public final ExpressionTree collectionTree;
 
     /** AST {@code Tree} for collection element iterated over. */
-    public final ExpressionTree collectionElementTree;
+    public final Tree collectionElementTree;
 
     /** AST {@code Tree} for loop condition. */
     public final Tree condition;
@@ -734,7 +734,7 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
      */
     protected McoeObligationAlteringLoop(
         ExpressionTree collectionTree,
-        ExpressionTree collectionElementTree,
+        Tree collectionElementTree,
         Tree condition,
         Set<String> associatedMethods,
         LoopKind loopKind) {
@@ -809,8 +809,8 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
 
   /** Wrapper for a loop that potentially calls methods on all elements of a collection/array. */
   public static class PotentiallyFulfillingLoop extends McoeObligationAlteringLoop {
-    /** cfg {@code Block} for the loop condition */
-    public final Block loopConditionBlock;
+    /** cfg {@code Block} for the loop body entry */
+    public final Block loopBodyEntryBlock;
 
     /** cfg {@code Block} for the loop update */
     public final Block loopUpdateBlock;
@@ -824,15 +824,15 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
      * @param collectionTree AST {@link Tree} for collection iterated over
      * @param collectionElementTree AST {@link Tree} for collection element iterated over
      * @param condition AST {@link Tree} for loop condition
-     * @param loopConditionBlock cfg {@link Block} for the loop condition
+     * @param loopBodyEntryBlock cfg {@link Block} for the loop body entry
      * @param loopUpdateBlock cfg {@link Block} for the loop update
      * @param collectionEltNode cfg {@link Node} for the collection element iterated over
      */
     public PotentiallyFulfillingLoop(
         ExpressionTree collectionTree,
-        ExpressionTree collectionElementTree,
+        Tree collectionElementTree,
         Tree condition,
-        Block loopConditionBlock,
+        Block loopBodyEntryBlock,
         Block loopUpdateBlock,
         Node collectionEltNode) {
       super(
@@ -841,7 +841,7 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
           condition,
           new HashSet<>(),
           McoeObligationAlteringLoop.LoopKind.FULFILLING);
-      this.loopConditionBlock = loopConditionBlock;
+      this.loopBodyEntryBlock = loopBodyEntryBlock;
       this.loopUpdateBlock = loopUpdateBlock;
       this.collectionElementNode = collectionEltNode;
     }
@@ -861,12 +861,13 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
   public void postAnalyze(ControlFlowGraph cfg) {
     MustCallConsistencyAnalyzer mustCallConsistencyAnalyzer =
         new MustCallConsistencyAnalyzer(getResourceLeakChecker(), true);
+    mustCallConsistencyAnalyzer.findFulfillingForEachLoops(cfg);
 
     if (potentiallyFulfillingLoops.size() > 0) {
       // analyze loop bodies of all loops marked 'potentially-mcoe-obligation-fulfilling'
       Set<PotentiallyFulfillingLoop> analyzed = new HashSet<>();
       for (PotentiallyFulfillingLoop potentiallyFulfillingLoop : potentiallyFulfillingLoops) {
-        ExpressionTree collectionElementTree = potentiallyFulfillingLoop.collectionElementTree;
+        Tree collectionElementTree = potentiallyFulfillingLoop.collectionElementTree;
         boolean loopContainedInThisMethod =
             cfg.getNodesCorrespondingToTree(collectionElementTree) != null;
         if (loopContainedInThisMethod) {

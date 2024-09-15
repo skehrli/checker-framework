@@ -86,7 +86,16 @@ public abstract class CollectionTransfer extends CFTransfer {
       MethodInvocationNode node, TransferResult<CFValue, CFStore> res, JavaExpression receiver);
 
   /**
-   * Responsible for calling abstract transformers of all methods called on a collection.
+   * Responsible for:
+   *
+   * <ol>
+   *   <li>Checking whether the {@code MethodInvocationNode} corresponds to a method being called on
+   *       a receiver collection and then call the corresponding abstract transformer if this is the
+   *       case.
+   *   <li>Checking whether the {@code MethodInvocationNode} is the condition of an {@code
+   *       MustCallOnElements} obligation fulfilling or assigning for loop and then call the
+   *       corresponding abstract transformer if this is the case.
+   * </ol>
    *
    * @param node a {@code MethodInvocationNode}
    * @param input the {@code TransferInput}
@@ -96,6 +105,16 @@ public abstract class CollectionTransfer extends CFTransfer {
   public TransferResult<CFValue, CFStore> visitMethodInvocation(
       MethodInvocationNode node, TransferInput<CFValue, CFStore> input) {
     TransferResult<CFValue, CFStore> res = super.visitMethodInvocation(node, input);
+
+    McoeObligationAlteringLoop loop =
+        MustCallOnElementsAnnotatedTypeFactory.getLoopForCondition(node);
+    if (loop != null) {
+      if (loop.loopKind == LoopKind.ASSIGNING) {
+        res = transformAssigningLoop((PotentiallyAssigningLoop) loop, res);
+      } else if (loop.loopKind == LoopKind.FULFILLING) {
+        res = transformFulfillingLoop((PotentiallyFulfillingLoop) loop, res);
+      }
+    }
 
     MethodAccessNode methodAccessNode = node.getTarget();
     Node receiver = methodAccessNode.getReceiver();
@@ -122,7 +141,8 @@ public abstract class CollectionTransfer extends CFTransfer {
         case UNSAFE:
           break;
         case ADD_E:
-          return transformCollectionAdd(node, res, receiverJx);
+          res = transformCollectionAdd(node, res, receiverJx);
+          break;
           // case "add(int,E)":
           //   return transformCollectionAddWithIdx(node, res, parameters);
         default:
@@ -141,7 +161,7 @@ public abstract class CollectionTransfer extends CFTransfer {
       LessThanNode node, TransferInput<CFValue, CFStore> input) {
     TransferResult<CFValue, CFStore> res = super.visitLessThan(node, input);
     McoeObligationAlteringLoop loop =
-        MustCallOnElementsAnnotatedTypeFactory.getLoopForCondition(node.getTree());
+        MustCallOnElementsAnnotatedTypeFactory.getLoopForCondition(node);
     if (loop != null) {
       if (loop.loopKind == LoopKind.ASSIGNING) {
         res = transformAssigningLoop((PotentiallyAssigningLoop) loop, res);
