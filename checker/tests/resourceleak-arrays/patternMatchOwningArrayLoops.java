@@ -6,14 +6,14 @@ class PatternMatchOwningCollectionLoops {
   private final int n = 10;
   private final String myHost = "";
   private final int myPort = 1;
-  // :: error: owning.array
+  // :: error: owning.collection
   @Owning Socket[] s;
 
   // @OwningCollection non-(1dArray/collection) is not allowed
   public void owningArrayNonArray() {
-    // :: error: owningcollection.nonarray
+    // :: error: owningcollection.noncollection
     @OwningCollection Socket s;
-    // :: error: owningcollection.nonarray
+    // :: error: owningcollection.noncollection
     @OwningCollection Socket[][] sMultiDimensional;
   }
 
@@ -168,7 +168,7 @@ class PatternMatchOwningCollectionLoops {
       try {
         arr[i].close();
       } catch (Exception e) {
-        throw new Exception("this prevents a pattern-match");
+        throw new Exception("this exception does not prevent a pattern-match");
       }
     }
   }

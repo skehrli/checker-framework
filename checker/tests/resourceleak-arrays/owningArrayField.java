@@ -151,11 +151,11 @@ class EvilOwningCollectionWrapperClient {
     ValidOwningCollectionField d = new ValidOwningCollectionField(localarr);
     // this loop doesn't pattern-match, simply because d.arr is not accepted
     // as an identifier (it is a MemberSelectTree). A warning is issued to inform
-    // the programmer that d.arr is an unexpected array expression.
+    // the programmer that d.arr is an unexpected collection/array expression.
     for (int i = 0; i < d.arr.length; i++) {
       // :: error: required.method.not.called
       // :: error: illegal.owningcollection.field.elements.assignment
-      // :: warning: unexpected.array.expression
+      // :: warning: unexpected.collection.expression
       d.arr[i] = new Resource();
     }
     // fulfill the obligations of 'd'
