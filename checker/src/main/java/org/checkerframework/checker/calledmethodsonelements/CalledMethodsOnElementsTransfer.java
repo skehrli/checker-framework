@@ -20,7 +20,7 @@ import org.checkerframework.checker.mustcall.qual.InheritableMustCall;
 import org.checkerframework.checker.mustcall.qual.MustCall;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElements;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElementsUnknown;
-import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
+import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.CollectionTransfer;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
@@ -82,8 +82,8 @@ public class CalledMethodsOnElementsTransfer extends CollectionTransfer {
   }
 
   /*
-   * Empties the @MustCallOnElements() type of arguments passed as @OwningArray parameters to the
-   * constructor and enforces that only @OwningArray arguments are passed to @OwningArray parameters.
+   * Empties the @MustCallOnElements() type of arguments passed as @OwningCollection parameters to the
+   * constructor and enforces that only @OwningCollection arguments are passed to @OwningCollection parameters.
    */
   // @Override
   // public TransferResult<CFValue, CFStore> visitObjectCreation(
@@ -97,8 +97,8 @@ public class CalledMethodsOnElementsTransfer extends CollectionTransfer {
   //   while (paramIterator.hasNext() && argIterator.hasNext()) {
   //     VariableElement param = paramIterator.next();
   //     Node arg = argIterator.next();
-  //     boolean paramIsOwningArray = param.getAnnotation(OwningArray.class) != null;
-  //     if (paramIsOwningArray) {
+  //     boolean paramIsOwningCollection = param.getAnnotation(OwningCollection.class) != null;
+  //     if (paramIsOwningCollection) {
   //       JavaExpression array = JavaExpression.fromNode(arg);
   //       AnnotationMirror oldType =
   // res.getRegularStore().getValue(array).getAnnotations().first();
@@ -162,7 +162,7 @@ public class CalledMethodsOnElementsTransfer extends CollectionTransfer {
   // }
 
   /*
-   * Empties the @MustCallOnElements type of arguments passed as @OwningArray parameters to the
+   * Empties the @MustCallOnElements type of arguments passed as @OwningCollection parameters to the
    * method.
    */
   @Override
@@ -178,8 +178,8 @@ public class CalledMethodsOnElementsTransfer extends CollectionTransfer {
     while (paramIterator.hasNext() && argIterator.hasNext()) {
       VariableElement param = paramIterator.next();
       Node arg = argIterator.next();
-      boolean paramIsOwningArray = param.getAnnotation(OwningArray.class) != null;
-      if (paramIsOwningArray) {
+      boolean paramIsOwningCollection = param.getAnnotation(OwningCollection.class) != null;
+      if (paramIsOwningCollection) {
         JavaExpression array = JavaExpression.fromNode(arg);
         AnnotationMirror oldType = res.getRegularStore().getValue(array).getAnnotations().first();
 
@@ -214,7 +214,8 @@ public class CalledMethodsOnElementsTransfer extends CollectionTransfer {
         }
         if (!paramHasMcoeAnno) {
           // if no mcoe anno, the mcoe type defaults to all obligations of the component
-          assert param.asType() instanceof ArrayType : "@OwningArray parameter is not arraytype";
+          assert param.asType() instanceof ArrayType
+              : "@OwningCollection parameter is not arraytype";
           mcoeObligationsOfComponent =
               getMustCallValuesForType(((ArrayType) param.asType()).getComponentType());
         }
@@ -358,7 +359,7 @@ public class CalledMethodsOnElementsTransfer extends CollectionTransfer {
   //           Node collectionNode = accessNode.getReceiver();
   //           System.out.println("receiver: " + collectionNode);
   //           if (mcatf.getDeclAnnotation(
-  //                   TreeUtils.elementFromTree(collectionNode.getTree()), OwningArray.class)
+  //                   TreeUtils.elementFromTree(collectionNode.getTree()), OwningCollection.class)
   //               != null) {
   //             System.out.println("collectionNode: " + accessNode.getFieldName());
   //           }

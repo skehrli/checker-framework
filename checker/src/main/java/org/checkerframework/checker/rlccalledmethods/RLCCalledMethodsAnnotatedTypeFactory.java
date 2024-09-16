@@ -32,7 +32,7 @@ import org.checkerframework.checker.mustcall.qual.MustCall;
 import org.checkerframework.checker.mustcall.qual.MustCallAlias;
 import org.checkerframework.checker.mustcall.qual.NotOwning;
 import org.checkerframework.checker.mustcall.qual.Owning;
-import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
+import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.MustCallConsistencyAnalyzer;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
@@ -465,18 +465,18 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
   }
 
   /**
-   * Does the given element have an {@code @OwningArray} annotation (including in stub files)?
+   * Does the given element have an {@code @OwningCollection} annotation (including in stub files)?
    *
    * <p>Prefer this method to calling {@link #getDeclAnnotation(Element, Class)} on the type factory
    * directly, which won't find this annotation in stub files (it only considers stub files loaded
    * by this checker, not subcheckers).
    *
    * @param elt an element
-   * @return whether there is an OwningArray annotation on the given element
+   * @return whether there is an OwningCollection annotation on the given element
    */
-  public boolean hasOwningArray(Element elt) {
+  public boolean hasOwningCollection(Element elt) {
     MustCallAnnotatedTypeFactory mcatf = getMustCallAnnotatedTypeFactory();
-    return mcatf.getDeclAnnotation(elt, OwningArray.class) != null;
+    return mcatf.getDeclAnnotation(elt, OwningCollection.class) != null;
   }
 
   @Override

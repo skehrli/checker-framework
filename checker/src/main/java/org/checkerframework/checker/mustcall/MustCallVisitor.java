@@ -51,7 +51,7 @@ import org.checkerframework.checker.mustcall.qual.NotOwning;
 import org.checkerframework.checker.mustcall.qual.Owning;
 import org.checkerframework.checker.mustcall.qual.PolyMustCall;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
-import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
+import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyAssigningLoop;
@@ -126,7 +126,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
 
     if (initializer instanceof NewArrayTree) {
       VariableElement arrayElement = TreeUtils.elementFromDeclaration(tree);
-      if (arrayElement.getAnnotation(OwningArray.class) != null) {
+      if (arrayElement.getAnnotation(OwningCollection.class) != null) {
         NewArrayTree nat = (NewArrayTree) tree.getInitializer();
         if (nat.getDimensions().size() == 1) {
           ExpressionTree dim = nat.getDimensions().get(0);
@@ -148,7 +148,8 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
   // public Void visitEnhancedForLoop(EnhancedForLoopTree tree, Void p) {
   //   MustCallAnnotatedTypeFactory mcatf = new MustCallAnnotatedTypeFactory(checker);
   //   ExpressionTree collectionExpr = tree.getExpression();
-  //   if (mcatf.getDeclAnnotation(TreeUtils.elementFromTree(collectionExpr), OwningArray.class)
+  //   if (mcatf.getDeclAnnotation(TreeUtils.elementFromTree(collectionExpr),
+  // OwningCollection.class)
   //       != null) {
   //     // mark the loop
   //   }
@@ -494,8 +495,8 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
    * Checks through pattern-matching whether the loop either:
    *
    * <ul>
-   *   <li>initializes entries of an {@code @OwningArray}
-   *   <li>calls a method on entries of an {@code @OwningArray} array
+   *   <li>initializes entries of an {@code @OwningCollection}
+   *   <li>calls a method on entries of an {@code @OwningCollection} array
    * </ul>
    *
    * If yes, this is marked in some static datastructures in the
@@ -513,7 +514,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
   }
 
   /**
-   * Checks whether a for-loop possibly assigns the elements of an {@code @OwningArray}
+   * Checks whether a for-loop possibly assigns the elements of an {@code @OwningCollection}
    * collection/array and marks the loop in case the check is successful.
    *
    * @param tree ForLoopTree
@@ -981,7 +982,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
       if (tree.getVariable() instanceof IdentifierTree) {
         IdentifierTree identifier = (IdentifierTree) tree.getVariable();
         Element arrayElement = TreeUtils.elementFromTree(identifier);
-        if (arrayElement.getAnnotation(OwningArray.class) != null) {
+        if (arrayElement.getAnnotation(OwningCollection.class) != null) {
           arrayInitializationSize.remove(identifier.getName());
           if (nat.getDimensions().size() == 1) {
             ExpressionTree dim = nat.getDimensions().get(0);

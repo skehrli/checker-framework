@@ -16,7 +16,7 @@ import javax.lang.model.element.VariableElement;
 import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcall.qual.InheritableMustCall;
 import org.checkerframework.checker.mustcall.qual.MustCall;
-import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
+import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.CollectionTransfer;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
@@ -74,9 +74,10 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
   // public TransferResult<CFValue, CFStore> visitVariableDeclaration(
   //     VariableDeclarationNode node, TransferInput<CFValue, CFStore> input) {
   //   TransferResult<CFValue, CFStore> res = super.visitVariableDeclaration(node, input);
-  //   // since @OwningArray is enforced to be array, the following cast is guaranteed to succeed
+  //   // since @OwningCollection is enforced to be array, the following cast is guaranteed to
+  // succeed
   //   VariableElement elmnt = TreeUtils.elementFromDeclaration(node.getTree());
-  //   if (atypeFactory.getDeclAnnotation(elmnt, OwningArray.class) != null
+  //   if (atypeFactory.getDeclAnnotation(elmnt, OwningCollection.class) != null
   //       && elmnt.getKind() == ElementKind.FIELD) {
   //     TypeMirror componentType = ((ArrayType) elmnt.asType()).getComponentType();
   //     List<String> mcoeObligationsOfOwningField = getMustCallValuesForType(componentType);
@@ -113,9 +114,10 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
   //     FieldAccessNode node, TransferInput<CFValue, CFStore> input) {
   //   TransferResult<CFValue, CFStore> res = super.visitFieldAccess(node, input);
   //   Element elmnt = TreeUtils.elementFromTree(node.getTree());
-  //   if (atypeFactory.getDeclAnnotation(elmnt, OwningArray.class) != null
+  //   if (atypeFactory.getDeclAnnotation(elmnt, OwningCollection.class) != null
   //       && elmnt.getKind() == ElementKind.FIELD) {
-  //     // since @OwningArray is enforced to be array, the following cast is guaranteed to succeed
+  //     // since @OwningCollection is enforced to be array, the following cast is guaranteed to
+  // succeed
   //     TypeMirror componentType = ((ArrayType) elmnt.asType()).getComponentType();
   //     List<String> mcoeObligationsOfOwningField = getMustCallValuesForType(componentType);
   //     AnnotationMirror newType = getMustCallOnElementsType(mcoeObligationsOfOwningField);
@@ -128,7 +130,7 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
   // }
 
   /*
-   * Sets type of LHS to @MustCallOnElementsUnknown if rhs is @OwningArray and lhs is not.
+   * Sets type of LHS to @MustCallOnElementsUnknown if rhs is @OwningCollection and lhs is not.
    * The semantics is that LHS is then a read-only copy
    */
   @Override
@@ -139,17 +141,21 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
     CFStore store = res.getRegularStore();
     Node lhs = node.getTarget();
     Node rhs = node.getExpression();
-    boolean lhsIsOwningArray =
+    boolean lhsIsOwningCollection =
         lhs != null
             && lhs.getTree() != null
             && TreeUtils.elementFromTree(lhs.getTree()) != null
-            && TreeUtils.elementFromTree(lhs.getTree()).getAnnotation(OwningArray.class) != null;
-    boolean rhsIsOwningArray =
+            && TreeUtils.elementFromTree(lhs.getTree()).getAnnotation(OwningCollection.class)
+                != null;
+    boolean rhsIsOwningCollection =
         rhs != null
             && rhs.getTree() != null
             && TreeUtils.elementFromTree(rhs.getTree()) != null
-            && TreeUtils.elementFromTree(rhs.getTree()).getAnnotation(OwningArray.class) != null;
-    if (!lhsIsOwningArray && rhsIsOwningArray && !(rhs.getTree() instanceof ArrayAccessTree)) {
+            && TreeUtils.elementFromTree(rhs.getTree()).getAnnotation(OwningCollection.class)
+                != null;
+    if (!lhsIsOwningCollection
+        && rhsIsOwningCollection
+        && !(rhs.getTree() instanceof ArrayAccessTree)) {
       JavaExpression lhsJavaExpression = JavaExpression.fromNode(lhs);
       store.clearValue(lhsJavaExpression);
       store.insertValue(lhsJavaExpression, getMustCallOnElementsUnknown());
@@ -158,8 +164,8 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
   }
 
   /*
-   * Empties the @MustCallOnElements() type of arguments passed as @OwningArray parameters to the
-   * constructor and enforces that only @OwningArray arguments are passed to @OwningArray parameters.
+   * Empties the @MustCallOnElements() type of arguments passed as @OwningCollection parameters to the
+   * constructor and enforces that only @OwningCollection arguments are passed to @OwningCollection parameters.
    */
   @Override
   public TransferResult<CFValue, CFStore> visitObjectCreation(
@@ -173,9 +179,10 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
     while (paramIterator.hasNext() && argIterator.hasNext()) {
       VariableElement param = paramIterator.next();
       Node arg = argIterator.next();
-      boolean paramIsOwningArray = param.getAnnotation(OwningArray.class) != null;
-      if (paramIsOwningArray) {
-        if (TreeUtils.elementFromTree(arg.getTree()).getAnnotation(OwningArray.class) == null) {
+      boolean paramIsOwningCollection = param.getAnnotation(OwningCollection.class) != null;
+      if (paramIsOwningCollection) {
+        if (TreeUtils.elementFromTree(arg.getTree()).getAnnotation(OwningCollection.class)
+            == null) {
           atypeFactory.getChecker().reportError(node.getTree(), "unexpected.argument.ownership");
         }
         JavaExpression array = JavaExpression.fromNode(arg);
@@ -271,10 +278,10 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
    * Responsible for abstract transformers of all methods called on a collection.
    * If the transformer for a method is not specifically implemented, it reports a checker error.
    *
-   * Emptying the @MustCallOnElements type of arguments passed as @OwningArray parameters to the
+   * Emptying the @MustCallOnElements type of arguments passed as @OwningCollection parameters to the
    * method.
    *
-   * Enforcing that only @OwningArray arguments are passed to @OwningArray parameters.
+   * Enforcing that only @OwningCollection arguments are passed to @OwningCollection parameters.
    */
   @Override
   public TransferResult<CFValue, CFStore> visitMethodInvocation(
@@ -282,7 +289,7 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
     TransferResult<CFValue, CFStore> res = super.visitMethodInvocation(node, input);
 
     // ensure method call args respects ownership consistency
-    // also, empty mcoe type of @OwningArray args that are passed as @OwningArray params
+    // also, empty mcoe type of @OwningCollection args that are passed as @OwningCollection params
     ExecutableElement method = node.getTarget().getMethod();
     List<? extends VariableElement> params = method.getParameters();
     List<Node> args = node.getArguments();
@@ -292,16 +299,18 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
       VariableElement param = paramIterator.next();
       Node arg = argIterator.next();
       Element argElt = arg.getTree() != null ? TreeUtils.elementFromTree(arg.getTree()) : null;
-      boolean argIsOwningArray = argElt != null && argElt.getAnnotation(OwningArray.class) != null;
-      boolean paramIsOwningArray = param != null && param.getAnnotation(OwningArray.class) != null;
+      boolean argIsOwningCollection =
+          argElt != null && argElt.getAnnotation(OwningCollection.class) != null;
+      boolean paramIsOwningCollection =
+          param != null && param.getAnnotation(OwningCollection.class) != null;
       boolean argIsMcoeUnknown =
           atypeFactory.isMustCallOnElementsUnknown(res.getRegularStore(), arg.getTree());
       if (argIsMcoeUnknown) {
         atypeFactory
             .getChecker()
             .reportError(arg.getTree(), "argument.with.revoked.ownership", arg.getTree());
-      } else if (paramIsOwningArray) {
-        if (!argIsOwningArray) {
+      } else if (paramIsOwningCollection) {
+        if (!argIsOwningCollection) {
           atypeFactory.getChecker().reportError(arg.getTree(), "unexpected.argument.ownership");
         }
         JavaExpression array = JavaExpression.fromNode(arg);
@@ -309,8 +318,8 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
         store.clearValue(array);
         store.insertValue(array, getMustCallOnElementsType(new HashSet<>()));
         return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
-      } else if (argIsOwningArray) {
-        // param non-@OwningArray and arg @OwningArray would imply we have an alias
+      } else if (argIsOwningCollection) {
+        // param non-@OwningCollection and arg @OwningCollection would imply we have an alias
         atypeFactory.getChecker().reportError(arg.getTree(), "unexpected.argument.ownership");
       }
     }

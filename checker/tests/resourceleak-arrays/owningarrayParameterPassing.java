@@ -8,13 +8,13 @@ class OwningarrayParameterPassing {
   private final int n = 10;
 
   // :: error: unfulfilled.mustcallonelements.obligations
-  private void owningParameter(@OwningArray Resource[] param) {
+  private void owningParameter(@OwningCollection Resource[] param) {
     // takes ownership to call all methods (foo, close)
   }
 
   private void owningParameterWithPartialObligations(
       // :: error: unfulfilled.mustcallonelements.obligations
-      @OwningArray Resource @MustCallOnElements("close") [] param) {
+      @OwningCollection Resource @MustCallOnElements("close") [] param) {
     // takes ownership only of "close"
   }
 
@@ -37,7 +37,7 @@ class OwningarrayParameterPassing {
 
   public void passOwningToNonOwning() {
     // :: error: unfulfilled.mustcallonelements.obligations
-    @OwningArray Resource[] owningArr = new Resource[n];
+    @OwningCollection Resource[] owningArr = new Resource[n];
     for (int i = 0; i < n; i++) {
       owningArr[i] = new Resource();
     }
@@ -47,7 +47,7 @@ class OwningarrayParameterPassing {
   }
 
   public void passOwningToOwning() {
-    @OwningArray Resource[] owningArr = new Resource[n];
+    @OwningCollection Resource[] owningArr = new Resource[n];
     for (int i = 0; i < n; i++) {
       owningArr[i] = new Resource();
     }
@@ -56,7 +56,7 @@ class OwningarrayParameterPassing {
   }
 
   public void passOwningToPartialOwning() {
-    @OwningArray Resource[] owningArr = new Resource[n];
+    @OwningCollection Resource[] owningArr = new Resource[n];
     for (int i = 0; i < n; i++) {
       owningArr[i] = new Resource();
     }
@@ -66,7 +66,7 @@ class OwningarrayParameterPassing {
   }
 
   public void partiallyFulfillUsingMethod() {
-    @OwningArray Resource[] owningArr = new Resource[n];
+    @OwningCollection Resource[] owningArr = new Resource[n];
     for (int i = 0; i < n; i++) {
       owningArr[i] = new Resource();
     }
@@ -79,13 +79,13 @@ class OwningarrayParameterPassing {
   }
 
   public void revokeOwnershipAndRegain() {
-    @OwningArray Resource[] owningArr = new Resource[n];
+    @OwningCollection Resource[] owningArr = new Resource[n];
     for (int i = 0; i < n; i++) {
       owningArr[i] = new Resource();
     }
-    // passing owningArr as @OwningArray argument to a constructor revokes ownership.
+    // passing owningArr as @OwningCollection argument to a constructor revokes ownership.
     // none of the methods should be able to be called after that.
-    OwningArrayWrapper wrapper = new OwningArrayWrapper(owningArr);
+    OwningCollectionWrapper wrapper = new OwningCollectionWrapper(owningArr);
     // :: error: argument
     // :: error: argument.with.revoked.ownership
     nonOwningParameter(owningArr);
@@ -111,10 +111,10 @@ class OwningarrayParameterPassing {
 }
 
 @InheritableMustCall("close")
-class OwningArrayWrapper {
-  final @OwningArray Resource[] arr;
+class OwningCollectionWrapper {
+  final @OwningCollection Resource[] arr;
 
-  public OwningArrayWrapper(@OwningArray Resource[] arr) {
+  public OwningCollectionWrapper(@OwningCollection Resource[] arr) {
     this.arr = arr;
   }
 

@@ -11,25 +11,25 @@ class Resource {
   public void close() {}
 }
 
-class illegalOwningArrayField {
-  // non-final owningarray field is illegal
-  // :: error: owningarray.field.not.final
-  @OwningArray Resource[] arr;
-  // static owningarray field is illegal
-  // :: error: owningarray.field.static
+class illegalOwningCollectionField {
+  // non-final owningcollection field is illegal
+  // :: error: owningcollection.field.not.final
+  @OwningCollection Resource[] arr;
+  // static owningcollection field is illegal
+  // :: error: owningcollection.field.static
   // :: error: unfulfilled.mustcallonelements.obligations
-  static final @OwningArray Resource[] arr2 = new Resource[1];
+  static final @OwningCollection Resource[] arr2 = new Resource[1];
 }
 
 @InheritableMustCall("close")
-class multipleOwningArrayFieldAssignment {
-  final @OwningArray Resource[] arr;
+class multipleOwningCollectionFieldAssignment {
+  final @OwningCollection Resource[] arr;
 
   @EnsuresCalledMethodsOnElements(
       value = "arr",
       methods = {"close", "foo"})
   public void close() {
-    // :: error: owningarray.field.assigned.outside.constructor
+    // :: error: owningcollection.field.assigned.outside.constructor
     arr[0] = null;
     for (int i = 0; i < arr.length; i++) {
       arr[i].close();
@@ -39,10 +39,10 @@ class multipleOwningArrayFieldAssignment {
     }
   }
 
-  public multipleOwningArrayFieldAssignment(int n) {
+  public multipleOwningCollectionFieldAssignment(int n) {
     arr = new Resource[n];
     // illegal assignment - only in pattern-matched loop allowed
-    // :: error: illegal.owningarray.field.elements.assignment
+    // :: error: illegal.owningcollection.field.elements.assignment
     arr[0] = null;
     for (int i = 0; i < n; i++) {
       arr[i] = new Resource();
@@ -54,32 +54,32 @@ class multipleOwningArrayFieldAssignment {
       arr[i].foo();
     }
     for (int i = 0; i < n; i++) {
-      // :: error: owningarray.field.elements.assigned.multiple.times
+      // :: error: owningcollection.field.elements.assigned.multiple.times
       arr[i] = new Resource();
     }
   }
 }
 
-class NoDestructorMethodForOwningArrayField {
+class NoDestructorMethodForOwningCollectionField {
   // no mustcall annotation on class (for destructor method)
   // :: error: unfulfilled.mustcallonelements.obligations
-  final @OwningArray Resource[] arr = new Resource[10];
+  final @OwningCollection Resource[] arr = new Resource[10];
 }
 
 @InheritableMustCall("close")
-class DestructorMethodWithoutEnsuresCmoeForOwningArrayField {
+class DestructorMethodWithoutEnsuresCmoeForOwningCollectionField {
   // mustcall annotation on class doesn't have a EnsuresCmoe annotation
   // :: error: unfulfilled.mustcallonelements.obligations
-  final @OwningArray Resource[] arr = new Resource[10];
+  final @OwningCollection Resource[] arr = new Resource[10];
 
   public void close() {}
 }
 
 @InheritableMustCall("close")
-class DestructorMethodWithInsufficientEnsuresCmoeForOwningArrayField {
+class DestructorMethodWithInsufficientEnsuresCmoeForOwningCollectionField {
   // destructor method doesn't cover all calling obligations
   // :: error: unfulfilled.mustcallonelements.obligations
-  final @OwningArray Resource[] arr = new Resource[10];
+  final @OwningCollection Resource[] arr = new Resource[10];
 
   @EnsuresCalledMethodsOnElements(value = "arr", methods = "close")
   public void close() {
@@ -90,8 +90,8 @@ class DestructorMethodWithInsufficientEnsuresCmoeForOwningArrayField {
 }
 
 @InheritableMustCall("close")
-class DestructorMethodWithInvalidEnsuresCmoeForOwningArrayField {
-  final @OwningArray Resource[] arr = new Resource[10];
+class DestructorMethodWithInvalidEnsuresCmoeForOwningCollectionField {
+  final @OwningCollection Resource[] arr = new Resource[10];
 
   @EnsuresCalledMethodsOnElements(
       value = "arr",
@@ -102,22 +102,22 @@ class DestructorMethodWithInvalidEnsuresCmoeForOwningArrayField {
 }
 
 @InheritableMustCall({"destruct", "close"})
-class ValidOwningArrayField {
-  final @OwningArray Resource[] arr;
+class ValidOwningCollectionField {
+  final @OwningCollection Resource[] arr;
 
   public Resource[] getField() {
-    // :: error: return.owningarray
+    // :: error: return.owningcollection
     return arr;
   }
 
-  public ValidOwningArrayField(@OwningArray Resource[] arr) {
+  public ValidOwningCollectionField(@OwningCollection Resource[] arr) {
     this.arr = arr;
   }
 
-  public ValidOwningArrayField(Resource[] arr, int k) {
+  public ValidOwningCollectionField(Resource[] arr, int k) {
     // k is here simply because without it, we would have a duplicate constructor.
-    // assignment is illegal since the arr parameter is not @OwningArray
-    // :: error: illegal.owningarray.field.assignment
+    // assignment is illegal since the arr parameter is not @OwningCollection
+    // :: error: illegal.owningcollection.field.assignment
     this.arr = arr;
   }
 
@@ -140,21 +140,21 @@ class ValidOwningArrayField {
   }
 }
 
-class EvilOwningArrayWrapperClient {
-  public EvilOwningArrayWrapperClient() {
+class EvilOwningCollectionWrapperClient {
+  public EvilOwningCollectionWrapperClient() {
     int n = 10;
-    @OwningArray Resource[] localarr = new Resource[n];
+    @OwningCollection Resource[] localarr = new Resource[n];
     for (int i = 0; i < n; i++) {
       localarr[i] = new Resource();
     }
     // give up ownership to constructor
-    ValidOwningArrayField d = new ValidOwningArrayField(localarr);
+    ValidOwningCollectionField d = new ValidOwningCollectionField(localarr);
     // this loop doesn't pattern-match, simply because d.arr is not accepted
     // as an identifier (it is a MemberSelectTree). A warning is issued to inform
     // the programmer that d.arr is an unexpected array expression.
     for (int i = 0; i < d.arr.length; i++) {
       // :: error: required.method.not.called
-      // :: error: illegal.owningarray.field.elements.assignment
+      // :: error: illegal.owningcollection.field.elements.assignment
       // :: warning: unexpected.array.expression
       d.arr[i] = new Resource();
     }
@@ -163,14 +163,14 @@ class EvilOwningArrayWrapperClient {
     d.close();
   }
 
-  public void tryCapturingOwningArrayField() {
+  public void tryCapturingOwningCollectionField() {
     int n = 10;
-    @OwningArray Resource[] localarr = new Resource[n];
+    @OwningCollection Resource[] localarr = new Resource[n];
     for (int i = 0; i < n; i++) {
       localarr[i] = new Resource();
     }
     // give up ownership to constructor
-    ValidOwningArrayField d = new ValidOwningArrayField(localarr);
+    ValidOwningCollectionField d = new ValidOwningCollectionField(localarr);
     // try reassigning the elements of array, despite lost ownership
     for (int i = 0; i < n; i++) {
       // :: error: assignment.without.ownership
@@ -179,7 +179,7 @@ class EvilOwningArrayWrapperClient {
     // this method call is not allowed either, due to the missing ownership over localarr
     // :: error: argument
     // :: error: argument.with.revoked.ownership
-    methodWithOwningArrayParameter(localarr);
+    methodWithOwningCollectionParameter(localarr);
 
     // reassign localarr to a new array, which is legal.
     // However, after its elements have been assigned, they
@@ -191,13 +191,13 @@ class EvilOwningArrayWrapperClient {
       localarr[i] = new Resource();
     }
 
-    // try to capture the @OwningArray field of 'd'
-    // since the RHS of the assignment is @OwningArray, that is illegal aliasing.
+    // try to capture the @OwningCollection field of 'd'
+    // since the RHS of the assignment is @OwningCollection, that is illegal aliasing.
     // :: error: illegal.aliasing
     Resource[] capture = d.arr;
     // this illegal assignment counts as a field assignment
-    // and since the field is @OwningArray, it is forbidden
-    // :: error: owningarray.field.assigned.outside.constructor
+    // and since the field is @OwningCollection, it is forbidden
+    // :: error: owningcollection.field.assigned.outside.constructor
     d.arr[0] = null;
 
     // fulfill the obligations of 'd'
@@ -205,7 +205,7 @@ class EvilOwningArrayWrapperClient {
     d.close();
   }
 
-  private void methodWithOwningArrayParameter(@OwningArray Resource[] arr) {
+  private void methodWithOwningCollectionParameter(@OwningCollection Resource[] arr) {
     for (int i = 0; i < arr.length; i++) {
       arr[i].close();
     }
@@ -215,16 +215,16 @@ class EvilOwningArrayWrapperClient {
   }
 }
 
-class OwningArrayFieldClient {
+class OwningCollectionFieldClient {
   public void m() {
     int n = 10;
-    @OwningArray Resource[] localarr = new Resource[n];
+    @OwningCollection Resource[] localarr = new Resource[n];
     for (int i = 0; i < n; i++) {
       localarr[i] = new Resource();
     }
     // d.close() would also have to be called
     // :: error: required.method.not.called
-    ValidOwningArrayField d = new ValidOwningArrayField(localarr);
+    ValidOwningCollectionField d = new ValidOwningCollectionField(localarr);
     d.destruct();
   }
 }

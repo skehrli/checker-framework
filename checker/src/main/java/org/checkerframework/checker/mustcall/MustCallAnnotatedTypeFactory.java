@@ -219,9 +219,9 @@ public class MustCallAnnotatedTypeFactory extends BaseAnnotatedTypeFactory
   }
 
   /*
-   * Change the default @MustCallOnElements type value of @OwningArray fields and @OwningArray method parameters
+   * Change the default @MustCallOnElements type value of @OwningCollection fields and @OwningCollection method parameters
    * to contain the @MustCall methods of the component, if no manual annotation is present.
-   * For example the type of: final @OwningArray Socket[] s is changed to @MustCallOnElements("close").
+   * For example the type of: final @OwningCollection Socket[] s is changed to @MustCallOnElements("close").
    */
   @Override
   public void addComputedTypeAnnotations(Element elt, AnnotatedTypeMirror type) {

@@ -3,7 +3,7 @@ package org.checkerframework.checker.resourceleak;
 import com.sun.source.tree.Tree;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsChecker;
-import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
+import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.resourceleak.RLCUtils.MethodSigType;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.McoeObligationAlteringLoop;
@@ -32,8 +32,8 @@ import org.checkerframework.javacutil.TreeUtils;
  * MustCallOnElementsChecker} and {@code CalledMethodsOnElementsChecker}.
  *
  * <p>The class aggregates shared logic between the implementing transfer functions to call the
- * corresponding abstract transformer when a method is called on an {@code @OwningArray}, so that
- * the implementing transfer functions only have to implement these transformers.
+ * corresponding abstract transformer when a method is called on an {@code @OwningCollection}, so
+ * that the implementing transfer functions only have to implement these transformers.
  */
 public abstract class CollectionTransfer extends CFTransfer {
 
@@ -122,10 +122,11 @@ public abstract class CollectionTransfer extends CFTransfer {
     boolean isCollection =
         receiverTree != null
             && MustCallOnElementsAnnotatedTypeFactory.isCollection(receiverTree, atypeFactory);
-    boolean isOwningArray =
+    boolean isOwningCollection =
         receiverTree != null
             && TreeUtils.elementFromTree(receiverTree) != null
-            && TreeUtils.elementFromTree(receiverTree).getAnnotation(OwningArray.class) != null;
+            && TreeUtils.elementFromTree(receiverTree).getAnnotation(OwningCollection.class)
+                != null;
     JavaExpression receiverJx = JavaExpression.fromNode(receiver);
     boolean isRoAlias =
         receiverTree != null
@@ -133,7 +134,7 @@ public abstract class CollectionTransfer extends CFTransfer {
             && ((MustCallOnElementsAnnotatedTypeFactory)
                     RLCUtils.getTypeFactory(MustCallOnElementsChecker.class, atypeFactory))
                 .isMustCallOnElementsUnknown(res.getRegularStore(), receiverTree);
-    if (isCollection && (isOwningArray || isRoAlias)) {
+    if (isCollection && (isOwningCollection || isRoAlias)) {
       MethodSigType methodSigType = RLCUtils.getMethodSigType(methodAccessNode.getMethod());
       switch (methodSigType) {
         case SAFE:

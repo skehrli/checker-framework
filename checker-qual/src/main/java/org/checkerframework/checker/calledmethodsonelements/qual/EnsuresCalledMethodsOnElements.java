@@ -28,10 +28,10 @@ import org.checkerframework.framework.qual.QualifierArgument;
  * method returns.
  *
  * <p>If a class has any {@code @}{@link
- * org.checkerframework.checker.mustcallonelements.qual.OwningArray OwningArray} fields, then one or
- * more of its must-call methods should be annotated to indicate that the must-call-on-elements
- * obligations are satisfied. The must-call methods are those named by the {@code @}{@link
- * org.checkerframework.checker.mustcall.qual.MustCall MustCall} or {@code @}{@link
+ * org.checkerframework.checker.mustcallonelements.qual.OwningCollection OwningCollection} fields,
+ * then one or more of its must-call methods should be annotated to indicate that the
+ * must-call-on-elements obligations are satisfied. The must-call methods are those named by the
+ * {@code @}{@link org.checkerframework.checker.mustcall.qual.MustCall MustCall} or {@code @}{@link
  * org.checkerframework.checker.mustcall.qual.InheritableMustCall InheritableMustCall} annotation on
  * the class declaration, such as {@code close()}. Here is a common example:
  *

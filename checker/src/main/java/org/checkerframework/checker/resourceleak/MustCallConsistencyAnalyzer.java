@@ -60,7 +60,7 @@ import org.checkerframework.checker.mustcall.qual.NotOwning;
 import org.checkerframework.checker.mustcall.qual.Owning;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsChecker;
-import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
+import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.RLCUtils.MethodSigType;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnalysis;
@@ -229,8 +229,8 @@ public class MustCallConsistencyAnalyzer {
   private final boolean countMustCall;
 
   /**
-   * The set of @OwningArray fields whose elements have already been assigned. If field is already
-   * in this set, the new assignment is illegal.
+   * The set of @OwningCollection fields whose elements have already been assigned. If field is
+   * already in this set, the new assignment is illegal.
    */
   private Set<Name> alreadyAllocatedArrays;
 
@@ -775,8 +775,8 @@ public class MustCallConsistencyAnalyzer {
     Deque<BlockWithObligations> worklist = new ArrayDeque<>();
     this.alreadyAllocatedArrays = new HashSet<>();
 
-    // verify that all @OwningArray fields are final
-    checkOwningArrayFields(cfg);
+    // verify that all @OwningCollection fields are final
+    checkOwningCollectionFields(cfg);
 
     // Add any owning parameters to the initial set of variables to track.
     BlockWithObligations entry =
@@ -1180,13 +1180,13 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Verifies all {@link OwningArray} fields for the enclosing class of the method corresponding to
-   * a CFG are final, non-static, private and arrays/collections. Also verifies that there's no
-   * {@code @Owning} field that is an array/collection.
+   * Verifies all {@link OwningCollection} fields for the enclosing class of the method
+   * corresponding to a CFG are final, non-static, private and arrays/collections. Also verifies
+   * that there's no {@code @Owning} field that is an array/collection.
    *
    * @param cfg the CFG
    */
-  private void checkOwningArrayFields(ControlFlowGraph cfg) {
+  private void checkOwningCollectionFields(ControlFlowGraph cfg) {
     if (cfg.getUnderlyingAST().getKind() == Kind.METHOD) {
       MethodTree method = ((UnderlyingAST.CFGMethod) cfg.getUnderlyingAST()).getMethod();
       TreePath path = cmAtf.getPath(method);
@@ -1197,7 +1197,7 @@ public class MustCallConsistencyAnalyzer {
           Element memberElm = TreeUtils.elementFromDeclaration(tree);
           boolean isCollection =
               MustCallOnElementsAnnotatedTypeFactory.isCollection(tree, cmoeTypeFactory);
-          boolean isOwningArray = memberElm != null && cmAtf.hasOwningArray(memberElm);
+          boolean isOwningCollection = memberElm != null && cmAtf.hasOwningCollection(memberElm);
           boolean isOwning = memberElm != null && cmAtf.hasOwning(memberElm);
           boolean isField = memberElm != null && memberElm.getKind().isField();
           boolean isArray =
@@ -1205,18 +1205,18 @@ public class MustCallConsistencyAnalyzer {
                   && memberElm.asType() != null
                   && memberElm.asType().getKind() == TypeKind.ARRAY;
           if (isField) {
-            if (isOwningArray) {
+            if (isOwningCollection) {
               if (!ElementUtils.isFinal(memberElm)) {
-                checker.reportError(member, "owningarray.field.not.final", tree.getName());
+                checker.reportError(member, "owningcollection.field.not.final", tree.getName());
               }
               if (ElementUtils.isStatic(memberElm)) {
-                checker.reportError(member, "owningarray.field.static", tree.getName());
+                checker.reportError(member, "owningcollection.field.static", tree.getName());
               }
               // if (!ElementUtils.isPrivate(memberElm)) {
-              //   checker.reportError(member, "owningarray.field.private", tree.getName());
+              //   checker.reportError(member, "owningcollection.field.private", tree.getName());
               // }
               if (!isArray && !isCollection) {
-                checker.reportError(member, "owningarray.nonarray", tree.getName());
+                checker.reportError(member, "owningcollection.nonarray", tree.getName());
               }
             } else if (isOwning) {
               if (isArray || isCollection) {
@@ -1246,11 +1246,11 @@ public class MustCallConsistencyAnalyzer {
           receiver.getTree() != null
               && MustCallOnElementsAnnotatedTypeFactory.isCollection(
                   receiver.getTree(), cmoeTypeFactory);
-      boolean isOwningArray =
+      boolean isOwningCollection =
           receiver.getTree() != null
               && TreeUtils.elementFromTree(receiver.getTree()) != null
-              && cmAtf.hasOwningArray(TreeUtils.elementFromTree(receiver.getTree()));
-      if (isCollection && isOwningArray) {
+              && cmAtf.hasOwningCollection(TreeUtils.elementFromTree(receiver.getTree()));
+      if (isCollection && isOwningCollection) {
         List<Node> args = min.getArguments();
         MethodSigType methodSigType = RLCUtils.getMethodSigType(man.getMethod());
         switch (methodSigType) {
@@ -1746,8 +1746,8 @@ public class MustCallConsistencyAnalyzer {
               // Transfer ownership!
               obligations.remove(localObligation);
             }
-          } else if (cmAtf.hasOwningArray(parameter) && node instanceof ObjectCreationNode) {
-            // remove obligation for @OwningArray constructor call
+          } else if (cmAtf.hasOwningCollection(parameter) && node instanceof ObjectCreationNode) {
+            // remove obligation for @OwningCollection constructor call
             Obligation localObligation = getObligationForVar(obligations, local);
             obligations.remove(localObligation);
           }
@@ -1844,14 +1844,15 @@ public class MustCallConsistencyAnalyzer {
         (arrTree instanceof VariableTree)
             ? TreeUtils.elementFromDeclaration((VariableTree) arrTree)
             : TreeUtils.elementFromTree((IdentifierTree) arrTree);
-    if (arrElm.getKind() == ElementKind.FIELD && arrElm.getAnnotation(OwningArray.class) != null) {
+    if (arrElm.getKind() == ElementKind.FIELD
+        && arrElm.getAnnotation(OwningCollection.class) != null) {
       if (ElementUtils.isFinal(arrElm)) {
         if (cfval == null) {
           // entry block doesn't have final field in store yet
           return Collections.emptyList();
         }
       } else {
-        // nonfinal OwningArray field is illegal. An error was already issued.
+        // nonfinal OwningCollection field is illegal. An error was already issued.
         // Prevent program crash and return here.
         return Collections.emptyList();
       }
@@ -1895,31 +1896,32 @@ public class MustCallConsistencyAnalyzer {
    * <p>Obligation creation rules for MustCallOnElements checker.
    *
    * <ul>
-   *   <li>1. A declaration assignment where the lhs is {@code @OwningArray} always creates an
-   *       obligation for the array annotated {@code @OwningArray}.
-   *   <li>2. A reassignment to a new array where lhs is {@code @OwningArray} and
+   *   <li>1. A declaration assignment where the lhs is {@code @OwningCollection} always creates an
+   *       obligation for the array annotated {@code @OwningCollection}.
+   *   <li>2. A reassignment to a new array where lhs is {@code @OwningCollection} and
    *       {@code @MustCallOnElementsUnknown} creates an obligation for the array.
-   *   <li>3. A constructor assignment of an {@code @OwningArray} parameter to an
-   *       {@code @OwningArray} field removes the obligation of the parameter.
+   *   <li>3. A constructor assignment of an {@code @OwningCollection} parameter to an
+   *       {@code @OwningCollection} field removes the obligation of the parameter.
    *   <li>4. An assignment in a pattern-matched assignment loop removes the obligation of the rhs.
    * </ul>
    *
    * <p>Assignment rules:
    *
    * <ul>
-   *   <li>1. An {@code @OwningArray} field may only be assigned to a new array or an
-   *       {@code @OwningArray} parameter and only in the constructor.
-   *   <li>2. {@code @OwningArray} field and its elements may not be assigned outside of
+   *   <li>1. An {@code @OwningCollection} field may only be assigned to a new array or an
+   *       {@code @OwningCollection} parameter and only in the constructor.
+   *   <li>2. {@code @OwningCollection} field and its elements may not be assigned outside of
    *       constructor.
-   *   <li>3. When lhs is a local {@code @OwningArray} identifier, the rhs may only be a newly
+   *   <li>3. When lhs is a local {@code @OwningCollection} identifier, the rhs may only be a newly
    *       allocated array.
-   *   <li>4. Before an assignment-loop for {@code @OwningArray} arr, arr must not have any open
-   *       calling obligations. Enforced in {@code verifyAllocatingForLoop()}.
-   *   <li>5. The elements of an {@code @OwningArray} may only be assigned in an allocating loop.
-   *   <li>6. The elements of an {@code @OwningArray} field may only be assigned once in the
+   *   <li>4. Before an assignment-loop for {@code @OwningCollection} arr, arr must not have any
+   *       open calling obligations. Enforced in {@code verifyAllocatingForLoop()}.
+   *   <li>5. The elements of an {@code @OwningCollection} may only be assigned in an allocating
+   *       loop.
+   *   <li>6. The elements of an {@code @OwningCollection} field may only be assigned once in the
    *       constructor.
-   *   <li>7. The rhs of an assignment may only be {@code @OwningArray} if it is an array access
-   *       (for example {@code arr[i]}) and the lhs is not an {@code @OwningArray}.
+   *   <li>7. The rhs of an assignment may only be {@code @OwningCollection} if it is an array
+   *       access (for example {@code arr[i]}) and the lhs is not an {@code @OwningCollection}.
    * </ul>
    *
    * @param lhs node of the lhs of the assignment
@@ -1929,7 +1931,7 @@ public class MustCallConsistencyAnalyzer {
    * @param cfg the ControlFlowGraph of the enclosing method
    * @param obligations the set of tracked obligations
    */
-  private void checkAssignmentToOwningArray(
+  private void checkAssignmentToOwningCollection(
       Node lhs,
       Node rhs,
       Node rhsExpr,
@@ -1942,25 +1944,26 @@ public class MustCallConsistencyAnalyzer {
         mcoeTypeFactory == null ? null : mcoeTypeFactory.getStoreBefore(assignmentNode.getTree());
     CFStore cmoeStore =
         cmoeTypeFactory == null ? null : cmoeTypeFactory.getStoreBefore(assignmentNode.getTree());
-    boolean lhsIsOwningArray =
-        !noLightweightOwnership && !isLoopBodyAnalysis && cmAtf.hasOwningArray(lhsElement);
-    boolean rhsIsOwningArray =
-        rhsElement != null && !isLoopBodyAnalysis && cmAtf.hasOwningArray(rhsElement);
+    boolean lhsIsOwningCollection =
+        !noLightweightOwnership && !isLoopBodyAnalysis && cmAtf.hasOwningCollection(lhsElement);
+    boolean rhsIsOwningCollection =
+        rhsElement != null && !isLoopBodyAnalysis && cmAtf.hasOwningCollection(rhsElement);
     boolean lhsIsField = lhsElement.getKind() == ElementKind.FIELD;
     boolean lhsIsMcoeUnknown =
         mcoeStore != null && mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, lhs.getTree());
     MethodTree enclosingMethod = cfg.getEnclosingMethod(assignmentNode.getTree());
     boolean inConstructor = enclosingMethod != null && TreeUtils.isConstructor(enclosingMethod);
-    if (!lhsIsOwningArray && rhsIsOwningArray && !(rhsExpr instanceof ArrayAccessNode)) {
+    if (!lhsIsOwningCollection && rhsIsOwningCollection && !(rhsExpr instanceof ArrayAccessNode)) {
       // enforces 7. assignment rule:
       checker.reportError(assignmentNode.getTree(), "illegal.aliasing");
     }
-    if (lhsIsOwningArray) {
+    if (lhsIsOwningCollection) {
       if (enclosingMethod == null) {
-        // this is a declaration-definition of an @OwningArray field. nothing to check.
+        // this is a declaration-definition of an @OwningCollection field. nothing to check.
       } else if (inConstructor && lhsIsField) {
-        // assigning @OwningArray field to an @OwningArray argument in constructor is allowed
-        // verify whether rhs is an @OwningArray parameter
+        // assigning @OwningCollection field to an @OwningCollection argument in constructor is
+        // allowed
+        // verify whether rhs is an @OwningCollection parameter
         Tree lhsTree = lhs.getTree();
         boolean rhsIsParam = rhsElement != null && rhsElement.getKind() == ElementKind.PARAMETER;
         if (lhsTree instanceof ArrayAccessTree) {
@@ -1982,21 +1985,23 @@ public class MustCallConsistencyAnalyzer {
                     + arrayTree.getKind();
             Name arrayName = ((IdentifierTree) arrayTree).getName();
             // enforces 6. assignment rule:
-            // elements of @OwningArray field may only be assigned once in constructor
+            // elements of @OwningCollection field may only be assigned once in constructor
             if (this.alreadyAllocatedArrays.contains(arrayName)) {
               checker.reportError(
-                  assignmentNode.getTree(), "owningarray.field.elements.assigned.multiple.times");
+                  assignmentNode.getTree(),
+                  "owningcollection.field.elements.assigned.multiple.times");
             } else {
               this.alreadyAllocatedArrays.add(arrayName);
             }
           } else {
             // enforces 5. assignment rule:
-            // illegal assignment to elements of @OwningArray field in constructor
+            // illegal assignment to elements of @OwningCollection field in constructor
             checker.reportError(
-                assignmentNode.getTree(), "illegal.owningarray.field.elements.assignment");
+                assignmentNode.getTree(), "illegal.owningcollection.field.elements.assignment");
           }
-        } else if (rhsIsParam && rhsIsOwningArray) {
-          // assigning @OwningArray parameter to @OwningArray field. remove obligation for parameter
+        } else if (rhsIsParam && rhsIsOwningCollection) {
+          // assigning @OwningCollection parameter to @OwningCollection field. remove obligation for
+          // parameter
           removeObligationForNode(obligations, (LocalVariableNode) rhs);
         } else if (rhs.getTree() instanceof NewArrayTree) {
           // this is an allowed assignment case. "final" enforces that there is only one
@@ -2005,31 +2010,33 @@ public class MustCallConsistencyAnalyzer {
           // check whether rhs is new collection
           boolean rhsIsNewCollection = isNewCollection(rhsExpr);
           if (!rhsIsNewCollection) {
-            // any other assignment to @OwningArray field is not allowed (enforce 1. rule)
-            checker.reportError(assignmentNode.getTree(), "illegal.owningarray.field.assignment");
+            // any other assignment to @OwningCollection field is not allowed (enforce 1. rule)
+            checker.reportError(
+                assignmentNode.getTree(), "illegal.owningcollection.field.assignment");
           }
         }
       } else {
         if (lhsIsField) {
           // enforce 2. assignment rule:
-          // @OwningArray field may not be assigned (neither its elements) outside of constructor
+          // @OwningCollection field may not be assigned (neither its elements) outside of
+          // constructor
           checker.reportError(
-              assignmentNode.getTree(), "owningarray.field.assigned.outside.constructor");
+              assignmentNode.getTree(), "owningcollection.field.assigned.outside.constructor");
         } else if (lhs.getTree() instanceof VariableTree) {
-          // declaration of local @OwningArray. Can't be field since we're in the else clause
+          // declaration of local @OwningCollection. Can't be field since we're in the else clause
           if ((rhs instanceof ArrayCreationNode) || isNewCollection(rhsExpr)) {
             Obligation newObligation = CollectionObligation.fromTree(lhs.getTree());
             obligations.add(newObligation);
           } else {
             // enforces 3. assignment rule:
-            // assigning an @OwningArray to anything else is not allowed outside of constructor
+            // assigning an @OwningCollection to anything else is not allowed outside of constructor
             checker.reportError(
                 assignmentNode.getTree(),
-                "illegal.owningarray.assignment",
+                "illegal.owningcollection.assignment",
                 lhs.getTree().toString());
           }
         } else if (lhs.getTree() instanceof IdentifierTree) {
-          // definition of local @OwningArray. If the array was previously assigned, the old
+          // definition of local @OwningCollection. If the array was previously assigned, the old
           // (in-memory) array goes out of scope and must be checked.
           // The new one needs an obligation, add it.
           Obligation obligation = getObligationForVar(obligations, lhs.getTree());
@@ -2048,10 +2055,10 @@ public class MustCallConsistencyAnalyzer {
             obligations.add(newObligation);
           } else {
             // enforces 3. assignment rule:
-            // assigning an @OwningArray to anything else is not allowed outside of constructor
+            // assigning an @OwningCollection to anything else is not allowed outside of constructor
             checker.reportError(
                 assignmentNode.getTree(),
-                "illegal.owningarray.assignment",
+                "illegal.owningcollection.assignment",
                 lhs.getTree().toString());
           }
         } else if (lhs.getTree() instanceof ArrayAccessTree) {
@@ -2064,10 +2071,12 @@ public class MustCallConsistencyAnalyzer {
           if (!MustCallOnElementsAnnotatedTypeFactory.doesAssignmentCreateArrayObligation(
               (AssignmentTree) assignmentNode.getTree())) {
             // enforces 5. assignment rule:
-            // assignment not in a pattern-matched loop - not permitted for @OwningArray
-            checker.reportError(assignmentNode.getTree(), "illegal.owningarray.element.assignment");
+            // assignment not in a pattern-matched loop - not permitted for @OwningCollection
+            checker.reportError(
+                assignmentNode.getTree(), "illegal.owningcollection.element.assignment");
           } else {
-            // Remove Obligations from local variables, now that the @OwningArray is responsible.
+            // Remove Obligations from local variables, now that the @OwningCollection is
+            // responsible.
             // (When obligation creation is turned off, non-final fields cannot take ownership.)
             if (!(rhs instanceof LocalVariableNode)) {
               throw new BugInCF(
@@ -2130,9 +2139,9 @@ public class MustCallConsistencyAnalyzer {
     MethodTree enclosingMethod = cfg.getEnclosingMethod(assignmentNode.getTree());
     boolean inConstructor = enclosingMethod != null && TreeUtils.isConstructor(enclosingMethod);
 
-    // update obligations for assignments to @OwningArray array
+    // update obligations for assignments to @OwningCollection array
     if (!isLoopBodyAnalysis) {
-      checkAssignmentToOwningArray(lhs, rhs, rhsExpr, assignmentNode, cfg, obligations);
+      checkAssignmentToOwningCollection(lhs, rhs, rhsExpr, assignmentNode, cfg, obligations);
     }
 
     // Ownership transfer to @Owning field.
@@ -2199,9 +2208,9 @@ public class MustCallConsistencyAnalyzer {
       }
     } else if (lhs instanceof LocalVariableNode) {
       LocalVariableNode lhsVar = (LocalVariableNode) lhs;
-      boolean isOwningArray =
-          !isLoopBodyAnalysis && !noLightweightOwnership && cmAtf.hasOwningArray(lhsElement);
-      if (!isOwningArray) {
+      boolean isOwningCollection =
+          !isLoopBodyAnalysis && !noLightweightOwnership && cmAtf.hasOwningCollection(lhsElement);
+      if (!isOwningCollection) {
         updateObligationsForPseudoAssignment(obligations, assignmentNode, lhsVar, rhs);
       }
       if (isLoopBodyAnalysis) {
@@ -2943,8 +2952,8 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Checks whether the given return statement returns an {@code @OwningArray} and reports an error
-   * if it does.
+   * Checks whether the given return statement returns an {@code @OwningCollection} and reports an
+   * error if it does.
    *
    * @param node the return node
    */
@@ -2952,9 +2961,9 @@ public class MustCallConsistencyAnalyzer {
     Node result = node.getResult();
     Tree tree = result == null ? null : result.getTree();
     Element elt = tree == null ? null : TreeUtils.elementFromTree(tree);
-    boolean isOwningArray = elt != null && cmAtf.hasOwningArray(elt);
-    if (isOwningArray) {
-      checker.reportError(node.getTree(), "return.owningarray");
+    boolean isOwningCollection = elt != null && cmAtf.hasOwningCollection(elt);
+    if (isOwningCollection) {
+      checker.reportError(node.getTree(), "return.owningcollection");
     }
   }
 
@@ -2962,7 +2971,7 @@ public class MustCallConsistencyAnalyzer {
    * Ensures for the declaration given by the {@code VariableTree} that it is not:
    *
    * <ul>
-   *   <li>{@code @OwningArray} and NOT a 1D-array/collection
+   *   <li>{@code @OwningCollection} and NOT a 1D-array/collection
    *   <li>{@code @Owning} and an array/collection
    * </ul>
    *
@@ -2972,7 +2981,7 @@ public class MustCallConsistencyAnalyzer {
    */
   private void checkVariableDeclaration(VariableTree tree) {
     Element elt = tree == null ? null : TreeUtils.elementFromDeclaration(tree);
-    boolean isOwningArray = elt != null && cmAtf.hasOwningArray(elt);
+    boolean isOwningCollection = elt != null && cmAtf.hasOwningCollection(elt);
     boolean isOwning = elt != null && cmAtf.hasOwning(elt);
     boolean isArray =
         elt != null && elt.asType() != null && elt.asType().getKind() == TypeKind.ARRAY;
@@ -2982,8 +2991,8 @@ public class MustCallConsistencyAnalyzer {
             && ((ArrayType) elt.asType()).getComponentType().getKind() != TypeKind.ARRAY;
     boolean isCollection =
         elt != null && MustCallOnElementsAnnotatedTypeFactory.isCollection(tree, mcoeTypeFactory);
-    if (isOwningArray && !(is1dArray || isCollection)) {
-      checker.reportError(tree, "owningarray.nonarray", tree);
+    if (isOwningCollection && !(is1dArray || isCollection)) {
+      checker.reportError(tree, "owningcollection.nonarray", tree);
     } else if (isOwning && (isArray || isCollection)) {
       checker.reportError(tree, "owning.array", tree);
     }
@@ -2994,7 +3003,7 @@ public class MustCallConsistencyAnalyzer {
    *
    * <p>Check if the node corresponds to the condition of an allocating for-loop and whether the
    * array the loop iterates over has any open obligations, in which case the loop is illegal and an
-   * error is reported. Since @OwningArray fields don't have an empty mcoe default type, don't
+   * error is reported. Since @OwningCollection fields don't have an empty mcoe default type, don't
    * execute the check for them as it would always indicate the loop is illegal. Their loop must be
    * in a constructor and is checked in updateObligationsForAssignment().
    *
@@ -3010,9 +3019,9 @@ public class MustCallConsistencyAnalyzer {
     ExpressionTree arr =
         MustCallOnElementsAnnotatedTypeFactory.getCollectionTreeForLoopWithThisCondition(
             node.getTree());
-    boolean isOwningArrayField =
+    boolean isOwningCollectionField =
         arr != null
-            && TreeUtils.elementFromTree(arr).getAnnotation(OwningArray.class) != null
+            && TreeUtils.elementFromTree(arr).getAnnotation(OwningCollection.class) != null
             && TreeUtils.elementFromTree(arr).getKind() == ElementKind.FIELD;
     boolean isAllocatingForLoop =
         MustCallOnElementsAnnotatedTypeFactory.whichObligationsDoesLoopWithThisConditionCreate(
@@ -3022,7 +3031,7 @@ public class MustCallConsistencyAnalyzer {
                     .whichObligationsDoesLoopWithThisConditionCreate(node.getTree())
                     .size()
                 > 0;
-    if (!isOwningArrayField && arr != null && isAllocatingForLoop) {
+    if (!isOwningCollectionField && arr != null && isAllocatingForLoop) {
       Obligation currentObligation = getObligationForVar(obligations, arr);
       if (currentObligation != null) {
         checkMustCallOnElements(
@@ -3435,7 +3444,7 @@ public class MustCallConsistencyAnalyzer {
           // method.
           incrementNumMustCall(paramElement);
         }
-        if (paramElement.getAnnotation(OwningArray.class) != null) {
+        if (paramElement.getAnnotation(OwningCollection.class) != null) {
           result.add(
               new CollectionObligation(
                   ImmutableSet.of(
@@ -3517,7 +3526,7 @@ public class MustCallConsistencyAnalyzer {
    * obligation is not a {@code @CollectionObligation} anyways or the {@code MustCallOnElements}
    * values are a subset of the {@code @CalledMethodsOnElements} values.
    *
-   * <p>This is now overkill, since we don't allow aliasing of {@code @OwningArray} anymore.
+   * <p>This is now overkill, since we don't allow aliasing of {@code @OwningCollection} anymore.
    * However, it it sound and doesn't throw additional errors if code does end up aliasing.
    *
    * @param obligation the Obligation
@@ -3552,9 +3561,10 @@ public class MustCallConsistencyAnalyzer {
     for (ResourceAlias alias : obligation.resourceAliases) {
       List<String> mcoeValuesOfAlias =
           mcoeTypeFactory.getMustCallOnElementsObligations(mcoeStore, alias.tree);
-      boolean isOwningArray = alias.element != null && cmAtf.hasOwningArray(alias.element);
-      boolean hasRevokedOwnership = mcoeValuesOfAlias == null && isOwningArray;
-      boolean isReadOnlyAlias = mcoeValuesOfAlias == null && !isOwningArray;
+      boolean isOwningCollection =
+          alias.element != null && cmAtf.hasOwningCollection(alias.element);
+      boolean hasRevokedOwnership = mcoeValuesOfAlias == null && isOwningCollection;
+      boolean isReadOnlyAlias = mcoeValuesOfAlias == null && !isOwningCollection;
       if (hasRevokedOwnership) {
         if (isExit) {
           // since the obligation is revoked in the case of an exit, this has to be a manual
@@ -3615,7 +3625,7 @@ public class MustCallConsistencyAnalyzer {
       } else {
         checker.reportError(
             occurence,
-            "illegal.owningarray.allocation",
+            "illegal.owningcollection.allocation",
             occurence.toString(),
             formatMissingMustCallMethods(new ArrayList<>(mcoeValues)));
         return false;

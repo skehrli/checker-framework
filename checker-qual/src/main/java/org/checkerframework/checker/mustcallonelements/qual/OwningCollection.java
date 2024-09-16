@@ -15,4 +15,4 @@ import org.checkerframework.checker.mustcall.qual.Owning;
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.METHOD, ElementType.PARAMETER, ElementType.FIELD, ElementType.LOCAL_VARIABLE})
-public @interface OwningArray {}
+public @interface OwningCollection {}

@@ -34,7 +34,7 @@ import org.checkerframework.checker.mustcall.qual.InheritableMustCall;
 import org.checkerframework.checker.mustcall.qual.MustCall;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElements;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElementsUnknown;
-import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
+import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.MustCallConsistencyAnalyzer;
 import org.checkerframework.checker.resourceleak.MustCallInference;
@@ -205,14 +205,16 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
    * returns whether the specified assignment AST node is in a pattern-matched allocating for-loop.
    *
    * @param assgn the assignment AST node
-   * @return whether the specified node is in an allocating for-loop for an {@code @OwningArray}.
+   * @return whether the specified node is in an allocating for-loop for an
+   *     {@code @OwningCollection}.
    */
   public static boolean doesAssignmentCreateArrayObligation(AssignmentTree assgn) {
     return assignmentToLoopMap.containsKey(assgn);
   }
 
   /**
-   * Marks the specified loop as fulfilling an mcoe obligation for an {@code @OwningArray} array.
+   * Marks the specified loop as fulfilling an mcoe obligation for an {@code @OwningCollection}
+   * array.
    *
    * @param loop the wrapper class of the loop
    */
@@ -221,7 +223,8 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   }
 
   /**
-   * Marks the specified loop as fulfilling an mcoe obligation for an {@code @OwningArray} array.
+   * Marks the specified loop as fulfilling an mcoe obligation for an {@code @OwningCollection}
+   * array.
    *
    * @param loop the wrapper class of the loop
    * @param condition the CFG node corresponding to the loop condition
@@ -231,7 +234,7 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   }
 
   /**
-   * Marks the specified loop as creating an mcoe obligation for an {@code @OwningArray} array.
+   * Marks the specified loop as creating an mcoe obligation for an {@code @OwningCollection} array.
    *
    * @param loop the wrapper class of the loop
    */
@@ -414,14 +417,15 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
         (arrTree instanceof VariableTree)
             ? TreeUtils.elementFromDeclaration((VariableTree) arrTree)
             : TreeUtils.elementFromTree((IdentifierTree) arrTree);
-    if (arrElm.getKind() == ElementKind.FIELD && arrElm.getAnnotation(OwningArray.class) != null) {
+    if (arrElm.getKind() == ElementKind.FIELD
+        && arrElm.getAnnotation(OwningCollection.class) != null) {
       if (ElementUtils.isFinal(arrElm)) {
         if (cfval == null) {
           // entry block doesn't have final field in store yet
           return false;
         }
       } else {
-        // nonfinal OwningArray field is illegal. An error was already issued.
+        // nonfinal OwningCollection field is illegal. An error was already issued.
         // Prevent program crash and return here.
         return false;
       }
@@ -449,7 +453,7 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   }
 
   /**
-   * Returns a list of methods that have to be "called on elements" on the {@code @OwningArray}
+   * Returns a list of methods that have to be "called on elements" on the {@code @OwningCollection}
    * array specified by the given tree (expected to be an array identifier) or null if there is a
    * {@code @MustCallOnElementsUnknown} annotation. The list is extracted from the store passed as
    * an argument.
@@ -479,14 +483,15 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
         (arrTree instanceof VariableTree)
             ? TreeUtils.elementFromDeclaration((VariableTree) arrTree)
             : TreeUtils.elementFromTree((IdentifierTree) arrTree);
-    if (arrElm.getKind() == ElementKind.FIELD && arrElm.getAnnotation(OwningArray.class) != null) {
+    if (arrElm.getKind() == ElementKind.FIELD
+        && arrElm.getAnnotation(OwningCollection.class) != null) {
       if (ElementUtils.isFinal(arrElm)) {
         if (cfval == null) {
           // entry block doesn't have final field in store yet
           return Collections.emptyList();
         }
       } else {
-        // nonfinal OwningArray field is illegal. An error was already issued.
+        // nonfinal OwningCollection field is illegal. An error was already issued.
         // Prevent program crash and return here.
         return Collections.emptyList();
       }
@@ -511,9 +516,9 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   }
 
   /*
-   * Change the default @MustCallOnElements type value of @OwningArray fields to contain the @MustCall
+   * Change the default @MustCallOnElements type value of @OwningCollection fields to contain the @MustCall
    * methods of the component, if no manual annotation is present.
-   * For example the type of: final @OwningArray Socket[] s is changed to @MustCallOnElements("close").
+   * For example the type of: final @OwningCollection Socket[] s is changed to @MustCallOnElements("close").
    */
   // @Override
   // public void addComputedTypeAnnotations(Tree tree, AnnotatedTypeMirror type, boolean useFlow) {
@@ -532,7 +537,7 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   //     }
   //     if (noMcoeAnno) { // don't override an existing manual annotation
   //       if ((elt.getKind() == ElementKind.FIELD || elt.getKind() == ElementKind.PARAMETER)
-  //           && getDeclAnnotation(elt, OwningArray.class) != null) {
+  //           && getDeclAnnotation(elt, OwningCollection.class) != null) {
   //         TypeMirror componentType = ((ArrayType) elt.asType()).getComponentType();
   //         List<String> mcoeObligationsOfOwningField = getMustCallValuesForType(componentType);
   //         AnnotationMirror newType = getMustCallOnElementsType(mcoeObligationsOfOwningField);
@@ -543,9 +548,9 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   // }
 
   /*
-   * Change the default @MustCallOnElements type value of @OwningArray fields and @OwningArray method parameters
+   * Change the default @MustCallOnElements type value of @OwningCollection fields and @OwningCollection method parameters
    * to contain the @MustCall methods of the component, if no manual annotation is present.
-   * For example the type of: final @OwningArray Socket[] s is changed to @MustCallOnElements("close").
+   * For example the type of: final @OwningCollection Socket[] s is changed to @MustCallOnElements("close").
    */
   /* TODO could add: if (elt instanceof VariableElement) {} to ensure it's a declaration? */
   @Override
@@ -553,7 +558,7 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
     super.addComputedTypeAnnotations(elt, type);
 
     if (elt.getKind() == ElementKind.METHOD || elt.getKind() == ElementKind.CONSTRUCTOR) {
-      // is a param @OwningArray?
+      // is a param @OwningCollection?
       // change the type of that param
       ExecutableElement method = (ExecutableElement) elt;
       AnnotatedExecutableType methodType = (AnnotatedExecutableType) type;
@@ -562,8 +567,8 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
       while (paramIterator.hasNext() && paramTypeIterator.hasNext()) {
         VariableElement param = paramIterator.next();
         AnnotatedTypeMirror paramType = paramTypeIterator.next();
-        // if (getDeclAnnotation(param, OwningArray.class) != null) {
-        // @OwningArray parameter
+        // if (getDeclAnnotation(param, OwningCollection.class) != null) {
+        // @OwningCollection parameter
         boolean noMcoeAnno = true;
         for (AnnotationMirror paramAnno : param.asType().getAnnotationMirrors()) {
           if (AnnotationUtils.areSameByName(
@@ -607,7 +612,7 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
       }
       if (noMcoeAnno) { // don't override an existing manual annotation
         if ((elt.getKind() == ElementKind.FIELD
-                && getDeclAnnotation(elt, OwningArray.class) != null)
+                && getDeclAnnotation(elt, OwningCollection.class) != null)
             || elt.getKind() == ElementKind.PARAMETER) {
           if (elt.asType() instanceof ArrayType) {
             TypeMirror componentType = ((ArrayType) elt.asType()).getComponentType();
@@ -797,7 +802,7 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
       // Therefore, if WPI is enabled, they should not be executed.
       if (getWholeProgramInference() == null
           && elt.getKind() == ElementKind.PARAMETER
-          && getDeclAnnotation(elt, OwningArray.class) == null) {
+          && getDeclAnnotation(elt, OwningCollection.class) == null) {
         // Parameters that are not annotated with @Owning should be treated as bottom
         // (to suppress warnings about them). An exception is polymorphic parameters,
         // which might be @MustCallOnElementsAlias (and so wouldn't be annotated with @Owning):

@@ -36,7 +36,7 @@ import org.checkerframework.checker.mustcall.qual.PolyMustCall;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsChecker;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElements;
-import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
+import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.MustCallConsistencyAnalyzer;
 import org.checkerframework.checker.resourceleak.MustCallConsistencyAnalyzer.MethodExitKind;
@@ -439,8 +439,8 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
     if (varElement.getKind().isField() && !typeFactory.noLightweightOwnership) {
       if (typeFactory.getDeclAnnotation(varElement, Owning.class) != null) {
         checkOwningField(varElement);
-      } else if (typeFactory.getDeclAnnotation(varElement, OwningArray.class) != null) {
-        checkOwningArrayField(varElement);
+      } else if (typeFactory.getDeclAnnotation(varElement, OwningCollection.class) != null) {
+        checkOwningCollectionField(varElement);
       }
     }
 
@@ -513,12 +513,12 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
 
   /**
    * Returns the {@code @MustCallOnElements} obligations of an element that is an
-   * {@code @OwningArray} field. If the passed element has no {@code @MustCallOnElements}
+   * {@code @OwningCollection} field. If the passed element has no {@code @MustCallOnElements}
    * annotation, the obligations of its component (in the case of an array), or type parameter (in
    * the case of a collection), or the empty list if the field is neither, are returned and if it
    * has an annotation, its value is returned.
    *
-   * @param field an Element corresponding to an {@code @OwningArray} field
+   * @param field an Element corresponding to an {@code @OwningCollection} field
    * @return list of {@code @MustCallOnElements} obligations of the field
    */
   private List<String> getMcoeObligationsForField(Element field) {
@@ -554,8 +554,8 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
   }
 
   /**
-   * Checks validity of a field {@code field} with an {@code @}{@link OwningArray} annotation. Say
-   * the type of {@code field} is {@code @MustCallOnElements("m")}}. This method checks that the
+   * Checks validity of a field {@code field} with an {@code @}{@link OwningCollection} annotation.
+   * Say the type of {@code field} is {@code @MustCallOnElements("m")}}. This method checks that the
    * enclosing class of {@code field} has a type {@code @MustCall("m2")} for some method {@code m2},
    * and that {@code m2} has an annotation {@code @EnsuresCalledMethodsOnElements(value =
    * "this.field", methods = "m")}, guaranteeing that the {@code @MustCallOnElements} obligation of
@@ -563,10 +563,11 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
    *
    * @param field the declaration of the field to check
    */
-  private void checkOwningArrayField(VariableElement field) {
+  private void checkOwningCollectionField(VariableElement field) {
     Set<Modifier> modifiers = field.getModifiers();
     if (!modifiers.contains(Modifier.FINAL)) {
-      // @OwningArray must be final. the consistency checker reports an error. don't execute any
+      // @OwningCollection must be final. the consistency checker reports an error. don't execute
+      // any
       // checks
       return;
     }
@@ -601,7 +602,7 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
               + ElementUtils.getQualifiedName(enclosingElement)
               + " has an empty @MustCall annotation";
     } else {
-      error = " [[checkOwningArrayField() did not find a reason!]]"; // should be reassigned
+      error = " [[checkOwningCollectionField() did not find a reason!]]"; // should be reassigned
       List<? extends Element> siblingsOfOwningField = enclosingElement.getEnclosedElements();
       for (Element siblingElement : siblingsOfOwningField) {
         if (siblingElement.getKind() == ElementKind.METHOD

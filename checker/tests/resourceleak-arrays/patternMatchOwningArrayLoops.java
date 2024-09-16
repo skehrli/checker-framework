@@ -1,55 +1,55 @@
 import java.net.Socket;
 import org.checkerframework.checker.mustcall.qual.Owning;
-import org.checkerframework.checker.mustcallonelements.qual.OwningArray;
+import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 
-class PatternMatchOwningArrayLoops {
+class PatternMatchOwningCollectionLoops {
   private final int n = 10;
   private final String myHost = "";
   private final int myPort = 1;
   // :: error: owning.array
   @Owning Socket[] s;
 
-  // @OwningArray non-(1dArray/collection) is not allowed
+  // @OwningCollection non-(1dArray/collection) is not allowed
   public void owningArrayNonArray() {
-    // :: error: owningarray.nonarray
-    @OwningArray Socket s;
-    // :: error: owningarray.nonarray
-    @OwningArray Socket[][] sMultiDimensional;
+    // :: error: owningcollection.nonarray
+    @OwningCollection Socket s;
+    // :: error: owningcollection.nonarray
+    @OwningCollection Socket[][] sMultiDimensional;
   }
 
-  public void illegalOwningArrayAssignment() {
+  public void illegalOwningCollectionAssignment() {
     Socket[] s = new Socket[n];
     // this is a false positive, but we only allow assignment
-    // of an @OwningArray to a new [].
-    // :: error: illegal.owningarray.assignment
-    @OwningArray Socket[] arr = s;
+    // of an @OwningCollection to a new [].
+    // :: error: illegal.owningcollection.assignment
+    @OwningCollection Socket[] arr = s;
   }
 
   // test that aliasing is not allowed.
   public void illegalAliasing() {
-    @OwningArray Socket[] arr = new Socket[n];
-    // :: error: illegal.owningarray.assignment
-    @OwningArray Socket[] arr2 = arr;
+    @OwningCollection Socket[] arr = new Socket[n];
+    // :: error: illegal.owningcollection.assignment
+    @OwningCollection Socket[] arr2 = arr;
     // :: error: illegal.aliasing
     Socket[] arr3 = arr;
   }
 
-  // test that declaring an @OwningArray is alright
-  public void illegalOwningArrayElementAssignment() {
-    @OwningArray Socket[] arr = new Socket[n];
+  // test that declaring an @OwningCollection is alright
+  public void illegalOwningCollectionElementAssignment() {
+    @OwningCollection Socket[] arr = new Socket[n];
     try {
-      // :: error: illegal.owningarray.element.assignment
+      // :: error: illegal.owningcollection.element.assignment
       // :: error: required.method.not.called
       arr[0] = new Socket(myHost, myPort);
     } catch (Exception e) {
     }
-    // :: error: illegal.owningarray.element.assignment
+    // :: error: illegal.owningcollection.element.assignment
     arr[0] = null;
   }
 
   public void unfulfilledAllocationLoop() {
     // :: error: unfulfilled.mustcallonelements.obligations
-    @OwningArray Socket[] arr = new Socket[n];
+    @OwningCollection Socket[] arr = new Socket[n];
     for (int i = 0; i < n; i++) {
       try {
         arr[i] = new Socket(myHost, myPort);
@@ -58,11 +58,11 @@ class PatternMatchOwningArrayLoops {
     }
   }
 
-  public void reassignOwningArrayWithOpenObligations() {
+  public void reassignOwningCollectionWithOpenObligations() {
     // try to trick the checker by closing the elements of the array
     // after reassigning it.
     // :: error: unfulfilled.mustcallonelements.obligations
-    @OwningArray Socket[] arr = new Socket[n];
+    @OwningCollection Socket[] arr = new Socket[n];
     for (int i = 0; i < n; i++) {
       try {
         arr[i] = new Socket(myHost, myPort);
@@ -80,7 +80,7 @@ class PatternMatchOwningArrayLoops {
 
   // test that opening and subsequent closing is alright
   public void validClosing() {
-    @OwningArray Socket[] arr = new Socket[n];
+    @OwningCollection Socket[] arr = new Socket[n];
     for (int i = 0; i < n; i++) {
       try {
         arr[i] = new Socket(myHost, myPort);
@@ -96,7 +96,7 @@ class PatternMatchOwningArrayLoops {
   }
 
   public void validDeallocationLoop() {
-    @OwningArray Socket[] arr = new Socket[n];
+    @OwningCollection Socket[] arr = new Socket[n];
     for (int i = 0; i < n; i++) {
       try {
         arr[i] = new Socket(myHost, myPort);
@@ -117,7 +117,7 @@ class PatternMatchOwningArrayLoops {
 
   public void invalidDeallocationLoop() {
     // :: error: unfulfilled.mustcallonelements.obligations
-    @OwningArray Socket[] arr = new Socket[n];
+    @OwningCollection Socket[] arr = new Socket[n];
     for (int i = 0; i < n; i++) {
       try {
         arr[i] = new Socket(myHost, myPort);
@@ -136,7 +136,7 @@ class PatternMatchOwningArrayLoops {
 
   public void invalidDeallocationLoop2() {
     // :: error: unfulfilled.mustcallonelements.obligations
-    @OwningArray Socket[] arr = new Socket[n];
+    @OwningCollection Socket[] arr = new Socket[n];
     for (int i = 0; i < n; i++) {
       try {
         arr[i] = new Socket(myHost, myPort);
@@ -155,7 +155,7 @@ class PatternMatchOwningArrayLoops {
   }
 
   public void validDeallocationLoop3() throws Exception {
-    @OwningArray Socket[] arr = new Socket[n];
+    @OwningCollection Socket[] arr = new Socket[n];
     for (int i = 0; i < n; i++) {
       try {
         arr[i] = new Socket(myHost, myPort);
@@ -175,7 +175,7 @@ class PatternMatchOwningArrayLoops {
 
   public void invalidDeallocationLoop4() {
     // :: error: unfulfilled.mustcallonelements.obligations
-    @OwningArray Socket[] arr = new Socket[n];
+    @OwningCollection Socket[] arr = new Socket[n];
     for (int i = 0; i < n; i++) {
       try {
         arr[i] = new Socket(myHost, myPort);
@@ -196,7 +196,7 @@ class PatternMatchOwningArrayLoops {
   // test that opening and subsequent closing is alright
   public void invalidClosingAndReopening() {
     // :: error: unfulfilled.mustcallonelements.obligations
-    @OwningArray Socket[] arr = new Socket[n];
+    @OwningCollection Socket[] arr = new Socket[n];
     for (int i = 0; i < n; i++) {
       try {
         arr[i] = new Socket(myHost, myPort);
@@ -219,7 +219,7 @@ class PatternMatchOwningArrayLoops {
 
   public void invalidReallocateElements() {
     // :: error: unfulfilled.mustcallonelements.obligations
-    @OwningArray Socket[] arr = new Socket[n];
+    @OwningCollection Socket[] arr = new Socket[n];
     for (int i = 0; i < n; i++) {
       try {
         arr[i] = new Socket(myHost, myPort);
@@ -228,7 +228,7 @@ class PatternMatchOwningArrayLoops {
     }
     for (int i = 0; i < n; i++) {
       try {
-        // :: error: illegal.owningarray.allocation
+        // :: error: illegal.owningcollection.allocation
         arr[i] = new Socket(myHost, myPort);
       } catch (Exception e) {
       }
@@ -237,7 +237,7 @@ class PatternMatchOwningArrayLoops {
 
   // test that passing ownership works
   public void validClosingByEnsuresCmoeMethod() {
-    @OwningArray Socket[] arr = new Socket[n];
+    @OwningCollection Socket[] arr = new Socket[n];
     for (int i = 0; i < n; i++) {
       try {
         arr[i] = new Socket(myHost, myPort);
@@ -247,7 +247,7 @@ class PatternMatchOwningArrayLoops {
     close(arr);
   }
 
-  public void close(@OwningArray Socket[] arr) {
+  public void close(@OwningCollection Socket[] arr) {
     for (int i = 0; i < n; i++) {
       try {
         arr[i].close();
