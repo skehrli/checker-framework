@@ -735,13 +735,39 @@ call.  Section~\ref{resource-leak-collections-parameters} discusses method
 calls.
 
 
-\subsectionAndLabel{Assigning elements in a resource-holding collection}{resource-leak-collections-declaration}
+\subsectionAndLabel{Using loops to operate on resource-holding collections}{resource-leak-collections-loops}
 
 In order to maintain homogeneity, code must use a loop to operate on a
 collection of resources.  Any operation (assignment, method calls, etc.)\
 on the elements of an \<@OwningCollection>, outside of a loop, is
 prohibited.  Furthermore, the loop must not terminate early --- it must
 operate upon every element of the collection.
+
+More concretely, the basic loop constraints are:
+\begin{itemize}
+\item Loop iteration bounds:
+  \begin{itemize}
+  \item
+    The loop is an enhanced \<for> loop (``foreach loop'') over the collection, or
+  \item
+    The loop is an indexed \<for> loop, such that
+    \begin{itemize}
+    \item The lower bound of iteration is 0, and
+    \item The upper bound of iteration is \<c.length> or \<c.size()> or \<n>, where \<n> is the effectively final variable used for the initialization of the collection size.
+    \item The loop contains no assignments to the loop variable.
+    \end{itemize}
+  \end{itemize}
+\item The loop does not terminate early: The loop body contains no \<return> or \<break> statements.
+\item The loop does not assign to the collection.
+\item The loop does not assign to collection elements, unless it is an
+  assignment loop (Section~\ref{resource-leak-collections-assign-elements}).
+\end{itemize}
+
+\noindent There are additional constraints for specific types of loops.
+
+
+
+\subsectionAndLabel{Assigning elements in a resource-holding collection}{resource-leak-collections-assign-elements}
 
 Here is an example of how to assign the elements of a collection of resources:
 
@@ -757,52 +783,51 @@ for (int i = 0; i < s.length; i++) {
 // Now, the type of `s` is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
 \end{Verbatim}
 
-The checker accepts an assignment loop if the following requirements are satisfied:
+The checker accepts an assignment loop if the following requirements are
+satisfied (in addition to the basic loop constraints of Section~\ref{resource-leak-collections-loops}):
 
 \begin{itemize}
   \item The collection elements have no open must-call obligations.  That
   is, the collection's \<@MustCallOnElements> values are a subset of its
   \<@CalledMethodsOnElements> values.
-  \item The loop is a \<for> loop.
-  \item The loop iterates from 0 to \<s.length> or \<n>, where \<n> is the effectively final variable used for the initialization of the collection size.
-  \item The update is a pre-increment or post-increment.
+  \item The loop is an indexed \<for> loop (not an enhanced \<for> loop).
   \item There is exactly one statement in the body (which may be a try-catch construct) that contains the assignment.
   \item The right-hand side of the assignment creates a new resource.
-  It cannot be an expression that might evaluate to an existing resource.
-  \item If there is a try-catch construct, the catch and finally blocks may not throw any exceptions, break out of the loop, call any methods or have any writes or return statements.
+    The right-hand side cannot be an expression that might evaluate to an existing resource.
+  \item If there is a try-catch construct, the catch and finally blocks may
+  not throw any exceptions, call any methods, or have any writes (in
+  addition to the basic loop constraints of Section~\ref{resource-leak-collections-loops}).
 \end{itemize}
 
 
+\subsectionAndLabel{Fulfilling \<@MustCallOnElements> obligations}{resource-leak-collection-fulfilling-obligations}
 
-\subsectionAndLabel{Directly fulfilling \<@MustCallOnElements> obligations on \<@OwningCollection> collections}{resource-leak-collection-fulfilling-obligations}
+A \<@MustCallOnElements> obligation can be fulfilled via operations on loop
+elements such as \<c[i]> or \<c.get(i)>.
+The loop has no constraints beyond the basic loop constraints of
+Section~\ref{resource-leak-collections-loops}), and its body may call an
+arbitrary number of methods on the collection elements.
 
-The \<@MustCallOnElements> obligations can be fulfilled in the following way:
+Here are two examples:
+
 \begin{verbatim}
-// 1. @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+// Suppose the type of `arr` is initially @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
 for (int i = 0; i < arr.length; i++) {
     try {
       arr[i].close();
       arr[i].foo();
     } catch (Exception e) {}
 }
-// 2. @MustCallOnElements({}) @CalledMethodsOnElements({"close", "foo"})
+// Then the type of `arr` is now. @MustCallOnElements({}) @CalledMethodsOnElements({"close", "foo"})
 \end{verbatim}
 
-The pattern-matching rules are the same for the method header as for the assigning loop (see Section~\ref{resource-leak-collections-declaration}), but far less strict for the loop body. Here are all the syntactic rules for such a fulfilling for-loop:
-\begin{itemize}
-  \item The loop must iterate from 0 to \<s.length> or \<n>, where \<n> is the effectively final variable used for the initialization of the collection size.
-  \item The update must be either a pre-increment or post-increment.
-  \item The loop body must not contain any return or break statements or writes to the loop variable. Apart from that, the loop body has no further constraints and an arbitrary amount of methods may be called on the collection elements.
-\end{itemize}
-The operation has no precondition. The checker executes a CalledMethods analysis on the loop body and checks the \<@CalledMethods> type of \<arr[i]> at every loop body exit point to determine the set of methods \<S> definitely called on the collection elements. The semantics is that \<S> is added to the \<@CalledMethodsOnElements> type of \<arr> and removed from the \<@MustCallOnElements> type of \<arr>.
-
-The obligation can also be fulfilled by calling a method, which has an \<@EnsuresCalledMethods> annotation, with the collection element as an argument:
+The obligation can also be fulfilled by calling a method that has an \<@EnsuresCalledMethods> annotation, with the collection element as an argument:
 \begin{verbatim}
-// 1. @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+// Suppose the type of `arr` is initially @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
 for (int i = 0; i < arr.length; i++) {
-    method(arr[i]); // method calls 'close' on arr[i]
+    method(arr[i]); // method calls 'close' on its argument, see below
 }
-// 2. @MustCallOnElements({}) @CalledMethodsOnElements({"close"})
+// Then the type of `arr` is now @MustCallOnElements({}) @CalledMethodsOnElements({"close"})
 
 ...
 
@@ -814,7 +839,8 @@ void method(Socket s) {
 }
 \end{verbatim}
 
-One can also write an enhanced-for-loop. The same rules for the method body apply (no return or break statements):
+Here is an example written as an enhanced \<for> loop:
+
 \begin{verbatim}
 // 1. @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
 for (Socket s: arr) {
@@ -825,7 +851,8 @@ for (Socket s: arr) {
 // 2. @MustCallOnElements({}) @CalledMethodsOnElements({"close"})
 \end{verbatim}
 
-\subsectionAndLabel{\<@OwningCollection> method parameters }{resource-leak-collections-parameters}
+
+\subsectionAndLabel{\<@OwningCollection> method parameters}{resource-leak-collections-parameters}
 
 When \<@OwningCollection> is written on a method parameter, the default type of the parameter is \<@MustCallOnElements(\textit{obligations})>, where \textit{obligations} is the set of \<@MustCall> obligations of the component type. The user is allowed to put any manual \<@MustCallOnElements> annotation to override this default however.
 
