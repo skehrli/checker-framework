@@ -21,7 +21,6 @@ import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTy
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsChecker;
 import org.checkerframework.framework.qual.StubFiles;
 import org.checkerframework.framework.source.AggregateChecker;
-import org.checkerframework.framework.qual.StubFiles;
 import org.checkerframework.framework.source.SourceChecker;
 import org.checkerframework.framework.source.SupportedOptions;
 
@@ -141,7 +140,7 @@ public class ResourceLeakChecker extends AggregateChecker {
   private int numMustCallFailed = 0;
 
   @Override
-  protected Set<Class<? extends SourceChecker>> getImmediateSubcheckerClasses() {
+  protected Set<Class<? extends SourceChecker>> getSupportedCheckers() {
     Set<Class<? extends SourceChecker>> checkers = new LinkedHashSet<>(1);
     checkers.add(MustCallOnElementsChecker.class);
 
