@@ -1216,11 +1216,11 @@ public class MustCallConsistencyAnalyzer {
               //   checker.reportError(member, "owningcollection.field.private", tree.getName());
               // }
               if (!isArray && !isCollection) {
-                checker.reportError(member, "owningcollection.nonarray", tree.getName());
+                checker.reportError(member, "owningcollection.noncollection", tree.getName());
               }
             } else if (isOwning) {
               if (isArray || isCollection) {
-                checker.reportError(member, "owning.array", tree.getName());
+                checker.reportError(member, "owning.collection", tree.getName());
               }
             }
           }
@@ -2992,9 +2992,9 @@ public class MustCallConsistencyAnalyzer {
     boolean isCollection =
         elt != null && MustCallOnElementsAnnotatedTypeFactory.isCollection(tree, mcoeTypeFactory);
     if (isOwningCollection && !(is1dArray || isCollection)) {
-      checker.reportError(tree, "owningcollection.nonarray", tree);
+      checker.reportError(tree, "owningcollection.noncollection", tree);
     } else if (isOwning && (isArray || isCollection)) {
-      checker.reportError(tree, "owning.array", tree);
+      checker.reportError(tree, "owning.collection", tree);
     }
   }
 

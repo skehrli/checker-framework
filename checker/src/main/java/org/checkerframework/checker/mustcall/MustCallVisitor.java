@@ -556,7 +556,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
     Name arrayNameInBody = nameFromExpression(arrayAccess.getExpression());
     if (arrayAccess.getExpression().getKind() != Tree.Kind.IDENTIFIER) {
       // expected array, but does not directly evaluate to an identifier
-      checker.reportWarning(arrayAccess, "unexpected.array.expression");
+      checker.reportWarning(arrayAccess, "unexpected.collection.expression");
       return;
     }
 
