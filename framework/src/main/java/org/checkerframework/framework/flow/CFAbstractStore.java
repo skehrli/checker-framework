@@ -146,6 +146,7 @@ public abstract class CFAbstractStore<V extends CFAbstractValue<V>, S extends CF
   protected CFAbstractStore(CFAbstractAnalysis<V, S, ?> analysis, boolean sequentialSemantics) {
     this.analysis = analysis;
     this.localVariableValues = new HashMap<>();
+    this.iteratedCollectionElements = new HashMap<>();
     this.thisValue = null;
     this.fieldValues = new HashMap<>();
     this.methodCallExpressions = new HashMap<>();
@@ -166,6 +167,7 @@ public abstract class CFAbstractStore<V extends CFAbstractValue<V>, S extends CF
   protected CFAbstractStore(CFAbstractStore<V, S> other) {
     this.analysis = other.analysis;
     this.localVariableValues = new HashMap<>(other.localVariableValues);
+    this.iteratedCollectionElements = new HashMap<>(other.iteratedCollectionElements);
     this.thisValue = other.thisValue;
     this.fieldValues = new HashMap<>(other.fieldValues);
     this.methodCallExpressions = new HashMap<>(other.methodCallExpressions);
