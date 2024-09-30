@@ -185,10 +185,10 @@ public class ResourceLeakChecker extends AggregateChecker {
   @Override
   public void typeProcessingOver() {
     if (hasOption(COUNT_MUST_CALL)) {
-      message(Diagnostic.Kind.WARNING, "Found %d must call obligation(s).%n", numMustCall);
+      message(Diagnostic.Kind.WARNING, "Found %d must-call obligation(s).%n", numMustCall);
       message(
           Diagnostic.Kind.WARNING,
-          "Successfully verified %d must call obligation(s).%n",
+          "Successfully verified %d must-call obligation(s).%n",
           numMustCall - numMustCallFailed);
     }
     super.typeProcessingOver();

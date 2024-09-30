@@ -848,7 +848,8 @@ public class MustCallConsistencyAnalyzer {
     // ensure checked loop is initialized in a valid way
     Objects.requireNonNull(
         potentiallyFulfillingLoop.collectionElementTree,
-        "CollectionElementAccess tree provided to analyze loop body of an mcoe-obligation-fulfilling loop is null.");
+        "CollectionElementAccess tree provided to analyze loop body of an"
+            + " mcoe-obligation-fulfilling loop is null.");
     Objects.requireNonNull(
         potentiallyFulfillingLoop.loopBodyEntryBlock,
         "Block provided to analyze loop body of an mcoe-obligation-fulfilling loop is null.");
@@ -1108,7 +1109,8 @@ public class MustCallConsistencyAnalyzer {
       EnhancedForLoopTree loop = methodInvocationNode.getEnhancedForLoop();
       if (loop == null) {
         throw new BugInCF(
-            "MethodInvocationNode.iterableExpression should be non-null iff MethodInvocationNode.enhancedForLoop is non-null");
+            "MethodInvocationNode.iterableExpression should be non-null iff"
+                + " MethodInvocationNode.enhancedForLoop is non-null");
       }
 
       // Find the first block of the loop body.
@@ -1151,7 +1153,8 @@ public class MustCallConsistencyAnalyzer {
             nodeIterator = block.getNodes().iterator();
           } else {
             throw new BugInCF(
-                "Encountered more than one CFG Block predeccessor trying to find the enhanced-for-loop update block.");
+                "Encountered more than one CFG Block predeccessor trying to find the"
+                    + " enhanced-for-loop update block.");
           }
         }
         node = nodeIterator.next();
@@ -1941,7 +1944,8 @@ public class MustCallConsistencyAnalyzer {
               (AssignmentTree) assignmentNode.getTree())) {
             // allocating for-loop: remove obligation of RHS
             assert rhs instanceof LocalVariableNode
-                : "rhs of pattern-matched assignment assumed to be LocalVariableNode, but its tree is "
+                : "rhs of pattern-matched assignment assumed to be LocalVariableNode,"
+                    + " but its tree is "
                     + rhs.getTree().getKind();
             removeObligationForNode(obligations, (LocalVariableNode) rhs);
 
@@ -2049,7 +2053,8 @@ public class MustCallConsistencyAnalyzer {
             // (When obligation creation is turned off, non-final fields cannot take ownership.)
             if (!(rhs instanceof LocalVariableNode)) {
               throw new BugInCF(
-                  "rhs of pattern-matched assignment assumed to be LocalVariableNode, but its tree is "
+                  "rhs of pattern-matched assignment assumed to be LocalVariableNode, but its tree"
+                      + " is "
                       + rhs.getTree().getKind());
             }
             removeObligationForNode(obligations, (LocalVariableNode) rhs);
@@ -3718,7 +3723,7 @@ public class MustCallConsistencyAnalyzer {
   /**
    * Shared implementation for the two version of countMustCall. Don't call this directly.
    *
-   * @param type the type of the object that has a must call obligation
+   * @param type the type of the object that has a must-call obligation
    */
   private void incrementMustCallImpl(TypeMirror type) {
     // only count uses of JDK classes, since that's what the paper reported

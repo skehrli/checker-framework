@@ -1,5 +1,5 @@
 // Tests that converting to a String from an object doesn't create
-// phantom must call obligations. Taken from some code in Zookeeper that
+// phantom must-call obligations. Taken from some code in Zookeeper that
 // caused a false positive.
 
 import java.util.Map;
