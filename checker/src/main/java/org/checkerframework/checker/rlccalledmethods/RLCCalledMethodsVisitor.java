@@ -3,43 +3,33 @@ package org.checkerframework.checker.rlccalledmethods;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.VariableTree;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.lang.model.element.AnnotationMirror;
-import javax.lang.model.element.AnnotationValue;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
-import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
-import javax.lang.model.type.ArrayType;
-import javax.lang.model.type.TypeKind;
-import javax.lang.model.type.TypeMirror;
 import org.checkerframework.checker.calledmethods.CalledMethodsVisitor;
 import org.checkerframework.checker.calledmethods.EnsuresCalledMethodOnExceptionContract;
 import org.checkerframework.checker.calledmethods.qual.EnsuresCalledMethods;
 import org.checkerframework.checker.calledmethodsonelements.qual.EnsuresCalledMethodsOnElements;
 import org.checkerframework.checker.mustcall.CreatesMustCallForToJavaExpression;
 import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
+import org.checkerframework.checker.mustcall.MustCallChecker;
 import org.checkerframework.checker.mustcall.qual.CreatesMustCallFor;
-import org.checkerframework.checker.mustcall.qual.InheritableMustCall;
-import org.checkerframework.checker.mustcall.qual.MustCall;
 import org.checkerframework.checker.mustcall.qual.NotOwning;
 import org.checkerframework.checker.mustcall.qual.Owning;
 import org.checkerframework.checker.mustcall.qual.PolyMustCall;
-import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
-import org.checkerframework.checker.mustcallonelements.MustCallOnElementsChecker;
-import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElements;
 import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.MustCallConsistencyAnalyzer;
 import org.checkerframework.checker.resourceleak.MustCallConsistencyAnalyzer.MethodExitKind;
+import org.checkerframework.checker.resourceleak.RLCUtils;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.dataflow.expression.FieldAccess;
@@ -92,7 +82,8 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
   @SuppressWarnings("deprecation") // EnsuresCalledMethodsVarArgs
   public void processMethodTree(MethodTree tree) {
     ExecutableElement elt = TreeUtils.elementFromDeclaration(tree);
-    MustCallAnnotatedTypeFactory mcAtf = typeFactory.getMustCallAnnotatedTypeFactory();
+    MustCallAnnotatedTypeFactory mcAtf =
+        (MustCallAnnotatedTypeFactory) RLCUtils.getTypeFactory(MustCallChecker.class, checker);
     List<String> cmcfValues = getCreatesMustCallForValues(elt, mcAtf, typeFactory);
     if (!cmcfValues.isEmpty()) {
       checkCreatesMustCallForOverrides(tree, elt, mcAtf, cmcfValues);
@@ -486,80 +477,11 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
   }
 
   /**
-   * Returns the list of mustcall obligations for a type.
-   *
-   * @param type the type
-   * @return the list of mustcall obligations for the type
-   */
-  private List<String> getMustCallValuesForType(TypeMirror type) {
-    MustCallAnnotatedTypeFactory mcAtf = typeFactory.getMustCallAnnotatedTypeFactory();
-    TypeElement typeElement = TypesUtils.getTypeElement(type);
-    AnnotationMirror imcAnnotation =
-        mcAtf.getDeclAnnotation(typeElement, InheritableMustCall.class);
-    AnnotationMirror mcAnnotation = mcAtf.getDeclAnnotation(typeElement, MustCall.class);
-    Set<String> mcValues = new HashSet<>();
-    if (mcAnnotation != null) {
-      mcValues.addAll(
-          AnnotationUtils.getElementValueArray(
-              mcAnnotation, mcAtf.getMustCallValueElement(), String.class));
-    }
-    if (imcAnnotation != null) {
-      mcValues.addAll(
-          AnnotationUtils.getElementValueArray(
-              imcAnnotation, mcAtf.getInheritableMustCallValueElement(), String.class));
-    }
-    return new ArrayList<>(mcValues);
-  }
-
-  /**
-   * Returns the {@code @MustCallOnElements} obligations of an element that is an
-   * {@code @OwningCollection} field. If the passed element has no {@code @MustCallOnElements}
-   * annotation, the obligations of its component (in the case of an array), or type parameter (in
-   * the case of a collection), or the empty list if the field is neither, are returned and if it
-   * has an annotation, its value is returned.
-   *
-   * @param field an Element corresponding to an {@code @OwningCollection} field
-   * @return list of {@code @MustCallOnElements} obligations of the field
-   */
-  private List<String> getMcoeObligationsForField(Element field) {
-    boolean isArray = field.asType() != null && field.asType().getKind() == TypeKind.ARRAY;
-    boolean isCollection = MustCallOnElementsAnnotatedTypeFactory.isCollection(field, atypeFactory);
-    if (isCollection) {
-      // TODO
-      return new ArrayList<>();
-    } else if (isArray) {
-      List<String> mcList = Collections.emptyList();
-      boolean noMcoeAnno = true;
-      for (AnnotationMirror anno : field.asType().getAnnotationMirrors()) {
-        if (AnnotationUtils.areSameByName(anno, MustCallOnElements.class.getCanonicalName())) {
-          MustCallOnElementsAnnotatedTypeFactory mcoeAtf =
-              typeFactory.getTypeFactoryOfSubchecker(MustCallOnElementsChecker.class);
-          AnnotationValue av =
-              anno.getElementValues().get(mcoeAtf.getMustCallOnElementsValueElement());
-          if (av != null) {
-            mcList = AnnotationUtils.annotationValueToList(av, String.class);
-          }
-          noMcoeAnno = false;
-          break;
-        }
-      }
-      if (noMcoeAnno) {
-        mcList = getMustCallValuesForType(((ArrayType) field.asType()).getComponentType());
-      }
-      return mcList;
-    } else {
-      // it's not an array/collection. an error has been thrown. don't do anything.
-      return new ArrayList<>();
-    }
-  }
-
-  /**
-   * Checks validity of a field {@code field} with an {@code @}{@link OwningCollection} annotation.
-   * Say the type of {@code field} is {@code @MustCallOnElements("m")}}. This method checks that the
-   * enclosing class of {@code field} has a type {@code @MustCall("m2")} for some method {@code m2},
-   * and that {@code m2} has an annotation {@code @EnsuresCalledMethodsOnElements(value =
-   * "this.field", methods = "m")}, guaranteeing that the {@code @MustCallOnElements} obligation of
-   * the field will be satisfied.
+   * Checks validity of a field {@code field} with an {@link OwningCollection} annotation. Say the
+   * type of {@code field} is {@code @MustCallOnElements("m")}}. This method checks that the
+   * enclosing class of {@code field} has an annotation {@code @MustCall("m2")}, and that {@code m2}
+   * has an annotation {@code @EnsuresCalledMethodsOnElements(value = "this.field", methods = "m")},
+   * guaranteeing that the {@code @MustCallOnElements} obligation of the field will be satisfied.
    *
    * @param field the declaration of the field to check
    */
@@ -572,8 +494,16 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
       return;
     }
 
-    List<String> mcoeObligationsOfOwningField = getMcoeObligationsForField(field);
+    if (RLCUtils.hasManualMcoeUnknownAnno(field.asType())) {
+      checker.reportError(field, "manual.mcoeunknown.annotation", field);
+    }
+
+    MustCallAnnotatedTypeFactory mcAtf =
+        (MustCallAnnotatedTypeFactory) RLCUtils.getTypeFactory(MustCallChecker.class, checker);
+    List<String> mcoeObligationsOfOwningField =
+        RLCUtils.getMcoeValuesOfOwningCollection(field.asType());
     if (mcoeObligationsOfOwningField.isEmpty()) {
+      // no obligations to fulfill for the field
       return;
     }
 

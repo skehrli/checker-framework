@@ -15,7 +15,7 @@ import org.plumelib.util.CollectionsPlume;
 
 public class NestedAggregateChecker extends AggregateChecker {
   @Override
-  protected Set<Class<? extends SourceChecker>> getImmediateSubcheckerClasses() {
+  protected Set<Class<? extends SourceChecker>> getSupportedCheckers() {
     Set<Class<? extends SourceChecker>> checkers =
         new LinkedHashSet<>(CollectionsPlume.mapCapacity(4));
 

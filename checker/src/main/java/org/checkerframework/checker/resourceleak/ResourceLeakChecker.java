@@ -140,7 +140,7 @@ public class ResourceLeakChecker extends AggregateChecker {
   private int numMustCallFailed = 0;
 
   @Override
-  protected Set<Class<? extends SourceChecker>> getImmediateSubcheckerClasses() {
+  protected Set<Class<? extends SourceChecker>> getSupportedCheckers() {
     Set<Class<? extends SourceChecker>> checkers = new LinkedHashSet<>(1);
     checkers.add(MustCallOnElementsChecker.class);
 
