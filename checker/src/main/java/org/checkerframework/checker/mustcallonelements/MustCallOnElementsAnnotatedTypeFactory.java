@@ -8,12 +8,10 @@ import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import java.lang.annotation.Annotation;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -25,19 +23,18 @@ import javax.lang.model.element.AnnotationValue;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
-import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.TypeMirror;
 import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
-import org.checkerframework.checker.mustcall.qual.InheritableMustCall;
-import org.checkerframework.checker.mustcall.qual.MustCall;
+import org.checkerframework.checker.mustcall.MustCallChecker;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElements;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElementsUnknown;
 import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.MustCallConsistencyAnalyzer;
 import org.checkerframework.checker.resourceleak.MustCallInference;
+import org.checkerframework.checker.resourceleak.RLCUtils;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.McoeObligationAlteringLoop;
@@ -548,9 +545,13 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   // }
 
   /*
-   * Change the default @MustCallOnElements type value of @OwningCollection fields and @OwningCollection method parameters
-   * to contain the @MustCall methods of the component, if no manual annotation is present.
-   * For example the type of: final @OwningCollection Socket[] s is changed to @MustCallOnElements("close").
+   * Change the default @MustCallOnElements type value of @OwningCollection fields and @OwningCollection
+   * method parameters to contain the @MustCall methods of the component, if no manual annotation is
+   * present. For example the type of:
+   *
+   * final @OwningCollection Socket[] s;
+   *
+   * is changed to @MustCallOnElements("close").
    */
   /* TODO could add: if (elt instanceof VariableElement) {} to ensure it's a declaration? */
   @Override
@@ -559,69 +560,58 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
 
     if (elt.getKind() == ElementKind.METHOD || elt.getKind() == ElementKind.CONSTRUCTOR) {
       // is a param @OwningCollection?
-      // change the type of that param
+      // change the type of that param in the method invocation
       ExecutableElement method = (ExecutableElement) elt;
       AnnotatedExecutableType methodType = (AnnotatedExecutableType) type;
       Iterator<? extends VariableElement> paramIterator = method.getParameters().iterator();
       Iterator<AnnotatedTypeMirror> paramTypeIterator = methodType.getParameterTypes().iterator();
+
       while (paramIterator.hasNext() && paramTypeIterator.hasNext()) {
         VariableElement param = paramIterator.next();
         AnnotatedTypeMirror paramType = paramTypeIterator.next();
-        // if (getDeclAnnotation(param, OwningCollection.class) != null) {
-        // @OwningCollection parameter
-        boolean noMcoeAnno = true;
-        for (AnnotationMirror paramAnno : param.asType().getAnnotationMirrors()) {
-          if (AnnotationUtils.areSameByName(
-              paramAnno, MustCallOnElements.class.getCanonicalName())) {
-            // is @MustCallOnElements annotation
-            noMcoeAnno = false;
-            break;
-          }
-          if (AnnotationUtils.areSameByName(
-              paramAnno, MustCallOnElementsUnknown.class.getCanonicalName())) {
-            noMcoeAnno = false;
-            break;
-          }
-        }
-        if (noMcoeAnno) { // don't override an existing manual annotation
-          if (param.asType() instanceof ArrayType) {
-            TypeMirror componentType = ((ArrayType) param.asType()).getComponentType();
-            List<String> mcoeObligationsOfOwningField = getMustCallValuesForType(componentType);
-            AnnotationMirror newType = getMustCallOnElementsType(mcoeObligationsOfOwningField);
-            paramType.replaceAnnotation(newType);
+
+        // is @OwningCollection parameter?
+        if (getDeclAnnotation(param, OwningCollection.class) != null) {
+          boolean noManualMcoeAnno = RLCUtils.getMcoeValuesInManualAnno(param.asType()) == null;
+
+          // if no manual mcoe annotation exists, set mcoe type to mc type of component
+          if (noManualMcoeAnno) {
+            changeMcoeTypeToDefault(param, paramType);
           }
         }
       }
-    } else if (elt.asType() instanceof ArrayType) {
-      if (!(elt instanceof VariableElement)) {
-        // not a declaration
-        return;
-      }
-      boolean noMcoeAnno = true;
-      for (AnnotationMirror paramAnno : elt.asType().getAnnotationMirrors()) {
-        if (AnnotationUtils.areSameByName(paramAnno, MustCallOnElements.class.getCanonicalName())) {
-          // is @MustCallOnElements annotation
-          noMcoeAnno = false;
-          break;
-        }
-        if (AnnotationUtils.areSameByName(
-            paramAnno, MustCallOnElementsUnknown.class.getCanonicalName())) {
-          noMcoeAnno = false;
-          break;
+    } else if (elt instanceof VariableElement) {
+      boolean isOwningCollection = getDeclAnnotation(elt, OwningCollection.class) != null;
+      boolean isMethodParameter = elt.getKind() == ElementKind.PARAMETER;
+      boolean isField = elt.getKind() == ElementKind.FIELD;
+
+      if (isOwningCollection && (isMethodParameter || isField)) {
+        boolean noManualMcoeAnno = RLCUtils.getMcoeValuesInManualAnno(elt.asType()) == null;
+        if (noManualMcoeAnno) { // don't override an existing manual annotation
+          changeMcoeTypeToDefault(elt, type);
         }
       }
-      if (noMcoeAnno) { // don't override an existing manual annotation
-        if ((elt.getKind() == ElementKind.FIELD
-                && getDeclAnnotation(elt, OwningCollection.class) != null)
-            || elt.getKind() == ElementKind.PARAMETER) {
-          if (elt.asType() instanceof ArrayType) {
-            TypeMirror componentType = ((ArrayType) elt.asType()).getComponentType();
-            List<String> mcoeObligationsOfOwningField = getMustCallValuesForType(componentType);
-            AnnotationMirror newType = getMustCallOnElementsType(mcoeObligationsOfOwningField);
-            type.replaceAnnotation(newType);
-          }
-        }
-      }
+    }
+  }
+
+  /**
+   * Changes the {@code MustCallOnElements} type of {@code @OwningCollection} parameter/field {@code
+   * elt} to the default.
+   *
+   * <p>The default type for {@code @OwningCollection} parameters/fields is the type values of the
+   * {@code MustCall} type of the component.
+   *
+   * @param elt the element whose type should be changed
+   * @param type the {@code AnnotatedTypeMirror} of {@code elt}
+   */
+  private void changeMcoeTypeToDefault(Element elt, AnnotatedTypeMirror type) {
+    if (elt.asType() instanceof ArrayType) {
+      MustCallAnnotatedTypeFactory mcAtf =
+          (MustCallAnnotatedTypeFactory) RLCUtils.getTypeFactory(MustCallChecker.class, checker);
+      TypeMirror componentType = ((ArrayType) elt.asType()).getComponentType();
+      List<String> mcValuesOfComponent = RLCUtils.getMcValues(componentType, mcAtf);
+      AnnotationMirror newType = getMustCallOnElementsType(mcValuesOfComponent);
+      type.replaceAnnotation(newType);
     }
   }
 
@@ -635,33 +625,6 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
     AnnotationBuilder builder = new AnnotationBuilder(processingEnv, BOTTOM);
     builder.setValue("value", CollectionsPlume.withoutDuplicatesSorted(methodNames));
     return builder.build();
-  }
-
-  /**
-   * Returns the list of mustcall obligations for a type.
-   *
-   * @param type the type
-   * @return the list of mustcall obligations for the type
-   */
-  private List<String> getMustCallValuesForType(TypeMirror type) {
-    MustCallAnnotatedTypeFactory mcAtf = new MustCallAnnotatedTypeFactory(checker);
-    TypeElement typeElement = TypesUtils.getTypeElement(type);
-    if (typeElement == null) return new ArrayList<>();
-    AnnotationMirror imcAnnotation =
-        mcAtf.getDeclAnnotation(typeElement, InheritableMustCall.class);
-    AnnotationMirror mcAnnotation = mcAtf.getDeclAnnotation(typeElement, MustCall.class);
-    Set<String> mcValues = new HashSet<>();
-    if (mcAnnotation != null) {
-      mcValues.addAll(
-          AnnotationUtils.getElementValueArray(
-              mcAnnotation, mcAtf.getMustCallValueElement(), String.class));
-    }
-    if (imcAnnotation != null) {
-      mcValues.addAll(
-          AnnotationUtils.getElementValueArray(
-              imcAnnotation, mcAtf.getInheritableMustCallValueElement(), String.class));
-    }
-    return new ArrayList<>(mcValues);
   }
 
   @Override
