@@ -85,7 +85,10 @@ for example on an element with compile-time type \<Object> that might contain a 
 See Section~\ref{must-call-annotations}.
 
 \item[\refqualclasswithparams{checker/mustcallonelements/qual}{MustCallOnElements}{String[] value}]
-expresses the must-call obligations of the elements of an array or collection. Rarely written, most common use case is to specify the obligations of an \<@OwningCollection> method parameter. See Section~\ref{resource-leak-arrays-mcoe-cmoe}.
+expresses the must-call obligations of the elements of an array or
+collection. This is rarely written; the most common use case is to specify the
+obligations of an \<@OwningCollection> method parameter. See
+Section~\ref{resource-leak-collections-mcoe-cmoe}.
 
 \item[\refqualclasswithparams{checker/mustcall/qual}{InheritableMustCall}{String[] value}]
 on any classes defined in your program that have must-call obligations. See Section~\ref{must-call-on-class}.
@@ -97,7 +100,9 @@ See Section~\ref{called-methods-ensurescalledmethods}.
 
 \item[\refqualclass{checker/calledmethodsonelements/qual}{EnsuresCalledMethodsOnElements} and/or
       \refqualclass{checker/calledmethodsonelements/qual}{EnsuresCalledMethodsOnElementsOnException}]
-on a method in your code that fulfills a \<@MustCallOnElements> obligation of one of its array/collection parameters or of an \<@OwningCollection> field. See Section~\ref{resource-leak-arrays-mcoe-cmoe}.
+on a method in your code that fulfills a \<@MustCallOnElements> obligation of
+one of its collection parameters or of an \<@OwningCollection> field. See
+Section~\ref{resource-leak-collections-mcoe-cmoe}.
 
 \end{description}
 
@@ -115,11 +120,11 @@ aliasing patterns related to resource leaks:
   \<@Owning>.  Formal parameters and fields default to \<@NotOwning>.
   For more details, see Section~\ref{resource-leak-ownership}.
 \item[\refqualclass{checker/mustcallonelements/qual}{OwningCollection}]
-  Every array or collection that is not explicitly annotated as \<@OwningCollection> is not owning. It is a compile-time error if an expression with a must-call obligation is assigned into an element of an array or collection that does not have an \<@OwningCollection> annotation. For more details, see Section~\ref{resource-leak-arrays} and Section~\ref{resource-leak-collections}.
+  Every array or collection that is not explicitly annotated as \<@OwningCollection> is not owning. It is a compile-time error if an expression with a must-call obligation is assigned into an element of an array or collection that does not have an \<@OwningCollection> annotation. For more details, see Section~\ref{resource-leak-collections}.
 
 \item[\refqualclass{checker/mustcall/qual}{MustCallAlias}]
-  represents a ``resource-aliasing'' relationship.  Resource aliases are
-  distinct Java objects that control the same resource(s):
+  represents a ``resource-aliasing'' relationship.  Two resource aliases are
+  two distinct Java objects that control the same resource(s):
   fulfilling the must-call obligations of one object also
   fulfills the obligations of the other object.  For details,
   see Section~\ref{resource-leak-resource-alias}.
@@ -197,7 +202,7 @@ element that the Called Methods set does not.
 Resource leak checking is complicated by aliasing.  Multiple expressions
 may evaluate to the same Java object, but each object only needs to be
 closed once.  (Section~\ref{resource-leak-resource-alias} describes a
-related situation called ``resource aliasing'', when multiple Java objects
+related situation called ``resource aliasing'', when multiple distinct Java objects
 refer to the same underlying resource.)
 
 For example, consider the following code that safely closes a \<Socket>:
@@ -256,13 +261,13 @@ an error in the \<example> method and allow the definition of \<closeSocket>:
   }
 
   void closeSocket(@Owning Socket t) throws IOException {
-    throw new IOException();
+    ...
   }
 \end{verbatim}
 
 Sometimes a method really does promise to call some methods on an \<@Owning> parameter,
-even if it throws an exception.  The annotation \<@EnsuresCalledMethodsOnException> can
-overcome this limitation.  For example, a constructor that throws an exception might
+if the method throws an exception.  The annotation \<@EnsuresCalledMethodsOnException> can
+express this situation.  For example, a constructor that throws an exception might
 choose to close an \<@Owning> parameter instead of letting ownership remain with the caller:
 
 \begin{verbatim}
@@ -299,7 +304,7 @@ on all exceptional paths.
 when they might be re-assigned. See Section~\ref{resource-leak-createsmustcallfor} for
 more details on how to annotate a non-final, non-static owning field.
 
-Owning fields are treated slightly differently in constructors versus normal methods.
+Owning fields are treated slightly differently in constructors than in normal methods.
 In normal methods, assigning a value to an owning field always satisfies the object's
 must-call obligations.  However, within a constructor, those obligations are only
 satisfied if the constructor returns normally.  If the constructor throws an exception,
@@ -616,25 +621,25 @@ checker unsound:  the Resource Leak Checker will not warn if the constructor
 and initializers set a field more than once.  The amount of leakage is
 limited to how many times the field is set.
 
-\sectionAndLabel{Errors about unknown must call obligations}{resource-leak-generic-unknown}
+\sectionAndLabel{Errors about unknown must-call obligations}{resource-leak-generic-unknown}
 
 The Resource Leak Checker issues a \<required.method.not.known> error
-when a variable with the type \<@MustCallUnknown> has a must call obligation.
-\<@MustCallUnknown> rarely occurs, but if you encounter this error usually
-the right thing to do is to write an explicit \<@MustCall> annotation
-on the indicated expression (e.g., as a cast), because the Must Call Checker
-will only use \<@MustCallUnknown> as a default when encountering a language
+when a variable with the type \MustCallUnknown has a must-call obligation.
+The Must Call Checker
+only uses \MustCallUnknown when encountering a language
 feature that it is unable to reason about.
+If you encounter this error, usually you should write an explicit \<@MustCall> annotation
+on the indicated expression (e.g., as a cast).
 
 
 \sectionAndLabel{Collections of resources}{resource-leak-collections}
 
 The Resource Leak Checker handles homogeneous collections of resources,
-such as arrays, \<List>s, etc.  In a homogeneous collection, every element
+such as arrays, \<List>s, \<Set>s, etc.  In a homogeneous collection, every element
 has exactly the same must-call and called-methods properties.
 
 The only way to operate on a homogeneous collection while maintaining
-homogeneneity is by using a loop.  The Resource Leak Checker permits
+homogeneity is by using a loop.  The Resource Leak Checker permits
 specific types of loops, as explained below.
 
 
@@ -652,7 +657,13 @@ MustCallOnElements({"b"})       MustCallOnElements({"a"})
                \                    /
                MustCallOnElements({})
 \end{verbatim}
-The default type is \<@MustCallOnElements(\{\})> (bottom) for everything except \<@OwningCollection> fields and \<@OwningCollection> parameters. For those, the default \<@MustCallOnElements> value is the \<@MustCall> value of the component type. For example, the default type of an \<@OwningCollection> Socket[] is \<@MustCallOnElements({``close''})>, since Socket has \<@MustCall(``close'')> type. This reduces the need for many manual annotations.
+
+The default type is \<@MustCallOnElements(\{\})> (bottom) for everything except
+\<@OwningCollection> fields and \<@OwningCollection> parameters. For those, the
+default \<@MustCallOnElements> value is the \<@MustCall> value of the component
+type. For example, the default type of an \<@OwningCollection Socket[]> is
+\<@MustCallOnElements({``close''})>, since \<Socket> has \<@MustCall(``close'')>
+type. This reduces the need for many manual annotations.
 
 The fulfilled obligations are stored in the \<@CalledMethodsOnElements> type annotation with the following type hierarchy:
 \begin{verbatim}
@@ -664,11 +675,56 @@ CalledMethodsOnElements({"b"})           CalledMethodsOnElements({"a"})
                                    |
                     CalledMethodsOnElementsBottom
 \end{verbatim}
-The default type is \<@CalledMethodsOnElements(\{\})> (top) for any declaration.
+The default type for any declaration is top, that is, \<@CalledMethodsOnElements(\{\})>.
 
 
 
-\subsectionAndLabel{Using loops to operate on resource-holding collections}{resource-leak-collections-loops}
+\subsectionAndLabel{Declaration and assignment of collections of resources}{resource-leak-collections-declaration}
+
+To indicate that each resource in a collection is owned by the collection, write the \<@OwningCollection> declaration annotation:
+
+\begin{Verbatim}
+@OwningCollection Socket[] s = new Socket[n];
+// The type of `s` is now  @MustCallOnElements({}) @CalledMethodsOnElements({})
+\end{Verbatim}
+
+[[Should the above be ``\<@MustCallOnElements("close")>'', given that \<Socket>
+has type \<@MustCall("close")>?]]
+
+A reference to an owning collection may be re-assigned any number of times.
+The left-hand side must have an empty \<@MustCallOnElements> type, and the
+right-hand side must create a new collection that has no
+\<@MustCallOnElements> obligations.
+
+\begin{verbatim}
+@OwningCollection Socket[] s1 = new Socket[n]; // OK
+@OwningCollection Socket[] s2 = new Socket[n]; // OK
+s2 = new Socket[n]; // OK
+s2 = s1; // prohibited, because the right-hand side does not create a new collection
+\end{verbatim}
+
+[[If the type of \<new Socket[n]> is ``\<@MustCallOnElements("close")>'', then I
+think the assignment ``\<s2 = new Socket[n];>'' is illegal, because the
+left-hand side does not have an empty \<@MustCallOnElements> type.
+
+In general, intra-procedural aliasing of \<@OwningCollection> variables is not
+permitted.  This implies that an \<@OwningCollection> variable is always the
+only in-scope reference to the underlying collection.  Inter-procedural aliasing can
+occur when an \<@OwningCollection> reference is passed as an argument to a
+method call.  Section~\ref{resource-leak-collections-parameters} discusses
+method calls.
+
+
+
+[[Probably cut most or all of the rest.]]
+
+A non-\<@OwningCollection> reference may not be assigned to an \<@OwningCollection> reference either. These two rules together directly prevent any intra-procedural aliasing for any \<@OwningCollection> variable and it follows that an \<@OwningCollection> reference is always the only one to the underlying collection within a procedure.
+
+
+
+
+
+\subsectionAndLabel{Using loops to operate on collections of resources}{resource-leak-collections-loops}
 
 In order to maintain homogeneity, code must use a loop to operate on a
 collection of resources.  Any operation (assignment, method calls, etc.)\
@@ -689,7 +745,9 @@ More concretely, the basic loop constraints are:
     \item The upper bound of iteration is \<c.length> or \<c.size()> or \<n>,
       where \<n> is the effectively final variable used for the initialization of
       the collection size.
-    \item The loop contains no assignments to the loop variable.
+    \item The loop's increment expression is a pre- or post-increment of the
+      loop variable.
+    \item The loop body contains no assignments to the loop variable.
     \end{itemize}
   \end{itemize}
 \item The loop does not terminate early: The loop body contains no \<return> or \<break> statements.
@@ -702,60 +760,13 @@ More concretely, the basic loop constraints are:
 explained below.
 
 
-\subsectionAndLabel{Declaration and assignment of resource-holding collections}{resource-leak-collections-declaration}
 
-To indicate that each resource in a collection is owned by the collection, write the \<@OwningCollection> declaration annotation:
-
-\begin{Verbatim}
-@OwningCollection Socket[] s = new Socket[n];
-// The type of `s` is now  @MustCallOnElements({}) @CalledMethodsOnElements({})
-\end{Verbatim}
-
-A reference to a owning collection may be re-assigned any number of times.
-The right-hand side must create a new collection that has no
-\<@MustCallOnElements> obligations.
-
-\begin{verbatim}
-@OwningCollection Socket[] s1 = new Socket[n]; // OK
-@OwningCollection Socket[] s2 = new Socket[n]; // OK
-s2 = new Socket[n]; // OK
-s2 = s1; // prohibited, because the right-hand side does not create a new collection
-\end{verbatim}
-
-In general, intra-procedural aliasing of \<@OwningCollection> variables is not
-permitted.  This implies that an \<@OwningCollection> variable is always the
-only reference to the underlying collection.  Inter-procedural aliasing can
-occur when an \<@OwningCollection> reference is passed as an argument to a
-method call.  Section~\ref{resource-leak-collections-parameters} discusses
-method calls.
-
-
-\subsubsectionAndLabel{Assignment of resource-holding collections}{resource-leak-collections-assignment}
-
-[[Should this subsubsection be removed?]]
-
-Similar to \<@OwningCollection> collections, \<@OwningCollection> collection variables may only be assigned to a new instance. A non-\<@OwningCollection> reference may not be assigned to an \<@OwningCollection> reference either. These two rules together directly prevent any intra-procedural aliasing for any \<@OwningCollection> variable and it follows that an \<@OwningCollection> reference is always the only one to the underlying collection within a procedure.
-
-When an \<@OwningCollection> is passed as an argument to a method, the method parameter must also be annotated \<@OwningCollection> for soundness reasons. If it was not, the collection elements with possibly open calling obligations could be overwritten to null, which would not produce a warning (throwing warnings for null assignments of collection/collection elements would produce many false positives for code that is not dealing with resources whatsoever) and thus be unsound.
-
-For such a method call, the calling obligations of the \<@OwningCollection>
-reference at call site are passed to the invoked method, which has to
-fulfill them before returning. The obligations at call site are thus
-considered fulfilled.
-
-If the called method is a constructor, it may store the \<@OwningCollection> in
-a field. Thus, when the constructor returns, the collection reference at call
-site may have a field as an alias. The call site reference thus becomes
-read-only. For details, see Sections~\ref{resource-leak-collections-parameters}
-and~\ref{resource-leak-collections-constructor}.
-
-
-\subsectionAndLabel{Assigning elements in a resource-holding collection}{resource-leak-collections-assign-elements}
+\subsectionAndLabel{Assigning elements in a collection of resources}{resource-leak-collections-assign-elements}
 
 Here is an example of how to assign the elements of a collection of resources:
 
 \begin{Verbatim}
-// Initially, the type of `s` is  @MustCallOnElements({}) @CalledMethodsOnElements({})
+// Suppose the type of `s` is  @MustCallOnElements({}) @CalledMethodsOnElements({})
 for (int i = 0; i < s.length; i++) {
   try {
     s[i] = new Socket(myHost, myPort);
@@ -763,7 +774,7 @@ for (int i = 0; i < s.length; i++) {
     // do nothing
   }
 }
-// Now, the type of `s` is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+// The type of `s` is now @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
 \end{Verbatim}
 
 The checker accepts an assignment loop if the following requirements are
@@ -772,11 +783,12 @@ satisfied (in addition to the basic loop constraints of Section~\ref{resource-le
 \begin{itemize}
   \item The collection is not annotated with \<@OwningCollection> (see
     Sections~\ref{resource-leak-collections-parameters} and~\ref{resource-leak-collections-fields}).
-  \item The collection elements have no open must-call obligations.  That
+  \item The collection elements have no unfulfilled must-call obligations.  That
     is, the collection's \<@MustCallOnElements> values are a subset of its
   \<@CalledMethodsOnElements> values.
   \item The loop is an indexed \<for> loop (not an enhanced \<for> loop).
-  \item There is exactly one statement in the body (which may be a try-catch construct) that contains the assignment.
+  \item There is exactly one statement in the body.  The statement is either the
+    assignment or a try-catch construct that contains only the assignment.
   \item The right-hand side of the assignment creates a new resource.
     The right-hand side cannot be an expression that might evaluate to an existing resource.
   \item If there is a try-catch construct, the catch and finally blocks may
@@ -787,6 +799,19 @@ satisfied (in addition to the basic loop constraints of Section~\ref{resource-le
 When the collection is a Java \<Collection> rather than an array, it is
 permitted to use either \<Collection.add()> or \<Collection.put()> to assign
 elements.
+
+For a Java \<Collection>, it is permitted to use the \<add()> method outside a
+loop in order to add a new element that is homogeneous with the existing elements.
+
+The following simple example illustrates how a Socket can be added to a collection. Calling \<add(Socket)> on the \<@OwningCollection> \textit{socketList} removes the obligation for the Socket object and instead unites its \<@MustCall> type values with the \<@MustCallOnElements> type values of \textit{socketList}, meaning in this case that \textit{socketList} now has type  \<@MustCallOnElements({"close"})>.
+
+\begin{verbatim}
+@OwningCollection List<Socket> socketList;
+socketList = new List<Socket>();
+// @MustCallOnElements({}) @CalledMethodsOnElements({})
+socketList.add(new Socket(myHost, myPort));
+// @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+\end{verbatim}
 
 
 \subsectionAndLabel{Fulfilling \<@MustCallOnElements> obligations}{resource-leak-collection-fulfilling-obligations}
@@ -800,26 +825,26 @@ arbitrary number of methods on the collection elements.
 Here are two examples:
 
 \begin{verbatim}
-// Suppose the type of `arr` is initially @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+// Suppose the type of `arr` is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
 for (int i = 0; i < arr.length; i++) {
     try {
       arr[i].close();
       arr[i].foo();
     } catch (Exception e) {}
 }
-// Then the type of `arr` is now. @MustCallOnElements({}) @CalledMethodsOnElements({"close", "foo"})
+// The type of `arr` is now @MustCallOnElements({}) @CalledMethodsOnElements({"close", "foo"})
 \end{verbatim}
 
 Here is an example written as an enhanced \<for> loop:
 
 \begin{verbatim}
-// Suppose the type of `arr` is initially @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+// Suppose the type of `arr` is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
 for (Socket s: arr) {
     try {
         s.close();
     } catch (Exception e) {}
 }
-// Then the type of `arr` is now @MustCallOnElements({}) @CalledMethodsOnElements({"close"})
+// The type of `arr` is now @MustCallOnElements({}) @CalledMethodsOnElements({"close"})
 \end{verbatim}
 
 
@@ -827,11 +852,11 @@ The obligation can also be fulfilled by calling a method that has an
 \<@EnsuresCalledMethods> annotation, with the collection element as an
 argument:
 \begin{verbatim}
-// Suppose the type of `arr` is initially @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+// Suppose the type of `arr` is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
 for (int i = 0; i < arr.length; i++) {
     method(arr[i]); // method calls 'close' on its argument, see below
 }
-// Then the type of `arr` is now @MustCallOnElements({}) @CalledMethodsOnElements({"close"})
+// The type of `arr` is now @MustCallOnElements({}) @CalledMethodsOnElements({"close"})
 
 ...
 
@@ -847,14 +872,48 @@ void method(Socket s) {
 Here is an example for a Java \<Collection> rather than an array:
 
 \begin{verbatim}
-// socketList: @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+// Suppose the typo of `socketList` is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
 for (int i = 0; i < socketList.size(); i++) {
     try {
         socketList.get(i).close();
     } catch (Exception e) {}
 }
-// socketList: @MustCallOnElements({}) @CalledMethodsOnElements({"close"})
+// The type of `socketList` is now @MustCallOnElements({}) @CalledMethodsOnElements({"close"})
 \end{verbatim}
+
+
+[[How much of the below is duplicative?]]
+
+Analogous to \<@OwningCollection> collections, the \<@MustCallOnElements>
+obligations of an \<@OwningCollection> collection can be fulfilled with an
+indexed for-loop or enhanced-for-loop, which iterate over the collection and
+call methods on each element of the collection. The called methods are
+determined by checking the \<@CalledMethods> type of the collection element at
+the end of the loop body, without considering exceptional states, i.e.\ only
+exception-free executions of the loop body are considered.
+
+For example, the following loop calls the methods \<close()> and \<shutdownOutput()> on the elements of \textit{socketList}.
+
+\begin{verbatim}
+// socketList: @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+for (Socket s: socketList) {
+    s.shutdownOutput();
+    try {
+        s.close();
+    } catch (Exception e) {}
+    // socketList: @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+}
+// socketList: @MustCallOnElements({}) @CalledMethodsOnElements({"close", "shutdownOutput"})
+\end{verbatim}
+
+The type of the collection is changed only after the loop, not within the
+loop. The loop is treated as a single instruction with regards to its effect on
+the type system for this checker.
+
+For such an obligation-fulfilling enhanced-for-loop, the loop body may not
+contain any break or return statements.
+
+
 
 
 
@@ -865,18 +924,13 @@ Like \<@Owning> (Section~\ref{resource-leak-ownership}),
 fulfilling obligations.
 
 When \<@OwningCollection> is written on a method parameter,
-that indicates that the method promises to satisfy some set of properites.
-[[But, the client still owns the value?  This is different than for non-collections.]]
+the method promises to satisfy the \<@MustCallOnElements> properties.
 
 When \<@OwningCollection> is written on a method parameter, the default
 type of the parameter is \<@MustCallOnElements(\textit{obligations})>,
 where \textit{obligations} is the default \<@MustCall> obligations of the
 component type. The user is allowed to write a
 \<@MustCallOnElements> annotation to override this default.
-[[What is the reason for this behavior?  Would it be a significant burden
-for users to write the obligations?  Writing them would, I suspect, make
-the code more concrete and easier to understand.]]
-
 
 \begin{verbatim}
 void m1(@OwningCollection Socket[] s) {
@@ -891,28 +945,28 @@ void m1(@OwningCollection Socket[] s) {
 \end{verbatim}
 
 To call a method with an \<@OwningCollection> parameter, the argument must
-also be \<@OwningCollection>. The called method only borrows the ownership
-of the \<@OwningCollection> parameter. This is because the
-\<@OwningCollection> parameter cannot leave the method scope and its
-obligations have to be fulfilled by the time of method exit. Thus, not only
-can the caller keep the ownership for the passed argument after the method
-call returned, but due to the calling guarantees, the call also resets the
-\<@MustCallOnElements> type to an empty value[[always, or just in this
-particular case?]] and adds the methods guaranteed to have been called to
-the \<CalledMethodsOnElements> type:
+also be \<@OwningCollection>.
+(If the parameter is non-\<@OwningCollection>, the argument must also be non-\<@OwningCollection>.)
+
+Upon method return, the caller retains ownership for the passed argument,
+and its type is
+\<@MustCallOnElements(\{\}) @CalledMethodsOnElements($S$)>, where $S$ contains
+the \<CalledMethodsOnElements> value before the call and the methods guaranteed
+to have been called by the method.  For example:
 
 \begin{verbatim}
-// 1. @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+// 1. @MustCallOnElements({"close"}) @CalledMethodsOnElements({"foo"})
 m1(arr);
-// 2. @MustCallOnElements({}) @CalledMethodsOnElements({"close"})
+// 2. @MustCallOnElements({}) @CalledMethodsOnElements({"foo", "close"})
 \end{verbatim}
 
-After calling \<m1>, the elements of \<arr> may be reassigned.
+Due to the rules of [[add cross-reference]], after calling \<m1>, the elements of \<arr> may be reassigned.
 
-If the parameter is non-\<@OwningCollection>, the argument must also be non-\<@OwningCollection>.
 
 \subsectionAndLabel{\<@OwningCollection> fields}{resource-leak-collections-fields}
-\<@OwningCollection> fields must be final, private, and non-static. Thus, they can only be assigned either in the constructor or at the declaration site.
+
+An \<@OwningCollection> field must be final, private, and non-static. Thus, it
+can only be assigned in the constructor, in an instance initializer block, or at the declaration site.
 The default type of such an collection after declaration is \<@MustCallOnElements(obligation)>, where \textit{obligation} is the set of \<@MustCall> methods of the component type. The default \<@CalledMethodsOnElements> type is the empty \<@CalledMethodsOnElements({})>.
 
 Since the lifetime of a field coincides with the lifetime of the class instance, the obligations of the field must be fulfilled at the time the object itself is deallocated.
@@ -934,7 +988,27 @@ class A {
 
 This ensures that any client that constructs an instance of A will have to call \<destruct()> on it, which in turn ensures that the obligations of the field are fulfilled.
 
-The elements of an \<@OwningCollection> field may only be assigned in the constructor and only once. Thus, an \<@OwningCollection> field provides immutability beyond just the final keyword, as even its elements are immutable once the enclosing class is constructed. The collection stored in the field does not necessarily have to be allocated in the constructor, but may also be passed as an argument to the constructor, see Section~\ref{resource-leak-collections-constructor}.
+The elements of an \<@OwningCollection> field may only be assigned in the
+constructor and only once. Thus, an \<@OwningCollection> field provides
+immutability beyond just the final keyword, as even its elements are immutable
+once the enclosing class is constructed.[[I don't understand this.  The elements
+are not immutable, because they can be changed by calling a side-effecting
+method (such as ``close()'') on them.  The elements are not unassignable,
+because the end of Section~\ref{resource-leak-collections-parameters} states,
+``the elements of \<arr> may be reassigned.''  The collection stored in the
+field does not necessarily have to be allocated in the constructor, but may also
+be passed as an argument to the constructor, see
+Section~\ref{resource-leak-collections-constructor}.
+
+
+[[The remainder may be duplicative.]]
+
+When an \<@OwningCollection> is passed as an argument to a method, the method parameter must also be annotated \<@OwningCollection> for soundness reasons. If it was not, the collection elements with possibly open calling obligations could be overwritten to null, which would not produce a warning (throwing warnings for null assignments of collection/collection elements would produce many false positives for code that is not dealing with resources whatsoever) and thus be unsound.
+
+For such a method call, the calling obligations of the \<@OwningCollection>
+reference at call site are passed to the invoked method, which has to
+fulfill them before returning. The obligations at call site are thus
+considered fulfilled.
 
 
 \subsectionAndLabel{\<@OwningCollection> constructor parameters}{resource-leak-collections-constructor}
@@ -945,7 +1019,7 @@ assigned.[[Section~\ref{resource-leak-collections-declaration} contains
 \<s2 = new Socket[n]; // OK> without any mention of it having to be in a constructor.]]
 
 When \<@OwningCollection> is written on a constructor parameter, the
-default of the parameter is \<@MustCallOnElements(obligations)>, where
+default type of the parameter is \<@MustCallOnElements(obligations)>, where
 \textit{obligations} is the set of \<@MustCall> obligations of the
 component type. The user may write a \<@MustCallOnElements> annotation to override this default.
 
@@ -1020,43 +1094,13 @@ Now, the elements of \textit{s} may be assigned in a loop.
 % \end{verbatim}
 % If someMethod is annotated with \<@EnsuresCalledMethodsOnElements(value="#1", methods="x")>, this loop is considered to fulfill the obligation of calling "x" on elements of "arr".
 
-\sectionAndLabel{Collections of resources}{resource-leak-collections}
+[[The remainder may be duplicative.]]
 
-The following simple example illustrates how a Socket can be added to a collection. Calling \<add(Socket)> on the \<@OwningCollection> \textit{socketList} removes the obligation for the Socket object and instead unites its \<@MustCall> type values with the \<@MustCallOnElements> type values of \textit{socketList}, meaning in this case that \textit{socketList} now has type  \<@MustCallOnElements({"close"})>.
-
-\begin{verbatim}
-@OwningCollection List<Socket> socketList;
-socketList = new List<Socket>();
-// @MustCallOnElements({}) @CalledMethodsOnElements({})
-socketList.add(new Socket(myHost, myPort));
-// @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
-\end{verbatim}
-
-
-\subsectionAndLabel{Directly fulfilling \<@MustCallOnElements> obligations on \<@OwningCollection> collections}{resource-leak-collections-fulfilling-obligations}
-
-Analogous to \<@OwningCollection> collections, the \<@MustCallOnElements> obligations of an \<@OwningCollection> collection can be fulfilled with a for-loop or enhanced-for-loop, which iterate over the collection and call methods on each element of the collection. The called methods are determined by checking the \<@CalledMethods> type of the collection element at the end of the loop body, without considering exceptional states, i.e.\ only exception-free executions of the loop body are considered.
-
-For example, the following loop calls the methods \<close()> and \<shutdownOutput()> on the elements of \textit{socketList}.
-
-\begin{verbatim}
-// socketList: @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
-for (Socket s: socketList) {
-    s.shutdownOutput();
-    try {
-        s.close();
-    } catch (Exception e) {}
-    // socketList: @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
-}
-// socketList: @MustCallOnElements({}) @CalledMethodsOnElements({"close", "shutdownOutput"})
-\end{verbatim}
-
-The type of the collection is changed only after the loop, not within the
-loop. The loop is treated as a single instruction with regards to its effect on
-the type system for this checker.
-
-For such an obligation-fulfilling enhanced-for-loop, the loop body may not
-contain any break or return statements.
+If the called method is a constructor, it may store the \<@OwningCollection> in
+a field. Thus, when the constructor returns, the collection reference at call
+site may have a field as an alias. The call site reference thus becomes
+read-only. For details, see Sections~\ref{resource-leak-collections-parameters}
+and~\ref{resource-leak-collections-constructor}.
 
 
 \sectionAndLabel{Collections of resources (old)}{resource-leak-collections-old}
@@ -1112,12 +1156,20 @@ Resource Management Specifications''~\cite{ShadabGTEKLLS2023} (OOPSLA 2023,
 \myurl{https://homes.cs.washington.edu/~mernst/pubs/resource-inference-oopsla2023-abstract.html}).
 
 
-% LocalWords:  de subchecker OutputStream MustCall MustCallUnknown RAII Un
-% LocalWords:  PolyMustCall InheritableMustCall MultiRandSelector callsite
-% LocalWords:  Partitioner CalledMethods AnoLightweightOwnership NotOwning
-% LocalWords:  AnoResourceAliasing MustCallAlias AnoCreatesMustCallFor
-% LocalWords:  EnsuresCalledMethods CreatesMustCallFor expr Verification''
-% LocalWords:  closeSocket destructor'' destructor BufferedOutputStream
-% LocalWords:  AnoResourceAliases createsmustcallfor SocketContainer
-% LocalWords:  CalledMethodsBottom CollectionIndexOutOfBoundsException
-% LocalWords:  NegativeCollectionSizeException
+% LocalWords:  de subchecker OutputStream MustCall MustCallUnknown RAII Un Un
+% LocalWords:  PolyMustCall InheritableMustCall MultiRandSelector callsite mcoe
+% LocalWords:  Partitioner CalledMethods AnoLightweightOwnership NotOwning cmoe
+% LocalWords:  AnoResourceAliasing MustCallAlias AnoCreatesMustCallFor unclosed
+% LocalWords:  EnsuresCalledMethods CreatesMustCallFor expr Verification'' s2
+% LocalWords:  closeSocket destructor'' destructor BufferedOutputStream close''
+% LocalWords:  AnoResourceAliases createsmustcallfor SocketContainer intra m1
+% LocalWords:  CalledMethodsBottom CollectionIndexOutOfBoundsException foreach
+% LocalWords:  NegativeCollectionSizeException ApermitStaticOwning InputStream
+% LocalWords:  AresourceLeakIgnoredExceptions ApermitInitializationLeak loop''
+% LocalWords:  MustCallOnElements OwningCollection InputStreamWrapper algo WPI
+% LocalWords:  EnsuresCalledMethodsOnException EnsuresCalledMethodsOnElements
+% LocalWords:  EnsuresCalledMethodsOnElementsOnException ClassCircularityError
+% LocalWords:  ClassFormatError NoClassDefFoundError NegativeArraySizeException
+% LocalWords:  ArrayIndexOutOfBoundsException CalledMethodsOnElements
+% LocalWords:  socketList shutdownOutput MustCallOnElementsUnknown
+% LocalWords:  Specifications''
