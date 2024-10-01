@@ -689,9 +689,6 @@ To indicate that each resource in a collection is owned by the collection, write
 // The type of `s` is now  @MustCallOnElements({}) @CalledMethodsOnElements({})
 \end{Verbatim}
 
-[[Should the above be ``\<@MustCallOnElements("close")>'', given that \<Socket>
-has type \<@MustCall("close")>?]]
-
 A reference to an owning collection may be re-assigned any number of times.
 The left-hand side must have an empty \MustCallOnElements type, and the
 right-hand side must create a new collection that has no
@@ -703,10 +700,6 @@ right-hand side must create a new collection that has no
 s2 = new Socket[n]; // OK
 s2 = s1; // prohibited, because the right-hand side does not create a new collection
 \end{verbatim}
-
-[[If the type of \<new Socket[n]> is ``\<@MustCallOnElements("close")>'', then I
-think the assignment ``\<s2 = new Socket[n];>'' is illegal, because the
-left-hand side does not have an empty \MustCallOnElements type.]]
 
 In general, intra-procedural aliasing of \<@OwningCollection> variables is not
 permitted.  This implies that, within a method, an \<@OwningCollection> variable is the
@@ -916,18 +909,27 @@ the method promises to satisfy the \MustCallOnElements properties.
 When \<@OwningCollection> is written on a method parameter, the default
 type of the parameter is \MustCallOnElements\<(\textit{obligations})>,
 where \textit{obligations} is the default \<@MustCall> obligations of the
-component type. The user is allowed to write a
+component type. This prevents the need for many manual annotations. However, the user is allowed to write a manual
 \MustCallOnElements annotation to override this default.
 
 \begin{verbatim}
 void m1(@OwningCollection Socket[] s) {
-  // 1. @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+  // 's' is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
   for (int i = 0; i < s.length; i++) {
     try {
       s.close();
     } catch {}
   }
-  // 2. @MustCallOnElements({}) @CalledMethodsOnElements({"close"})
+  // 's' is @MustCallOnElements({}) @CalledMethodsOnElements({"close"})
+}
+\end{verbatim}
+
+If the method expects an array of \<Socket>s that are already closed (or not yet initialized) and thus has no open \<@MustCallOnElements> obligation, this can be specified with a manual annotation to override the default.
+
+\begin{verbatim}
+void m1(@OwningCollection Socket@MustCallOnElements()[] s) {
+  // 's' is @MustCallOnElements({}) @CalledMethodsOnElements({})
+  ...
 }
 \end{verbatim}
 
@@ -940,7 +942,7 @@ and its type is
 \<@MustCallOnElements(\{\}) @CalledMethodsOnElements($S$)>, where $S$ is the
 union of
 the \<CalledMethodsOnElements> value before the call and the methods guaranteed
-to have been called by the method.  For example:
+to have been called by the method. For example:
 
 \begin{verbatim}
 // Suppose `arr` has type @MustCallOnElements({"close"}) @CalledMethodsOnElements({"foo"})
@@ -955,7 +957,7 @@ Due to the rules of [[add cross-reference]], after calling \<m1>, the elements o
 
 An \<@OwningCollection> field must be final, private, and non-static. Thus, it
 can only be assigned in the constructor, in an instance initializer block, or at the declaration site.
-The default type of such a collection after declaration[[should this be initialization?]] is \<@MustCallOnElements(obligation)>, where \textit{obligation} is the set of \<@MustCall> methods of the component type. The default \<@CalledMethodsOnElements> type is the empty \<@CalledMethodsOnElements({})>.
+The default type of such a collection after declaration is \<@MustCallOnElements(obligation)>, where \textit{obligation} is the set of \<@MustCall> methods of the component type. The default \<@CalledMethodsOnElements> type is the empty \<@CalledMethodsOnElements({})>.
 
 Since the lifetime of a field coincides with the lifetime of the class instance, the obligations of the field must be fulfilled at the time the object itself is deallocated.
 Thus, a class with an \<@OwningCollection> field has to have a \<@MustCall("d")> annotation, where \<d()> is some destructor method that fulfills all obligations of the \<@OwningCollection> fields, indicated by an appropriate \<@EnsuresCalledMethodsOnElements> annotation:
@@ -977,13 +979,8 @@ class A {
 This ensures that any client that constructs an instance of A will have to call \<destruct()> on it, which in turn ensures that the obligations of the field are fulfilled.
 
 The elements of an \<@OwningCollection> field may only be assigned in the
-constructor and only once. Thus, an \<@OwningCollection> field provides
-immutability beyond just the final keyword, as even its elements are immutable
-once the enclosing class is constructed.[[I don't understand this.  The elements
-are not immutable, because they can be changed by calling a side-effecting
-method (such as ``close()'') on them.  The elements are not unassignable,
-because the end of Section~\ref{resource-leak-collections-parameters} states,
-``the elements of \<arr> may be reassigned.'']]  The collection stored in the
+constructor and only once. Thus, the elements of an \<@OwningCollection> field behave like they are final references as well.
+The collection stored in the
 field does not necessarily have to be allocated in the constructor, but may also
 be passed as an argument to the constructor, see
 Section~\ref{resource-leak-collections-constructor}.
@@ -993,13 +990,12 @@ Section~\ref{resource-leak-collections-constructor}.
 
 Constructors are special in the context of this checker, since they're the
 only methods where \<@OwningCollection> fields may be
-assigned.[[Section~\ref{resource-leak-collections-declaration} contains
-``\<s2 = new Socket[n]; // OK>'' without any mention of it having to be in a constructor.]]
+assigned (since \<@OwningCollection> fields are always final).
 
 When \<@OwningCollection> is written on a constructor parameter, the
 default type of the parameter is \MustCallOnElements\<(obligations)>, where
 \textit{obligations} is the set of \<@MustCall> obligations of the
-component type. The user may write a \MustCallOnElements annotation to override this default.
+component type, just like for normal methods. The user may write a \MustCallOnElements annotation to override this default.
 
 An \<@OwningCollection> constructor argument may be assigned to an \<@OwningCollection> field, which removes the obligation of the parameter.
 
