@@ -501,7 +501,7 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
     MustCallAnnotatedTypeFactory mcAtf =
         (MustCallAnnotatedTypeFactory) RLCUtils.getTypeFactory(MustCallChecker.class, checker);
     List<String> mcoeObligationsOfOwningField =
-        RLCUtils.getMcoeValuesOfOwningCollection(field.asType());
+        RLCUtils.getMcoeValuesOfOwningCollection(field.asType(), mcAtf);
     if (mcoeObligationsOfOwningField.isEmpty()) {
       // no obligations to fulfill for the field
       return;

@@ -234,8 +234,8 @@ public class RLCUtils {
   }
 
   /**
-   * Assuming that the passed {@code TypeMirror} belongs to an {@code @OwningArray} method
-   * parameter, returns the values in its {@code MustCallOnElements} type and the empty list if the
+   * Assuming that the passed {@code TypeMirror} belongs to an {@code @OwningArray} method parameter
+   * or field, returns the values in its {@code MustCallOnElements} type and the empty list if the
    * type is {@code MustCallOnElementsUnknown}. This is because for {@code @OwningArray} method
    * parameters, the default {@code MustCallOnElements} type contains the {@code MustCall} type
    * values of its component type, but a manual annotation overrides this default.
@@ -261,7 +261,7 @@ public class RLCUtils {
    * @return the values in the {@code MustCallOnElements} type of the given {@code TypeMirror} and
    *     the empty list if the type is {@code MustCallOnElementsUnknown}
    */
-  public static @NonNull List<String> getMcoeValuesOfOwningCollectionParam(
+  public static @NonNull List<String> getMcoeValuesOfOwningCollection(
       TypeMirror typeMirror, MustCallAnnotatedTypeFactory mcAtf) {
     List<String> manualMcoeAnnoValues = getMcoeValuesInManualAnno(typeMirror);
     if (manualMcoeAnnoValues != null) {
