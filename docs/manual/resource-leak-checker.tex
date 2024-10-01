@@ -805,7 +805,7 @@ socketList.add(new Socket(myHost, myPort));
 // @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
 \end{verbatim}
 
-
+[[What if \<socketList> is a field?  Can there be a method \<void addToSocketList(@Owning Socket s) \{ socketList.add(s); \}>?  I think it should be allowed, but also the type of \<socketList> at method entry will be \<@MustCallOnElements("close")>.  --MS]]
 \subsectionAndLabel{Fulfilling \MustCallOnElements obligations}{resource-leak-collection-fulfilling-obligations}
 
 A \MustCallOnElements obligation can be fulfilled via operations on loop
@@ -876,7 +876,7 @@ for (int i = 0; i < socketList.size(); i++) {
 The called methods are
 determined by checking the \<@CalledMethods> type of the collection element at
 the end of the loop body, without considering exceptional states, i.e.\ only
-exception-free executions of the loop body are considered.
+exception-free executions of the loop body are considered.  [[Why are only exception-free executions considered?  --MS]]
 
 For example, the following loop calls the methods \<close()> and \<shutdownOutput()> on the elements of \textit{socketList}.
 
@@ -979,7 +979,7 @@ class A {
 This ensures that any client that constructs an instance of A will have to call \<destruct()> on it, which in turn ensures that the obligations of the field are fulfilled.
 
 The elements of an \<@OwningCollection> field may only be assigned in the
-constructor and only once. Thus, the elements of an \<@OwningCollection> field behave like they are final references as well.
+constructor and only once. [[This is except for \<add()> calls right?  --MS]] Thus, the elements of an \<@OwningCollection> field behave like they are final references as well.
 The collection stored in the
 field does not necessarily have to be allocated in the constructor, but may also
 be passed as an argument to the constructor, see
