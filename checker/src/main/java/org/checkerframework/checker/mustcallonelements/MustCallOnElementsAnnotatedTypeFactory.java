@@ -24,7 +24,6 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.VariableElement;
-import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.TypeMirror;
 import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcall.MustCallChecker;
@@ -50,7 +49,6 @@ import org.checkerframework.dataflow.cfg.node.Node;
 import org.checkerframework.dataflow.expression.JavaExpression;
 import org.checkerframework.framework.flow.CFStore;
 import org.checkerframework.framework.flow.CFValue;
-import org.checkerframework.framework.type.AnnotatedTypeFactory;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedExecutableType;
 import org.checkerframework.framework.type.GenericAnnotatedTypeFactory;
@@ -349,44 +347,6 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   // }
 
   /**
-   * Returns whether the given Tree is a java.util.Collection type by checking whether the raw type
-   * of the element is assignable from java.util.Collection. Returns false if tree is null, or has
-   * no valid type.
-   *
-   * @param tree the tree
-   * @param atf an AnnotatedTypeFactory to get the annotated type of the element
-   * @return whether the given Tree is a Java.util.Collection type
-   */
-  public static boolean isCollection(Tree tree, AnnotatedTypeFactory atf) {
-    if (tree == null) return false;
-    Element element = TreeUtils.elementFromTree(tree);
-    if (element == null) return false;
-    AnnotatedTypeMirror elementTypeMirror = atf.getAnnotatedType(element);
-    if (elementTypeMirror == null || elementTypeMirror.getUnderlyingType() == null) return false;
-    Class<?> elementRawType = TypesUtils.getClassFromType(elementTypeMirror.getUnderlyingType());
-    if (elementRawType == null) return false;
-    return Collection.class.isAssignableFrom(elementRawType);
-  }
-
-  /**
-   * Returns whether the given Element is a java.util.Collection type by checking whether the raw
-   * type of the element is assignable from java.util.Collection. Returns false if element is null,
-   * or has no valid type.
-   *
-   * @param element the element
-   * @param atf an AnnotatedTypeFactory to get the annotated type of the element
-   * @return whether the given element is a Java.util.Collection type
-   */
-  public static boolean isCollection(Element element, AnnotatedTypeFactory atf) {
-    if (element == null) return false;
-    AnnotatedTypeMirror elementTypeMirror = atf.getAnnotatedType(element);
-    if (elementTypeMirror == null || elementTypeMirror.getUnderlyingType() == null) return false;
-    Class<?> elementRawType = TypesUtils.getClassFromType(elementTypeMirror.getUnderlyingType());
-    if (elementRawType == null) return false;
-    return Collection.class.isAssignableFrom(elementRawType);
-  }
-
-  /**
    * Returns whether the given tree has a {@code MustCallOnElementsUnknown} annotation in the given
    * store. Assumes the arguments are non-null.
    *
@@ -605,14 +565,11 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
    * @param type the {@code AnnotatedTypeMirror} of {@code elt}
    */
   private void changeMcoeTypeToDefault(Element elt, AnnotatedTypeMirror type) {
-    if (elt.asType() instanceof ArrayType) {
-      MustCallAnnotatedTypeFactory mcAtf =
-          (MustCallAnnotatedTypeFactory) RLCUtils.getTypeFactory(MustCallChecker.class, checker);
-      TypeMirror componentType = ((ArrayType) elt.asType()).getComponentType();
-      List<String> mcValuesOfComponent = RLCUtils.getMcValues(componentType, mcAtf);
-      AnnotationMirror newType = getMustCallOnElementsType(mcValuesOfComponent);
-      type.replaceAnnotation(newType);
-    }
+    MustCallAnnotatedTypeFactory mcAtf =
+        (MustCallAnnotatedTypeFactory) RLCUtils.getTypeFactory(MustCallChecker.class, checker);
+    List<String> mcValuesOfComponent = RLCUtils.getMcoeValuesOfOwningCollection(elt, mcAtf);
+    AnnotationMirror newType = getMustCallOnElementsType(mcValuesOfComponent);
+    type.replaceAnnotation(newType);
   }
 
   /**

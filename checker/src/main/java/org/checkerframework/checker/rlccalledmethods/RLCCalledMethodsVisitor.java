@@ -488,9 +488,8 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
   private void checkOwningCollectionField(VariableElement field) {
     Set<Modifier> modifiers = field.getModifiers();
     if (!modifiers.contains(Modifier.FINAL)) {
-      // @OwningCollection must be final. the consistency checker reports an error. don't execute
-      // any
-      // checks
+      // @OwningCollection must be final. The consistency checker reports an error.
+      // Don't execute any checks.
       return;
     }
 
@@ -501,7 +500,7 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
     MustCallAnnotatedTypeFactory mcAtf =
         (MustCallAnnotatedTypeFactory) RLCUtils.getTypeFactory(MustCallChecker.class, checker);
     List<String> mcoeObligationsOfOwningField =
-        RLCUtils.getMcoeValuesOfOwningCollection(field.asType(), mcAtf);
+        RLCUtils.getMcoeValuesOfOwningCollection(field, mcAtf);
     if (mcoeObligationsOfOwningField.isEmpty()) {
       // no obligations to fulfill for the field
       return;

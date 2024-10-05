@@ -120,8 +120,7 @@ public abstract class CollectionTransfer extends CFTransfer {
     Node receiver = methodAccessNode.getReceiver();
     Tree receiverTree = receiver.getTree();
     boolean isCollection =
-        receiverTree != null
-            && MustCallOnElementsAnnotatedTypeFactory.isCollection(receiverTree, atypeFactory);
+        receiverTree != null && RLCUtils.isCollection(receiverTree, atypeFactory);
     boolean isOwningCollection =
         receiverTree != null
             && TreeUtils.elementFromTree(receiverTree) != null

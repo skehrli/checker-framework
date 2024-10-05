@@ -1197,8 +1197,7 @@ public class MustCallConsistencyAnalyzer {
         if (member instanceof VariableTree) {
           VariableTree tree = (VariableTree) member;
           Element memberElm = TreeUtils.elementFromDeclaration(tree);
-          boolean isCollection =
-              MustCallOnElementsAnnotatedTypeFactory.isCollection(tree, cmoeTypeFactory);
+          boolean isCollection = RLCUtils.isCollection(tree, cmoeTypeFactory);
           boolean isOwningCollection = memberElm != null && cmAtf.hasOwningCollection(memberElm);
           boolean isOwning = memberElm != null && cmAtf.hasOwning(memberElm);
           boolean isField = memberElm != null && memberElm.getKind().isField();
@@ -1245,9 +1244,7 @@ public class MustCallConsistencyAnalyzer {
       MethodAccessNode man = min.getTarget();
       Node receiver = man.getReceiver();
       boolean isCollection =
-          receiver.getTree() != null
-              && MustCallOnElementsAnnotatedTypeFactory.isCollection(
-                  receiver.getTree(), cmoeTypeFactory);
+          receiver.getTree() != null && RLCUtils.isCollection(receiver.getTree(), cmoeTypeFactory);
       boolean isOwningCollection =
           receiver.getTree() != null
               && TreeUtils.elementFromTree(receiver.getTree()) != null
@@ -2001,7 +1998,7 @@ public class MustCallConsistencyAnalyzer {
             Obligation newObligation = CollectionObligation.fromTree(lhs.getTree());
             obligations.add(newObligation);
           } else {
-            // enforces 3. assignment rule:
+            // enforces 3. assignment rule for @OwningCollection declaration:
             // assigning an @OwningCollection to anything else is not allowed outside of constructor
             checker.reportError(
                 assignmentNode.getTree(),
@@ -2027,7 +2024,7 @@ public class MustCallConsistencyAnalyzer {
             Obligation newObligation = CollectionObligation.fromTree(lhs.getTree());
             obligations.add(newObligation);
           } else {
-            // enforces 3. assignment rule:
+            // enforces 3. assignment rule for @OwningCollection definition (assignment):
             // assigning an @OwningCollection to anything else is not allowed outside of constructor
             checker.reportError(
                 assignmentNode.getTree(),
@@ -2082,8 +2079,7 @@ public class MustCallConsistencyAnalyzer {
     if (node.getTree() != null && node.getTree().getKind() == Tree.Kind.NEW_CLASS) {
       NewClassTree nctree = (NewClassTree) node.getTree();
       ExpressionTree constructedClassName = nctree.getIdentifier();
-      return MustCallOnElementsAnnotatedTypeFactory.isCollection(
-          constructedClassName, mcoeTypeFactory);
+      return RLCUtils.isCollection(constructedClassName, mcoeTypeFactory);
     }
     return false;
   }
@@ -2963,8 +2959,7 @@ public class MustCallConsistencyAnalyzer {
         isArray
             && ((ArrayType) elt.asType()).getComponentType() != null
             && ((ArrayType) elt.asType()).getComponentType().getKind() != TypeKind.ARRAY;
-    boolean isCollection =
-        elt != null && MustCallOnElementsAnnotatedTypeFactory.isCollection(tree, mcoeTypeFactory);
+    boolean isCollection = elt != null && RLCUtils.isCollection(tree, mcoeTypeFactory);
     if (isOwningCollection && !(is1dArray || isCollection)) {
       checker.reportError(tree, "owningcollection.noncollection", tree);
     } else if (isOwning && (isArray || isCollection)) {

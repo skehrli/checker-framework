@@ -53,6 +53,7 @@ import org.checkerframework.checker.mustcall.qual.PolyMustCall;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.nullness.qual.Nullable;
+import org.checkerframework.checker.resourceleak.RLCUtils;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyAssigningLoop;
 import org.checkerframework.common.basetype.BaseTypeChecker;
@@ -258,7 +259,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
               + methodSelect.getKind();
       MemberSelectTree mst = (MemberSelectTree) methodSelect;
       Element receiverElt = TreeUtils.elementFromTree(mst.getExpression());
-      return MustCallOnElementsAnnotatedTypeFactory.isCollection(receiverElt, atypeFactory);
+      return RLCUtils.isCollection(receiverElt, atypeFactory);
     }
     return false;
   }
@@ -903,7 +904,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
                 + methodSelect.getKind();
         MemberSelectTree mst = (MemberSelectTree) methodSelect;
         Element elt = TreeUtils.elementFromTree(mst.getExpression());
-        if (MustCallOnElementsAnnotatedTypeFactory.isCollection(elt, atypeFactory)) {
+        if (RLCUtils.isCollection(elt, atypeFactory)) {
           return nameFromExpression(mst.getExpression());
         }
       } else if (condition.getRightOperand().getKind() == Tree.Kind.IDENTIFIER) {

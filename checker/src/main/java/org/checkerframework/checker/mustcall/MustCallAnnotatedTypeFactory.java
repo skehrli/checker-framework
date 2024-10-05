@@ -34,6 +34,7 @@ import org.checkerframework.checker.mustcall.qual.MustCallUnknown;
 import org.checkerframework.checker.mustcall.qual.Owning;
 import org.checkerframework.checker.mustcall.qual.PolyMustCall;
 import org.checkerframework.checker.nullness.qual.Nullable;
+import org.checkerframework.checker.resourceleak.RLCUtils;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
 import org.checkerframework.common.basetype.BaseAnnotatedTypeFactory;
 import org.checkerframework.common.basetype.BaseTypeChecker;
@@ -177,7 +178,7 @@ public class MustCallAnnotatedTypeFactory extends BaseAnnotatedTypeFactory
       // change it for variables
       if (type.getKind() == TypeKind.DECLARED) {
         AnnotatedDeclaredType adt = (AnnotatedDeclaredType) type;
-        if (isCollection(adt.getUnderlyingType())) {
+        if (RLCUtils.isCollection(adt.getUnderlyingType())) {
           for (AnnotatedTypeMirror typeArg : adt.getTypeArguments()) {
             if (typeArg == null) continue;
             AnnotationMirror mcAnno = typeArg.getEffectiveAnnotation();
@@ -197,7 +198,7 @@ public class MustCallAnnotatedTypeFactory extends BaseAnnotatedTypeFactory
       if (type.getKind() == TypeKind.EXECUTABLE) {
         AnnotatedExecutableType methodType = (AnnotatedExecutableType) type;
         AnnotatedTypeMirror returnType = methodType.getReturnType();
-        if (isCollection(returnType.getUnderlyingType())) {
+        if (RLCUtils.isCollection(returnType.getUnderlyingType())) {
           if (returnType.getKind() == TypeKind.DECLARED) {
             AnnotatedDeclaredType adt = (AnnotatedDeclaredType) returnType;
             for (AnnotatedTypeMirror typeArg : adt.getTypeArguments()) {
@@ -227,21 +228,6 @@ public class MustCallAnnotatedTypeFactory extends BaseAnnotatedTypeFactory
   public void addComputedTypeAnnotations(Element elt, AnnotatedTypeMirror type) {
     super.addComputedTypeAnnotations(elt, type);
     changeCollectionTypeParameters(elt, type);
-  }
-
-  /**
-   * Returns whether the given {@link TypeMirror} is an instance of a collection (subclass). This is
-   * determined by getting the class of the TypeMirror and checking whether it is assignable from
-   * Collection.
-   *
-   * @param type the TypeMirror
-   * @return whether type is an instance of a collection (subclass)
-   */
-  private boolean isCollection(TypeMirror type) {
-    if (type == null) return false;
-    Class<?> elementRawType = TypesUtils.getClassFromType(type);
-    if (elementRawType == null) return false;
-    return Collection.class.isAssignableFrom(elementRawType);
   }
 
   @Override

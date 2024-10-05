@@ -42,6 +42,7 @@ class OwningarrayParameterPassing {
       owningArr[i] = new Resource();
     }
     // owning to non-owning is illegal, since the non-owning parameter would be an alias
+    // :: error: argument
     // :: error: unexpected.argument.ownership
     nonOwningParameter(owningArr);
   }
@@ -101,6 +102,7 @@ class OwningarrayParameterPassing {
       owningArr[i] = new Resource();
     }
     // this method call now fails due to the different ownership annotations
+    // :: error: argument
     // :: error: unexpected.argument.ownership
     nonOwningParameter(owningArr);
     // this method call now succeeds and clears the obligations of the new array

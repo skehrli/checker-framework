@@ -1,7 +1,9 @@
 package org.checkerframework.checker.resourceleak;
 
+import com.sun.source.tree.Tree;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -9,27 +11,36 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.AnnotationValue;
+import javax.lang.model.element.Element;
+import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.ArrayType;
+import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.type.TypeVariable;
+import javax.lang.model.type.WildcardType;
 import org.checkerframework.checker.calledmethodsonelements.CalledMethodsOnElementsChecker;
 import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcall.MustCallChecker;
+import org.checkerframework.checker.mustcall.MustCallNoCreatesMustCallForChecker;
 import org.checkerframework.checker.mustcall.qual.InheritableMustCall;
 import org.checkerframework.checker.mustcall.qual.MustCall;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsChecker;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElements;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElementsUnknown;
+import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsChecker;
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.framework.source.SourceChecker;
 import org.checkerframework.framework.type.AnnotatedTypeFactory;
+import org.checkerframework.framework.type.AnnotatedTypeMirror;
 import org.checkerframework.javacutil.AnnotationUtils;
 import org.checkerframework.javacutil.BugInCF;
+import org.checkerframework.javacutil.TreeUtils;
 import org.checkerframework.javacutil.TypesUtils;
 import org.plumelib.util.CollectionsPlume;
 
@@ -46,6 +57,7 @@ public class RLCUtils {
               ResourceLeakChecker.class.getCanonicalName(),
               RLCCalledMethodsChecker.class.getCanonicalName(),
               MustCallChecker.class.getCanonicalName(),
+              MustCallNoCreatesMustCallForChecker.class.getCanonicalName(),
               MustCallOnElementsChecker.class.getCanonicalName(),
               CalledMethodsOnElementsChecker.class.getCanonicalName()));
 
@@ -102,7 +114,8 @@ public class RLCUtils {
    */
   public static @NonNull AnnotatedTypeFactory getTypeFactory(
       Class<? extends SourceChecker> targetClass, SourceChecker referenceChecker) {
-    return ((BaseTypeChecker) getChecker(targetClass, referenceChecker)).getTypeFactory();
+    BaseTypeChecker targetChecker = (BaseTypeChecker) getChecker(targetClass, referenceChecker);
+    return targetChecker.getTypeFactory();
   }
 
   /**
@@ -115,6 +128,11 @@ public class RLCUtils {
    */
   public static @NonNull SourceChecker getChecker(
       Class<? extends SourceChecker> targetClass, AnnotatedTypeFactory referenceAtf) {
+    if (!rlcCheckers.contains(targetClass.getCanonicalName())) {
+      throw new IllegalArgumentException(
+          "Argument targetClass to RLCUtils#getChecker(targetClass, referenceChecker) expected to be an RLC checker but is "
+              + targetClass.getCanonicalName());
+    }
     return getChecker(targetClass, referenceAtf.getChecker());
   }
 
@@ -128,6 +146,11 @@ public class RLCUtils {
    */
   public static @NonNull AnnotatedTypeFactory getTypeFactory(
       Class<? extends SourceChecker> targetClass, AnnotatedTypeFactory referenceAtf) {
+    if (!rlcCheckers.contains(targetClass.getCanonicalName())) {
+      throw new IllegalArgumentException(
+          "Argument targetClass to RLCUtils#getChecker(targetClass, referenceChecker) expected to be an RLC checker but is "
+              + targetClass.getCanonicalName());
+    }
     return ((BaseTypeChecker) getChecker(targetClass, referenceAtf.getChecker())).getTypeFactory();
   }
 
@@ -161,7 +184,10 @@ public class RLCUtils {
           targetClass, referenceChecker.getSubchecker(MustCallOnElementsChecker.class));
     } else if (refClass == RLCCalledMethodsChecker.class) {
       if (targetClass == MustCallChecker.class) {
-        return referenceChecker.getSubchecker(MustCallChecker.class);
+        MustCallChecker mcc = referenceChecker.getSubchecker(MustCallChecker.class);
+        return mcc != null
+            ? mcc
+            : referenceChecker.getSubchecker(MustCallNoCreatesMustCallForChecker.class);
       } else {
         return getChecker(targetClass, referenceChecker.getParentChecker());
       }
@@ -256,21 +282,49 @@ public class RLCUtils {
    *       fulfill them by the time it returns.
    * </ol>
    *
-   * @param typeMirror the {@code TypeMirror} of an @OwningCollection method parameter
+   * @param elt the {@code Element} of an @OwningCollection method parameter or field
    * @param mcAtf the {@code MustCallAnnotatedTypeFactory} to get the {@code MustCall} type
    * @return the values in the {@code MustCallOnElements} type of the given {@code TypeMirror} and
    *     the empty list if the type is {@code MustCallOnElementsUnknown}
    */
   public static @NonNull List<String> getMcoeValuesOfOwningCollection(
-      TypeMirror typeMirror, MustCallAnnotatedTypeFactory mcAtf) {
+      Element elt, MustCallAnnotatedTypeFactory mcAtf) {
+    // Check arguments, since this is critical for the soundness of the defaulting rule.
+    ElementKind eltKind = elt.getKind();
+    boolean eltIsOwningCollection = elt.getAnnotation(OwningCollection.class) != null;
+    if (eltKind != ElementKind.FIELD && eltKind != ElementKind.PARAMETER) {
+      throw new IllegalArgumentException(
+          "RLCUtils#getMcoeValuesOfOwningCollection() expected a FIELD or PARAMETER element, but got: "
+              + eltKind);
+    }
+    if (!eltIsOwningCollection) {
+      throw new IllegalArgumentException(
+          "RLCUtils#getMcoeValuesOfOwningCollection() expected an @OwningCollection argument, but "
+              + elt
+              + " is not @OwningCollection.");
+    }
+
+    TypeMirror typeMirror = elt.asType();
     List<String> manualMcoeAnnoValues = getMcoeValuesInManualAnno(typeMirror);
     if (manualMcoeAnnoValues != null) {
       return manualMcoeAnnoValues;
     } else {
       // if no mcoe anno, the mcoe type defaults to all obligations of the component
       List<String> mcoeValues = Collections.emptyList();
-      if (typeMirror instanceof ArrayType) {
-        mcoeValues = getMcValues(((ArrayType) typeMirror).getComponentType(), mcAtf);
+      boolean isArray = typeMirror instanceof ArrayType;
+      boolean isCollection = isCollection(typeMirror);
+      if (isArray) {
+        TypeMirror componentType = ((ArrayType) typeMirror).getComponentType();
+        mcoeValues = getMcValues(componentType, mcAtf);
+      } else if (isCollection) {
+        assert typeMirror instanceof DeclaredType
+            : "Collection TypeMirror assumed to be DeclaredType, but is: "
+                + typeMirror.getClass().getCanonicalName();
+        DeclaredType declType = (DeclaredType) typeMirror;
+        List<? extends TypeMirror> typeArgs = declType.getTypeArguments();
+        assert typeArgs.size() == 1 : "Collections are expected to have only one type variable.";
+        TypeMirror typeArg = typeArgs.get(0);
+        mcoeValues = getMcValues(typeArg, mcAtf);
       } else {
         throw new BugInCF(
             "Argument for @OwningCollection parameter is neither ArrayType, nor Collection but "
@@ -288,6 +342,13 @@ public class RLCUtils {
    * @return the list of mustcall obligations for {@code type}
    */
   public static List<String> getMcValues(TypeMirror type, MustCallAnnotatedTypeFactory mcAtf) {
+    if (type instanceof TypeVariable) {
+      // a generic - replace with upper bound
+      type = ((TypeVariable) type).getUpperBound();
+    } else if (type instanceof WildcardType) {
+      // a wildcard - replace with upper bound
+      type = ((WildcardType) type).getExtendsBound();
+    }
     TypeElement typeElement = TypesUtils.getTypeElement(type);
     AnnotationMirror imcAnnotation =
         mcAtf.getDeclAnnotation(typeElement, InheritableMustCall.class);
@@ -304,5 +365,51 @@ public class RLCUtils {
               imcAnnotation, mcAtf.getInheritableMustCallValueElement(), String.class));
     }
     return new ArrayList<>(mcValues);
+  }
+
+  /**
+   * Returns whether the given {@link TypeMirror} is an instance of a collection (subclass). This is
+   * determined by getting the class of the TypeMirror and checking whether it is assignable from
+   * Collection.
+   *
+   * @param type the TypeMirror
+   * @return whether type is an instance of a collection (subclass)
+   */
+  public static boolean isCollection(TypeMirror type) {
+    if (type == null) return false;
+    Class<?> elementRawType = TypesUtils.getClassFromType(type);
+    if (elementRawType == null) return false;
+    return Collection.class.isAssignableFrom(elementRawType);
+  }
+
+  /**
+   * Returns whether the given Element is a java.util.Collection type by checking whether the raw
+   * type of the element is assignable from java.util.Collection. Returns false if element is null,
+   * or has no valid type.
+   *
+   * @param element the element
+   * @param atf an AnnotatedTypeFactory to get the annotated type of the element
+   * @return whether the given element is a Java.util.Collection type
+   */
+  public static boolean isCollection(Element element, AnnotatedTypeFactory atf) {
+    if (element == null) return false;
+    AnnotatedTypeMirror elementTypeMirror = atf.getAnnotatedType(element);
+    if (elementTypeMirror == null || elementTypeMirror.getUnderlyingType() == null) return false;
+    return isCollection(elementTypeMirror.getUnderlyingType());
+  }
+
+  /**
+   * Returns whether the given Tree is a java.util.Collection type by checking whether the raw type
+   * of the element is assignable from java.util.Collection. Returns false if tree is null, or has
+   * no valid type.
+   *
+   * @param tree the tree
+   * @param atf an AnnotatedTypeFactory to get the annotated type of the element
+   * @return whether the given Tree is a Java.util.Collection type
+   */
+  public static boolean isCollection(Tree tree, AnnotatedTypeFactory atf) {
+    if (tree == null) return false;
+    Element element = TreeUtils.elementFromTree(tree);
+    return isCollection(element, atf);
   }
 }

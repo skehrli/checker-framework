@@ -184,7 +184,7 @@ public class CalledMethodsOnElementsTransfer extends CollectionTransfer {
             (MustCallAnnotatedTypeFactory)
                 RLCUtils.getTypeFactory(MustCallChecker.class, atypeFactory);
         List<String> mcoeObligationsOfCollection =
-            RLCUtils.getMcoeValuesOfOwningCollection(param.asType(), mcAtf);
+            RLCUtils.getMcoeValuesOfOwningCollection(param, mcAtf);
         CFStore store = res.getRegularStore();
         store.clearValue(collection);
         store.insertValue(
