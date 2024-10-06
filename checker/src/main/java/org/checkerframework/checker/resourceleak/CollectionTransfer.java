@@ -1,10 +1,14 @@
 package org.checkerframework.checker.resourceleak;
 
 import com.sun.source.tree.Tree;
+import java.util.List;
+import java.util.stream.Collectors;
+import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.VariableElement;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsChecker;
 import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
-import org.checkerframework.checker.resourceleak.RLCUtils.MethodSigType;
+import org.checkerframework.checker.nullness.qual.NonNull;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.McoeObligationAlteringLoop;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.McoeObligationAlteringLoop.LoopKind;
@@ -53,6 +57,56 @@ public abstract class CollectionTransfer extends CFTransfer {
   }
 
   /**
+   * Defines the different classifications of method signatures with respect to their safety in the
+   * context of them being called on an {@code OwningCollection} receiver.
+   */
+  public static enum MethodSigType {
+    SAFE, /* Methods that are handled and cosidered safe. */
+    UNSAFE, /* Methods that are either not handled or handled and cosidered unsafe. */
+    ADD_E, /* All other method signatures require special handling. */
+    ADD_INT_E,
+    SET
+  }
+
+  /**
+   * Returns the {@code MethodSigType} of the passed {@code method}. {@code MethodSigType}
+   * classifies method signatures by their safety in the context of this method being called on an
+   * {@code OwningCollection}.
+   *
+   * <p>This method exists since multiple code locations must have a consistent method
+   * classification, such as the consistency analyzer to handle the change of obligation through the
+   * method call and the {@code MustCallOnElements} transfer function to decide the type change of
+   * the receiver collection.
+   *
+   * @param method the method to consider
+   * @return the {@code MethodSigType} of the passed {@code method}
+   */
+  public static @NonNull MethodSigType getMethodSigType(ExecutableElement method) {
+    List<? extends VariableElement> parameters = method.getParameters();
+    String methodSignature =
+        method.getSimpleName().toString()
+            + parameters.stream()
+                .map(param -> param.asType().toString())
+                .collect(Collectors.joining(",", "(", ")"));
+    switch (methodSignature) {
+      case "add(E)":
+        return MethodSigType.ADD_E;
+      case "add(int,E)":
+        return MethodSigType.ADD_INT_E;
+      case "set(int,E)":
+        return MethodSigType.SET;
+      case "isEmpty()":
+      case "iterator()":
+      case "size()":
+      case "get(int)":
+        return MethodSigType.SAFE;
+      default:
+        System.out.println("unhandled method " + methodSignature);
+        return MethodSigType.UNSAFE;
+    }
+  }
+
+  /**
    * Updates the type of the corresponding collection in the else store of the {@code
    * TransferResult} based on the information in the loop wrapper.
    *
@@ -82,7 +136,29 @@ public abstract class CollectionTransfer extends CFTransfer {
    * @param receiver JavaExpression of the collection, whose type should be changed
    * @return updated {@code TransferResult}
    */
+  protected abstract TransferResult<CFValue, CFStore> transformCollectionAddWithIdx(
+      MethodInvocationNode node, TransferResult<CFValue, CFStore> res, JavaExpression receiver);
+
+  /**
+   * The abstract transformer for {@code Collection.add(E)}
+   *
+   * @param node the {@code MethodInvocationNode}
+   * @param res the {@code TransferResult} containing the store to be edited
+   * @param receiver JavaExpression of the collection, whose type should be changed
+   * @return updated {@code TransferResult}
+   */
   protected abstract TransferResult<CFValue, CFStore> transformCollectionAdd(
+      MethodInvocationNode node, TransferResult<CFValue, CFStore> res, JavaExpression receiver);
+
+  /**
+   * The abstract transformer for {@code Collection.set(int, E)}
+   *
+   * @param node the {@code MethodInvocationNode}
+   * @param res the {@code TransferResult} containing the store to be edited
+   * @param receiver JavaExpression of the collection, whose type should be changed
+   * @return updated {@code TransferResult}
+   */
+  protected abstract TransferResult<CFValue, CFStore> transformListSet(
       MethodInvocationNode node, TransferResult<CFValue, CFStore> res, JavaExpression receiver);
 
   /**
@@ -134,7 +210,7 @@ public abstract class CollectionTransfer extends CFTransfer {
                     RLCUtils.getTypeFactory(MustCallOnElementsChecker.class, atypeFactory))
                 .isMustCallOnElementsUnknown(res.getRegularStore(), receiverTree);
     if (isCollection && (isOwningCollection || isRoAlias)) {
-      MethodSigType methodSigType = RLCUtils.getMethodSigType(methodAccessNode.getMethod());
+      MethodSigType methodSigType = getMethodSigType(methodAccessNode.getMethod());
       switch (methodSigType) {
         case SAFE:
           break;
@@ -142,6 +218,12 @@ public abstract class CollectionTransfer extends CFTransfer {
           break;
         case ADD_E:
           res = transformCollectionAdd(node, res, receiverJx);
+          break;
+        case ADD_INT_E:
+          res = transformCollectionAddWithIdx(node, res, receiverJx);
+          break;
+        case SET:
+          res = transformListSet(node, res, receiverJx);
           break;
           // case "add(int,E)":
           //   return transformCollectionAddWithIdx(node, res, parameters);

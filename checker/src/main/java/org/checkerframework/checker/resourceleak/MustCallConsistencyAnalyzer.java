@@ -62,7 +62,7 @@ import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotat
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsChecker;
 import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.nullness.qual.Nullable;
-import org.checkerframework.checker.resourceleak.RLCUtils.MethodSigType;
+import org.checkerframework.checker.resourceleak.CollectionTransfer.MethodSigType;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnalysis;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyFulfillingLoop;
@@ -1234,6 +1234,9 @@ public class MustCallConsistencyAnalyzer {
    * Checks whether node corresponds to a MethodInvocationNode of a method call on a Collection. In
    * this case, it updates the obligations based on the method called on the Collection.
    *
+   * <p>Usually, this means to remove the obligation of {@code LocalVariableNode}s that were
+   * assigned into the Collection.
+   *
    * @param obligations set of currently tracked obligations
    * @param node the node corresponding to a method call
    */
@@ -1251,27 +1254,34 @@ public class MustCallConsistencyAnalyzer {
               && cmAtf.hasOwningCollection(TreeUtils.elementFromTree(receiver.getTree()));
       if (isCollection && isOwningCollection) {
         List<Node> args = min.getArguments();
-        MethodSigType methodSigType = RLCUtils.getMethodSigType(man.getMethod());
+        MethodSigType methodSigType = CollectionTransfer.getMethodSigType(man.getMethod());
         switch (methodSigType) {
           case SAFE:
-            break;
+            return;
           case UNSAFE:
             checker.reportError(node.getTree(), "unsafe.method", man);
-            break;
+            return;
           case ADD_E:
-            assert args.size() == 1
-                : "expected one argument for Collection.add(E), but args are: " + args;
             Node argExpr = NodeUtils.removeCasts(args.get(0));
             Node argVar = getTempVarOrNode(argExpr);
-            assert (argVar instanceof LocalVariableNode)
-                : "arg of Collection.add(E) expected to be LocalVariableNode, but is: "
-                    + argVar.getClass();
-            System.out.println("removing obligation for " + argVar);
-            removeObligationForNode(obligations, (LocalVariableNode) argVar);
-            break;
-            // case "add(int,E)":
-            //   res = transformCollectionAddWithIdx(node, res, parameters);
-            //   break;
+            // System.out.println("removing obligation for " + argVar);
+            removeObligationForVar(obligations, argVar);
+            return;
+          case ADD_INT_E:
+            argExpr = NodeUtils.removeCasts(args.get(1));
+            argVar = getTempVarOrNode(argExpr);
+            removeObligationForVar(obligations, argVar);
+            return;
+          case SET:
+            argExpr = NodeUtils.removeCasts(args.get(1));
+            argVar = getTempVarOrNode(argExpr);
+            removeObligationForVar(obligations, argVar);
+
+            // also remove obligation for the entire method invocation node
+            Node methodCallExpr = NodeUtils.removeCasts(min);
+            Node methodCallVar = getTempVarOrNode(methodCallExpr);
+            removeObligationForVar(obligations, methodCallVar);
+            return;
         }
       }
     }
@@ -1290,8 +1300,6 @@ public class MustCallConsistencyAnalyzer {
       Set<Obligation> obligations, Node node, @Nullable TypeMirror exceptionType) {
     removeObligationsAtOwnershipTransferToParameters(obligations, node, exceptionType);
 
-    updateObligationsForMethodInvocationOnCollection(obligations, node);
-
     if (node instanceof MethodInvocationNode
         && cmAtf.canCreateObligations()
         && cmAtf.hasCreatesMustCallFor((MethodInvocationNode) node)) {
@@ -1303,6 +1311,7 @@ public class MustCallConsistencyAnalyzer {
     }
 
     if (!shouldTrackInvocationResult(obligations, node, false)) {
+      updateObligationsForMethodInvocationOnCollection(obligations, node);
       return;
     }
 
@@ -1314,6 +1323,7 @@ public class MustCallConsistencyAnalyzer {
       incrementNumMustCall(node);
     }
     updateObligationsWithInvocationResult(obligations, node);
+    updateObligationsForMethodInvocationOnCollection(obligations, node);
   }
 
   /**
@@ -1856,6 +1866,27 @@ public class MustCallConsistencyAnalyzer {
     Set<MethodExitKind> toClear = MethodExitKind.ALL;
     removeObligationsContainingVar(
         obligations, rhsVar, MustCallAliasHandling.NO_SPECIAL_HANDLING, toClear);
+  }
+
+  /**
+   * Removes all obligations containing the specified variable, handling nodes beyond just {@code
+   * LocalVariableNode}.
+   *
+   * @param obligations the set of currently tracked obligations
+   * @param node the node to remove obligations of
+   */
+  private void removeObligationForVar(Set<Obligation> obligations, Node node) {
+    if (node instanceof LocalVariableNode) {
+      removeObligationForNode(obligations, (LocalVariableNode) node);
+      return;
+    } else if (node instanceof NullLiteralNode) {
+      // no obligation to remove
+      return;
+    } else {
+      throw new BugInCF(
+          "Unhandled Node type when removing obligation for a variable: "
+              + node.getClass().getSimpleName());
+    }
   }
 
   /**
@@ -3679,6 +3710,8 @@ public class MustCallConsistencyAnalyzer {
       if (!reportedErrorAliases.contains(firstAlias)) {
         if (!checker.shouldSkipUses(TreeUtils.elementFromTree(firstAlias.tree))) {
           reportedErrorAliases.add(firstAlias);
+          System.out.println(
+              "reporting error for " + firstAlias + " of kind: " + firstAlias.tree.getKind());
           checker.reportError(
               firstAlias.tree,
               "required.method.not.called",

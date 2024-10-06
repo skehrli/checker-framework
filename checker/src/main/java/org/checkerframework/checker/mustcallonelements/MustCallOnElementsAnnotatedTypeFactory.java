@@ -364,11 +364,11 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
     if (!(arrTree instanceof VariableTree) && !(arrTree instanceof IdentifierTree)) {
       return false;
     }
-    JavaExpression arrayJX =
+    JavaExpression collectionJx =
         (arrTree instanceof VariableTree)
             ? JavaExpression.fromVariableTree((VariableTree) arrTree)
             : JavaExpression.fromTree((IdentifierTree) arrTree);
-    CFValue cfval = getValueFromStoreSafely(mcoeStore, arrayJX);
+    CFValue cfval = getValueFromStoreSafely(mcoeStore, collectionJx);
     if (cfval == null) return false;
     Element arrElm =
         (arrTree instanceof VariableTree)
@@ -411,38 +411,70 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
 
   /**
    * Returns a list of methods that have to be "called on elements" on the {@code @OwningCollection}
-   * array specified by the given tree (expected to be an array identifier) or null if there is a
+   * collection/array specified by the given JavaExpression, or null if there is a
    * {@code @MustCallOnElementsUnknown} annotation. The list is extracted from the store passed as
    * an argument.
    *
    * @param mcoeStore store containing MustCallOnElements type annotation information
-   * @param arrTree the array variable/identifier tree
-   * @return list of the MustCallOnElements obligations of the given array
+   * @param collectionJx the array/collection JavaExpression
+   * @return list of the MustCallOnElements obligations of the given array/collection
    */
-  public List<String> getMustCallOnElementsObligations(CFStore mcoeStore, Tree arrTree) {
-    if (arrTree instanceof AssignmentTree) {
-      arrTree = ((AssignmentTree) arrTree).getVariable();
+  public List<String> getMustCallOnElementsObligations(
+      CFStore mcoeStore, JavaExpression collectionJx) {
+    CFValue cfval = mcoeStore.getValue(collectionJx);
+    assert cfval != null : "No mcoe annotation for " + collectionJx + " in store.";
+    AnnotationMirror mcoeAnno =
+        AnnotationUtils.getAnnotationByClass(cfval.getAnnotations(), MustCallOnElements.class);
+    AnnotationMirror mcoeAnnoUnknown =
+        AnnotationUtils.getAnnotationByClass(
+            cfval.getAnnotations(), MustCallOnElementsUnknown.class);
+    assert mcoeAnno != null || mcoeAnnoUnknown != null
+        : "No mcoe annotation for " + collectionJx + " in store.";
+    if (mcoeAnnoUnknown != null) {
+      return null;
+    } else {
+      AnnotationValue av =
+          mcoeAnno.getElementValues().get(this.getMustCallOnElementsValueElement());
+      return av == null
+          ? Collections.emptyList()
+          : AnnotationUtils.annotationValueToList(av, String.class);
     }
-    if (arrTree instanceof ArrayAccessTree) {
-      arrTree = ((ArrayAccessTree) arrTree).getExpression();
+  }
+
+  /**
+   * Returns a list of methods that have to be "called on elements" on the {@code @OwningCollection}
+   * array/collection specified by the given tree (expected to be a collection identifier) or null
+   * if there is a {@code @MustCallOnElementsUnknown} annotation. The list is extracted from the
+   * store passed as an argument.
+   *
+   * @param mcoeStore store containing MustCallOnElements type annotation information
+   * @param collectionTree the array/collection variable/identifier tree
+   * @return list of the MustCallOnElements obligations of the given array/collection
+   */
+  public List<String> getMustCallOnElementsObligations(CFStore mcoeStore, Tree collectionTree) {
+    if (collectionTree instanceof AssignmentTree) {
+      collectionTree = ((AssignmentTree) collectionTree).getVariable();
     }
-    if (!(arrTree instanceof VariableTree) && !(arrTree instanceof IdentifierTree)) {
+    if (collectionTree instanceof ArrayAccessTree) {
+      collectionTree = ((ArrayAccessTree) collectionTree).getExpression();
+    }
+    if (!(collectionTree instanceof VariableTree) && !(collectionTree instanceof IdentifierTree)) {
       throw new BugInCF(
           "MCOE obligation %s must be either from definition or declaration, but is %s",
-          arrTree, arrTree.getClass().getCanonicalName());
+          collectionTree, collectionTree.getClass().getCanonicalName());
     }
-    JavaExpression arrayJX =
-        (arrTree instanceof VariableTree)
-            ? JavaExpression.fromVariableTree((VariableTree) arrTree)
-            : JavaExpression.fromTree((IdentifierTree) arrTree);
-    CFValue cfval = mcoeStore.getValue(arrayJX);
-    Element arrElm =
-        (arrTree instanceof VariableTree)
-            ? TreeUtils.elementFromDeclaration((VariableTree) arrTree)
-            : TreeUtils.elementFromTree((IdentifierTree) arrTree);
-    if (arrElm.getKind() == ElementKind.FIELD
-        && arrElm.getAnnotation(OwningCollection.class) != null) {
-      if (ElementUtils.isFinal(arrElm)) {
+    Element collectionElm =
+        (collectionTree instanceof VariableTree)
+            ? TreeUtils.elementFromDeclaration((VariableTree) collectionTree)
+            : TreeUtils.elementFromTree((IdentifierTree) collectionTree);
+    JavaExpression collectionJx =
+        (collectionTree instanceof VariableTree)
+            ? JavaExpression.fromVariableTree((VariableTree) collectionTree)
+            : JavaExpression.fromTree((IdentifierTree) collectionTree);
+    if (collectionElm.getKind() == ElementKind.FIELD
+        && collectionElm.getAnnotation(OwningCollection.class) != null) {
+      if (ElementUtils.isFinal(collectionElm)) {
+        CFValue cfval = mcoeStore.getValue(collectionJx);
         if (cfval == null) {
           // entry block doesn't have final field in store yet
           return Collections.emptyList();
@@ -453,23 +485,7 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
         return Collections.emptyList();
       }
     }
-    assert cfval != null : "No mcoe annotation for " + arrTree + " in store.";
-    AnnotationMirror mcoeAnno =
-        AnnotationUtils.getAnnotationByClass(cfval.getAnnotations(), MustCallOnElements.class);
-    AnnotationMirror mcoeAnnoUnknown =
-        AnnotationUtils.getAnnotationByClass(
-            cfval.getAnnotations(), MustCallOnElementsUnknown.class);
-    assert mcoeAnno != null || mcoeAnnoUnknown != null
-        : "No mcoe annotation for " + arrTree + " in store.";
-    if (mcoeAnnoUnknown != null) {
-      return null;
-    } else {
-      AnnotationValue av =
-          mcoeAnno.getElementValues().get(this.getMustCallOnElementsValueElement());
-      return av == null
-          ? Collections.emptyList()
-          : AnnotationUtils.annotationValueToList(av, String.class);
-    }
+    return getMustCallOnElementsObligations(mcoeStore, collectionJx);
   }
 
   /*

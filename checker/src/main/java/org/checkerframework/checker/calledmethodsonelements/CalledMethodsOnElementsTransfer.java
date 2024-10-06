@@ -197,6 +197,56 @@ public class CalledMethodsOnElementsTransfer extends CollectionTransfer {
   }
 
   /**
+   * Sets the {@code CalledMethodsOnElements} type of the given JavaExpression to {@code
+   * CalledMethodsOnElementsBottom}.
+   *
+   * @param store the store, in which the type is changed
+   * @param element the JavaExpression for the element, whose type is reset
+   */
+  private void resetCmoeValue(CFStore store, JavaExpression element) {
+    AnnotationMirror newAnno =
+        createAccumulatorAnnotation(Collections.emptyList(), atypeFactory.TOP);
+    store.clearValue(element);
+    store.insertValue(element, newAnno);
+  }
+
+  /**
+   * The abstract transformer for {@code Collection.add(int, E)}. Resets the {@code
+   * CalledMethodsOnElements} type of the recipient {@code Collection} to {@code
+   * CalledMethodsOnElementsBottom}.
+   *
+   * @param node the {@code MethodInvocationNode}
+   * @param res the {@code TransferResult} containing the store to be edited
+   * @param receiver JavaExpression of the collection, whose type should be changed
+   * @return updated {@code TransferResult}
+   */
+  @Override
+  protected TransferResult<CFValue, CFStore> transformListSet(
+      MethodInvocationNode node, TransferResult<CFValue, CFStore> res, JavaExpression receiver) {
+    CFStore store = res.getRegularStore();
+    resetCmoeValue(store, receiver);
+    return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
+  }
+
+  /**
+   * The abstract transformer for {@code Collection.add(int, E)}. Resets the {@code
+   * CalledMethodsOnElements} type of the recipient {@code Collection} to {@code
+   * CalledMethodsOnElementsBottom}.
+   *
+   * @param node the {@code MethodInvocationNode}
+   * @param res the {@code TransferResult} containing the store to be edited
+   * @param receiver JavaExpression of the collection, whose type should be changed
+   * @return updated {@code TransferResult}
+   */
+  @Override
+  protected TransferResult<CFValue, CFStore> transformCollectionAddWithIdx(
+      MethodInvocationNode node, TransferResult<CFValue, CFStore> res, JavaExpression receiver) {
+    CFStore store = res.getRegularStore();
+    resetCmoeValue(store, receiver);
+    return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
+  }
+
+  /**
    * The abstract transformer for {@code Collection.add(E)}. Resets the {@code
    * CalledMethodsOnElements} type of the recipient {@code Collection} to {@code
    * CalledMethodsOnElementsBottom}.
@@ -209,14 +259,8 @@ public class CalledMethodsOnElementsTransfer extends CollectionTransfer {
   @Override
   protected TransferResult<CFValue, CFStore> transformCollectionAdd(
       MethodInvocationNode node, TransferResult<CFValue, CFStore> res, JavaExpression receiver) {
-    List<Node> args = node.getArguments();
-    assert args.size() == 1
-        : "calling abstract transformer for Collection.add(E), but params are: " + args;
     CFStore store = res.getRegularStore();
-    AnnotationMirror newAnno =
-        createAccumulatorAnnotation(Collections.emptyList(), atypeFactory.TOP);
-    store.clearValue(receiver);
-    store.insertValue(receiver, newAnno);
+    resetCmoeValue(store, receiver);
     return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
   }
 

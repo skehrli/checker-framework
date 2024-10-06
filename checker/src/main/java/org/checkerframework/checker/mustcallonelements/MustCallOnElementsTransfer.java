@@ -137,7 +137,6 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
   public TransferResult<CFValue, CFStore> visitAssignment(
       AssignmentNode node, TransferInput<CFValue, CFStore> input) {
     TransferResult<CFValue, CFStore> res = super.visitAssignment(node, input);
-    // return res;
     CFStore store = res.getRegularStore();
     Node lhs = node.getTarget();
     Node rhs = node.getExpression();
@@ -230,6 +229,90 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
   }
 
   /**
+   * The abstract transformer for {@code List.set(int, E)}.
+   *
+   * <p>Reports error if precondition (empty Mcoe type of receiver collection) is not met. Then,
+   * sets the Mcoe type of the receiver collection to the join of previous type and new type, which
+   * is given by the MustCall values of the new element (second method parameter).
+   *
+   * @param node the {@code MethodInvocationNode}
+   * @param res the {@code TransferResult} containing the store to be edited
+   * @param receiver JavaExpression of the collection, whose type should be changed
+   * @return updated {@code TransferResult}
+   */
+  @Override
+  protected TransferResult<CFValue, CFStore> transformListSet(
+      MethodInvocationNode node, TransferResult<CFValue, CFStore> res, JavaExpression receiver) {
+    CFStore store = res.getRegularStore();
+    List<Node> args = node.getArguments();
+    assert args.size() == 2
+        : "calling abstract transformer for List.Set(int,E), but params are: " + args;
+
+    // check precondition - to reassign a collection element, the type of the collection
+    // must be @MustCallOnElements({})
+    List<String> previousMcoeMethods =
+        atypeFactory.getMustCallOnElementsObligations(store, receiver);
+    if (previousMcoeMethods == null) {
+      // previous value is @MustCallOnElementsUnknown - i.e. no write permission. Throw error.
+      atypeFactory
+          .getChecker()
+          .reportError(node.getTree(), "assignment.without.ownership", receiver);
+    } else if (previousMcoeMethods.size() > 0) {
+      // There are open calling obligations, cannot reassign element. Throw error.
+      atypeFactory
+          .getChecker()
+          .reportError(
+              node.getTree(),
+              "illegal.owningcollection.allocation",
+              receiver,
+              formatMissingMustCallMethods(previousMcoeMethods));
+    }
+
+    Node newElement = getNodeOrTempVar(args.get(1));
+    List<String> mcValuesOfNewElement = getMustCallValues(newElement);
+    AnnotationMirror newType = getMustCallOnElementsType(new HashSet<>(mcValuesOfNewElement));
+
+    CFValue oldCFVal = store.getValue(receiver);
+    CFValue newCFVal = analysis.createSingleAnnotationValue(newType, receiver.getType());
+    newCFVal = oldCFVal == null ? newCFVal : oldCFVal.leastUpperBound(newCFVal, receiver.getType());
+    store.replaceValue(receiver, newCFVal);
+    return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
+  }
+
+  /**
+   * The abstract transformer for {@code Collection.add(int, E)}.
+   *
+   * @param node the {@code MethodInvocationNode}
+   * @param res the {@code TransferResult} containing the store to be edited
+   * @param receiver JavaExpression of the collection, whose type should be changed
+   * @return updated {@code TransferResult}
+   */
+  @Override
+  protected TransferResult<CFValue, CFStore> transformCollectionAddWithIdx(
+      MethodInvocationNode node, TransferResult<CFValue, CFStore> res, JavaExpression receiver) {
+    List<Node> args = node.getArguments();
+    assert args.size() == 2
+        : "calling abstract transformer for Collection.add(int,E), but params are: " + args;
+    Node argVar = getNodeOrTempVar(args.get(1));
+    List<String> mcValues = getMustCallValues(argVar);
+    CFStore store = res.getRegularStore();
+    CFValue oldTypeValue = store.getValue(receiver);
+    assert oldTypeValue != null : "Collection " + receiver + " not in Store.";
+    AnnotationMirror oldType = oldTypeValue.getAnnotations().first();
+    List<String> mcoeMethods = new ArrayList<>();
+    if (oldType.getElementValues().get(atypeFactory.getMustCallOnElementsValueElement()) != null) {
+      mcoeMethods =
+          AnnotationUtils.getElementValueArray(
+              oldType, atypeFactory.getMustCallOnElementsValueElement(), String.class);
+    }
+    mcoeMethods.addAll(mcValues);
+    AnnotationMirror newType = getMustCallOnElementsType(new HashSet<>(mcoeMethods));
+    store.clearValue(receiver);
+    store.insertValue(receiver, newType);
+    return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
+  }
+
+  /**
    * The abstract transformer for {@code Collection.add(E)}.
    *
    * @param node the {@code MethodInvocationNode}
@@ -257,8 +340,6 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
     }
     mcoeMethods.addAll(mcValues);
     AnnotationMirror newType = getMustCallOnElementsType(new HashSet<>(mcoeMethods));
-    // System.out.println("newtype in transformcollectionadd: " + newType);
-    // System.out.println("for receiver: " + receiver);
     store.clearValue(receiver);
     store.insertValue(receiver, newType);
     return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
@@ -275,9 +356,6 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
   // }
 
   /*
-   * Responsible for abstract transformers of all methods called on a collection.
-   * If the transformer for a method is not specifically implemented, it reports a checker error.
-   *
    * Emptying the @MustCallOnElements type of arguments passed as @OwningCollection parameters to the
    * method.
    *
@@ -460,20 +538,20 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
     return enableWpiForRlc;
   }
 
-  // /**
-  //  * Pretty-prints a list of mustcall values into a string to output in a warning message.
-  //  *
-  //  * @param mustCallVal a list of mustcall values
-  //  * @return a string, which is a pretty-print of the method list
-  //  */
-  // private String formatMissingMustCallMethods(List<String> mustCallVal) {
-  //   int size = mustCallVal.size();
-  //   if (size == 0) {
-  //     return "None";
-  //   } else if (size == 1) {
-  //     return "method " + mustCallVal.get(0);
-  //   } else {
-  //     return "methods " + String.join(", ", mustCallVal);
-  //   }
-  // }
+  /**
+   * Pretty-prints a list of mustcall values into a string to output in a warning message.
+   *
+   * @param mustCallVal a list of mustcall values
+   * @return a string, which is a pretty-print of the method list
+   */
+  private String formatMissingMustCallMethods(List<String> mustCallVal) {
+    int size = mustCallVal.size();
+    if (size == 0) {
+      return "None";
+    } else if (size == 1) {
+      return "method " + mustCallVal.get(0);
+    } else {
+      return "methods " + String.join(", ", mustCallVal);
+    }
+  }
 }
