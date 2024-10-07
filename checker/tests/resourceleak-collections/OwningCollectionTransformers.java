@@ -4,7 +4,7 @@ import java.util.List;
 import org.checkerframework.checker.mustcall.qual.Owning;
 import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 
-class LoopBodyAnalysis {
+class OwningCollectionTransformers {
   private final int n = 10;
   private final String myHost = "";
   private final int myPort = 1;
@@ -198,6 +198,20 @@ class LoopBodyAnalysis {
       } catch (Exception e) {
       } finally {
         i += 2;
+      }
+    }
+  }
+
+  public void invalidDeallocationLoop5() {
+    // :: error: unfulfilled.mustcallonelements.obligations
+    @OwningCollection List<Socket> list = new ArrayList<Socket>();
+    list.add(new Socket(myHost, myPort));
+    // this deallocation loop is illegal and is not pattern-matched
+    for (int i = 0; i < list.size(); i++) {
+      try {
+        list.get(i).close();
+      } catch (Exception e) {
+        list = new ArrayList<Socket>();
       }
     }
   }
