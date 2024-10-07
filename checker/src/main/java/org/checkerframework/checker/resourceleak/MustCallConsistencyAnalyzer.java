@@ -972,8 +972,6 @@ public class MustCallConsistencyAnalyzer {
     Obligation collectionElementObligation =
         getObligationForVar(obligations, potentiallyFulfillingLoop.collectionElementTree);
     if (collectionElementObligation == null) {
-      System.out.println("block: " + lastLoopBodyBlock);
-      System.out.println("obs: " + obligations);
       throw new BugInCF(
           "No obligation for collection element "
               + potentiallyFulfillingLoop.collectionElementTree);
@@ -1281,9 +1279,18 @@ public class MustCallConsistencyAnalyzer {
             Node methodCallExpr = NodeUtils.removeCasts(min);
             Node methodCallVar = getTempVarOrNode(methodCallExpr);
             removeObligationForVar(obligations, methodCallVar);
+
+            forbidIfReceiverIsField(receiver, min);
             return;
         }
       }
+    }
+  }
+
+  private void forbidIfReceiverIsField(Node receiver, MethodInvocationNode min) {
+    Element receiverElt = TreeUtils.elementFromTree(receiver.getTree());
+    if (receiverElt.getKind() == ElementKind.FIELD) {
+      checker.reportError(min.getTree(), "owningcollection.field.element.overwrite", receiver);
     }
   }
 
@@ -1944,8 +1951,7 @@ public class MustCallConsistencyAnalyzer {
         mcoeTypeFactory == null ? null : mcoeTypeFactory.getStoreBefore(assignmentNode.getTree());
     CFStore cmoeStore =
         cmoeTypeFactory == null ? null : cmoeTypeFactory.getStoreBefore(assignmentNode.getTree());
-    boolean lhsIsOwningCollection =
-        !noLightweightOwnership && !isLoopBodyAnalysis && cmAtf.hasOwningCollection(lhsElement);
+    boolean lhsIsOwningCollection = !isLoopBodyAnalysis && cmAtf.hasOwningCollection(lhsElement);
     boolean rhsIsOwningCollection =
         rhsElement != null && !isLoopBodyAnalysis && cmAtf.hasOwningCollection(rhsElement);
     boolean lhsIsField = lhsElement.getKind() == ElementKind.FIELD;
@@ -1959,7 +1965,7 @@ public class MustCallConsistencyAnalyzer {
     }
     if (lhsIsOwningCollection) {
       if (enclosingMethod == null) {
-        // this is a declaration-definition of an @OwningCollection field. nothing to check.
+        // this is a declaration-site-assignment of an @OwningCollection field. nothing to check.
       } else if (inConstructor && lhsIsField) {
         // assigning @OwningCollection field to an @OwningCollection argument in constructor is
         // allowed
