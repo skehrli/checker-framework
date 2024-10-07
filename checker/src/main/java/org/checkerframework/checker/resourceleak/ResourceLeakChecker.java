@@ -206,9 +206,10 @@ public class ResourceLeakChecker extends AggregateChecker {
    * Disable the Returns Receiver Checker unless it has been explicitly enabled with the {@link
    * #ENABLE_RETURNS_RECEIVER} option.
    */
-  @Override
   protected boolean isReturnsReceiverDisabled() {
-    return !hasOption(ENABLE_RETURNS_RECEIVER) || super.isReturnsReceiverDisabled();
+    RLCCalledMethodsChecker rlccmc =
+        (RLCCalledMethodsChecker) RLCUtils.getChecker(RLCCalledMethodsChecker.class, this);
+    return !hasOption(ENABLE_RETURNS_RECEIVER) || rlccmc.isReturnsReceiverDisabled();
   }
 
   /**

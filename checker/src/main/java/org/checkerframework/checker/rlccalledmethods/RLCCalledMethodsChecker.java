@@ -40,6 +40,11 @@ public class RLCCalledMethodsChecker extends CalledMethodsChecker {
   }
 
   @Override
+  public boolean isReturnsReceiverDisabled() {
+    return super.isReturnsReceiverDisabled();
+  }
+
+  @Override
   protected Set<Class<? extends SourceChecker>> getImmediateSubcheckerClasses() {
     Set<Class<? extends SourceChecker>> checkers = super.getImmediateSubcheckerClasses();
 
