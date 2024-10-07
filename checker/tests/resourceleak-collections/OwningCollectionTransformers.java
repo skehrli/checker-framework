@@ -205,12 +205,19 @@ class OwningCollectionTransformers {
   public void invalidDeallocationLoop5() {
     // :: error: unfulfilled.mustcallonelements.obligations
     @OwningCollection List<Socket> list = new ArrayList<Socket>();
-    list.add(new Socket(myHost, myPort));
+
+    try {
+      list.add(new Socket(myHost, myPort));
+    } catch (Exception e) {
+    }
+
     // this deallocation loop is illegal and is not pattern-matched
     for (int i = 0; i < list.size(); i++) {
       try {
         list.get(i).close();
       } catch (Exception e) {
+        // this reassignment is never fulfilled
+        // :: error: unfulfilled.mustcallonelements.obligations
         list = new ArrayList<Socket>();
       }
     }
