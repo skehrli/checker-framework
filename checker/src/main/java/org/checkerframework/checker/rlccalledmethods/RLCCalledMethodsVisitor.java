@@ -427,6 +427,11 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
   public Void visitVariable(VariableTree tree, Void p) {
     VariableElement varElement = TreeUtils.elementFromDeclaration(tree);
 
+    // Check for manual MustCallOnElementsUnknown annotations, which are not permitted.
+    if (RLCUtils.hasManualMcoeUnknownAnno(varElement.asType())) {
+      checker.reportError(varElement, "manual.mcoeunknown.annotation", varElement);
+    }
+
     if (varElement.getKind().isField() && !typeFactory.noLightweightOwnership) {
       if (typeFactory.getDeclAnnotation(varElement, Owning.class) != null) {
         checkOwningField(varElement);
@@ -494,7 +499,9 @@ public class RLCCalledMethodsVisitor extends CalledMethodsVisitor {
     }
 
     if (RLCUtils.hasManualMcoeUnknownAnno(field.asType())) {
-      checker.reportError(field, "manual.mcoeunknown.annotation", field);
+      // error already reported.
+      // no further errors. Let user correct this annotation and replace with new one.
+      return;
     }
 
     MustCallAnnotatedTypeFactory mcAtf =
