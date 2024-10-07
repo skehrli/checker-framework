@@ -332,10 +332,10 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
   // }
 
   /**
-   * Check that the loop does not contain any writes to the loop iterator variable and no
-   * return/break statements. Extract the collection access tree ({@code arr[i]} or {@code
-   * collection.get(i)} where {@code i} is the iterator variable and {@code collection/arr} is
-   * consistent with the loop header) and return the last encountered such tree.
+   * Check that the loop does not contain any writes to the loop iterator variable, or to the
+   * collection variable itself. return/break statements. Extract the collection access tree ({@code
+   * arr[i]} or {@code collection.get(i)} where {@code i} is the iterator variable and {@code
+   * collection/arr} is consistent with the loop header) and return the last encountered such tree.
    *
    * @param block the loop body tree
    * @param identifierInHeader collection name if loop condition is {@code i < collection.size()} or
@@ -379,9 +379,11 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
 
           @Override
           public Void visitAssignment(AssignmentTree tree, Void p) {
-            if (nameFromExpression(tree.getVariable()) == iterator) {
+            Name assignedVariable = nameFromExpression(tree.getVariable());
+            if (assignedVariable == iterator || assignedVariable == identifierInHeader) {
               blockIsIllegal.set(true);
             }
+
             return super.visitAssignment(tree, p);
           }
 
