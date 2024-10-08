@@ -93,6 +93,7 @@ import org.checkerframework.dataflow.cfg.node.ObjectCreationNode;
 import org.checkerframework.dataflow.cfg.node.ReturnNode;
 import org.checkerframework.dataflow.cfg.node.SuperNode;
 import org.checkerframework.dataflow.cfg.node.ThisNode;
+import org.checkerframework.dataflow.cfg.node.VariableDeclarationNode;
 import org.checkerframework.dataflow.expression.FieldAccess;
 import org.checkerframework.dataflow.expression.IteratedCollectionElement;
 import org.checkerframework.dataflow.expression.JavaExpression;
@@ -794,7 +795,7 @@ public class MustCallConsistencyAnalyzer {
    * Traverses the cfg of a method to find and mark enhanced-for-loops that are potentially {@code
    * MustCallOnElements} fulfilling.
    *
-   * @param cfg cfg of the method to analyze
+   * @param cfg the cfg of the method to analyze
    */
   public void findFulfillingForEachLoops(ControlFlowGraph cfg) {
     // The `visited` set contains everything that has been added to the worklist, even if it has
@@ -816,7 +817,9 @@ public class MustCallConsistencyAnalyzer {
           getSuccessorsExceptIgnoredExceptions(currentBlock)) {
         for (Node node : currentBlock.getNodes()) {
           if (node instanceof MethodInvocationNode) {
-            patternMatchEnhancedForLoop((MethodInvocationNode) node, cfg);
+            patternMatchEnhancedCollectionForLoop((MethodInvocationNode) node, cfg);
+          } else if (node instanceof ArrayAccessNode) {
+            patternMatchEnhancedArrayForLoop((ArrayAccessNode) node, cfg);
           }
         }
         propagate(
@@ -1099,10 +1102,108 @@ public class MustCallConsistencyAnalyzer {
     }
   }
 
-  private void patternMatchEnhancedForLoop(
+  /**
+   * Checks whether the given {@code ArrayAccessNode} is desugared from an enhanced for loop and
+   * calls a loop-body-analysis on the detected loop if it is.
+   *
+   * <p>If an {@code ArrayAccessNode} is desugared from an enhanced for loop over an array, it
+   * corresponds to the node in the synthetic {@code s = array#numX[index#numY]} assignment, where
+   * the loop iterator variable is assigned. The AST node corresponding to the loop itself is in
+   * this case contained as a field in the {@code ArrayAccessNode}, which is set in the CFG
+   * translation phase one.
+   *
+   * <p>This method now traverses the CFG upwards to find the loop condition and downwards to find
+   * the first block of the loop body. With these two blocks, it can then call a loop-body-analysis
+   * to find the methods the loop calls on the elements of the iterated collection, as part of the
+   * MustCallOnElements checker.
+   *
+   * @param arrayAccessNode the {@code ArrayAccessNode}, for which it is checked, whether it is
+   *     desugared from an enhanced for loop.
+   * @param cfg the enclosing cfg of the {@code ArrayAccessNode}
+   */
+  private void patternMatchEnhancedArrayForLoop(
+      ArrayAccessNode arrayAccessNode, ControlFlowGraph cfg) {
+    boolean nodeIsDesugaredFromEnhancedForLoop = arrayAccessNode.getArrayExpression() != null;
+    if (nodeIsDesugaredFromEnhancedForLoop && cfg != null) {
+      // this is the arr[i] access desugared from an enhanced-for-loop (in iter = arr[i];)
+      EnhancedForLoopTree loop = arrayAccessNode.getEnhancedForLoop();
+      if (loop == null) {
+        throw new BugInCF(
+            "MethodInvocationNode.iterableExpression should be non-null iff"
+                + " MethodInvocationNode.enhancedForLoop is non-null");
+      }
+
+      // Find the first block of the loop body.
+      SingleSuccessorBlock ssblock = (SingleSuccessorBlock) arrayAccessNode.getBlock();
+      Block loopBodyEntryBlock = ssblock.getSuccessor();
+
+      // Find the loop condition
+      // Start from the synthetic (desugared) arr[i] node and traverse the cfg
+      // backwards until the LessThan node is found.
+      // It corresponds to the desugared loop condition (index#numX < array#numX.length).
+      Block block = arrayAccessNode.getBlock();
+      Iterator<Node> nodeIterator = block.getNodes().iterator();
+      Node loopVarNode = null;
+      Node node;
+      do {
+        while (!nodeIterator.hasNext()) {
+          Set<Block> predBlocks = block.getPredecessors();
+          if (predBlocks.size() == 1) {
+            block = predBlocks.iterator().next();
+            nodeIterator = block.getNodes().iterator();
+          } else {
+            throw new BugInCF(
+                "Encountered more than one CFG Block predeccessor trying to find the"
+                    + " enhanced-for-loop update block.");
+          }
+        }
+        node = nodeIterator.next();
+        if (node instanceof VariableDeclarationNode) {
+          // variable declaration of public iterator
+          loopVarNode = node;
+        }
+      } while (!(node instanceof LessThanNode));
+
+      // add the blocks into a static datastructure in the calledmethodsatf, such that it can
+      // analyze
+      // them (call MustCallConsistencyAnalyzer.analyzeFulfillingLoops, which in turn adds the trees
+      // to the static datastructure in McoeAtf)
+      PotentiallyFulfillingLoop pfLoop =
+          new PotentiallyFulfillingLoop(
+              loop.getExpression(),
+              loopVarNode.getTree(),
+              node.getTree(),
+              loopBodyEntryBlock,
+              block,
+              loopVarNode);
+      this.analyzeObligationFulfillingLoop(cfg, pfLoop);
+    }
+  }
+
+  /**
+   * Checks whether the given {@code MethodInvocationNode} is desugared from an enhanced for loop
+   * and calls a loop-body-analysis on the detected loop if it is.
+   *
+   * <p>If a {@code MethodInvocationNode} is desugared from an enhanced for loop over a collection
+   * it corresponds to the node in the synthetic {@code Iterator.next()} method call, which is the
+   * loop update instruction. The AST node corresponding to the loop itself is in this case
+   * contained as a field in the {@code MethodInvocationNode}, which is set in the CFG translation
+   * phase one.
+   *
+   * <p>This method now traverses the CFG upwards to find the loop condition and downwards to find
+   * the first block of the loop body. With these two blocks, it can then call a loop-body-analysis
+   * to find the methods the loop calls on the elements of the iterated collection, as part of the
+   * MustCallOnElements checker.
+   *
+   * @param methodInvocationNode the {@code MethodInvocationNode}, for which it is checked, whether
+   *     it is desugared from an enhanced for loop.
+   * @param cfg the enclosing cfg of the {@code MethodInvocationNode}
+   */
+  private void patternMatchEnhancedCollectionForLoop(
       MethodInvocationNode methodInvocationNode, ControlFlowGraph cfg) {
-    boolean nodeDesugaredFromEnhancedForLoop = methodInvocationNode.getIterableExpression() != null;
-    if (nodeDesugaredFromEnhancedForLoop) {
+    boolean nodeIsDesugaredFromEnhancedForLoop =
+        methodInvocationNode.getIterableExpression() != null;
+    if (nodeIsDesugaredFromEnhancedForLoop) {
       // this is the Iterator.next() call desugared from an enhanced-for-loop
       EnhancedForLoopTree loop = methodInvocationNode.getEnhancedForLoop();
       if (loop == null) {
