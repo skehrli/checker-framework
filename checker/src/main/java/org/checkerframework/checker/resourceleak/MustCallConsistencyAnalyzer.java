@@ -1312,9 +1312,9 @@ public class MustCallConsistencyAnalyzer {
               if (ElementUtils.isStatic(memberElm)) {
                 checker.reportError(member, "owningcollection.field.static", tree.getName());
               }
-              // if (!ElementUtils.isPrivate(memberElm)) {
-              //   checker.reportError(member, "owningcollection.field.private", tree.getName());
-              // }
+              if (!ElementUtils.isPrivate(memberElm)) {
+                checker.reportError(member, "owningcollection.field.not.private", tree.getName());
+              }
               if (!isArray && !isCollection) {
                 checker.reportError(member, "owningcollection.noncollection", tree.getName());
               }
@@ -1363,13 +1363,16 @@ public class MustCallConsistencyAnalyzer {
           case ADD_E:
             Node argExpr = NodeUtils.removeCasts(args.get(0));
             Node argVar = getTempVarOrNode(argExpr);
-            // System.out.println("removing obligation for " + argVar);
             removeObligationForVar(obligations, argVar);
+
+            checksForWritingMethodOnOwningCollection(receiver, min);
             return;
           case ADD_INT_E:
             argExpr = NodeUtils.removeCasts(args.get(1));
             argVar = getTempVarOrNode(argExpr);
             removeObligationForVar(obligations, argVar);
+
+            checksForWritingMethodOnOwningCollection(receiver, min);
             return;
           case SET:
             argExpr = NodeUtils.removeCasts(args.get(1));
@@ -1381,17 +1384,53 @@ public class MustCallConsistencyAnalyzer {
             Node methodCallVar = getTempVarOrNode(methodCallExpr);
             removeObligationForVar(obligations, methodCallVar);
 
-            forbidIfReceiverIsField(receiver, min);
+            checksForOverwritingMethodOnOwningCollection(receiver, min);
             return;
         }
       }
     }
   }
 
-  private void forbidIfReceiverIsField(Node receiver, MethodInvocationNode min) {
+  /**
+   * Checks for a method call on an {@code @OwningCollection}, which makes an overwriting write to
+   * the underlying collection (for example {@code List.set(int,E)}), whether it is valid and
+   * reports an error if it is not.
+   *
+   * <p>Checks that receiver is not a field and that it is not a read-only reference.
+   *
+   * @param receiver the receiver node of the method call
+   * @param min the method invocation node
+   */
+  private void checksForOverwritingMethodOnOwningCollection(
+      Node receiver, MethodInvocationNode min) {
+    checksForWritingMethodOnOwningCollection(receiver, min);
+
     Element receiverElt = TreeUtils.elementFromTree(receiver.getTree());
     if (receiverElt.getKind() == ElementKind.FIELD) {
       checker.reportError(min.getTree(), "owningcollection.field.element.overwrite", receiver);
+    }
+  }
+
+  /**
+   * Checks for a method call on an {@code @OwningCollection}, which writes to the underlying
+   * collection (for example {@code Collection.add(E)}), whether the receiver is not read-only and
+   * reports an error if it is.
+   *
+   * <p>In this checker, {@code @MustCallOnElementsUnknown} encodes a read-only reference. The
+   * method checks whether the passed receiver node has {@code @MustCallOnElementsUnknown} type at
+   * the time of the given method invocation node and reports an error in this case. The reason is
+   * that writing methods cannot be called on a collection reference that is read-only.
+   *
+   * @param receiver the receiver node of the method call
+   * @param min the method invocation node
+   */
+  private void checksForWritingMethodOnOwningCollection(Node receiver, MethodInvocationNode min) {
+    CFStore mcoeStore =
+        mcoeTypeFactory == null ? null : mcoeTypeFactory.getStoreBefore(min.getTree());
+    boolean receiverIsRo =
+        mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, receiver.getTree());
+    if (receiverIsRo) {
+      checker.reportError(min.getTree(), "assignment.without.ownership", receiver);
     }
   }
 
@@ -2039,7 +2078,7 @@ public class MustCallConsistencyAnalyzer {
    * @param cfg the ControlFlowGraph of the enclosing method
    * @param obligations the set of tracked obligations
    */
-  private void checkAssignmentToOwningCollection(
+  private void updateObligationsForAssignmentToOwningCollection(
       Node lhs,
       Node rhs,
       Node rhsExpr,
@@ -2060,9 +2099,11 @@ public class MustCallConsistencyAnalyzer {
         mcoeStore != null && mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, lhs.getTree());
     MethodTree enclosingMethod = cfg.getEnclosingMethod(assignmentNode.getTree());
     boolean inConstructor = enclosingMethod != null && TreeUtils.isConstructor(enclosingMethod);
+
     if (!lhsIsOwningCollection && rhsIsOwningCollection && !(rhsExpr instanceof ArrayAccessNode)) {
-      // enforces 7. assignment rule:
-      checker.reportError(assignmentNode.getTree(), "illegal.aliasing");
+      // declaration of a read-only alias for the RHS @OwningCollection
+      // Ownership remains with the RHS collection. LHS gets type @MustCallOnElementsUnknown.
+      // This is not an error.
     }
     if (lhsIsOwningCollection) {
       if (enclosingMethod == null) {
@@ -2135,6 +2176,10 @@ public class MustCallConsistencyAnalyzer {
           if ((rhs instanceof ArrayCreationNode) || isNewCollection(rhsExpr)) {
             Obligation newObligation = CollectionObligation.fromTree(lhs.getTree());
             obligations.add(newObligation);
+          } else if (rhsIsOwningCollection) {
+            // declaration of a read-only alias for the RHS @OwningCollection
+            // Ownership remains with the RHS collection. LHS gets type @MustCallOnElementsUnknown.
+            // This is not an error.
           } else {
             // enforces 3. assignment rule for @OwningCollection declaration:
             // assigning an @OwningCollection to anything else is not allowed outside of constructor
@@ -2202,6 +2247,10 @@ public class MustCallConsistencyAnalyzer {
                   + lhs.getTree().getKind());
         }
       }
+    } else if (lhsIsMcoeUnknown && (lhs.getTree().getKind() == Tree.Kind.ARRAY_ACCESS)) {
+      // lhs is non-@OwningCollection read-only reference and tries to assign its elements.
+      // Not allowed.
+      checker.reportError(assignmentNode.getTree(), "assignment.without.ownership", lhs.getTree());
     }
   }
 
@@ -2249,7 +2298,8 @@ public class MustCallConsistencyAnalyzer {
 
     // update obligations for assignments to @OwningCollection array
     if (!isLoopBodyAnalysis) {
-      checkAssignmentToOwningCollection(lhs, rhs, rhsExpr, assignmentNode, cfg, obligations);
+      updateObligationsForAssignmentToOwningCollection(
+          lhs, rhs, rhsExpr, assignmentNode, cfg, obligations);
     }
 
     // Ownership transfer to @Owning field.
@@ -3070,8 +3120,17 @@ public class MustCallConsistencyAnalyzer {
     Tree tree = result == null ? null : result.getTree();
     Element elt = tree == null ? null : TreeUtils.elementFromTree(tree);
     boolean isOwningCollection = elt != null && cmAtf.hasOwningCollection(elt);
+    CFStore mcoeStore =
+        mcoeTypeFactory == null ? null : mcoeTypeFactory.getStoreBefore(node.getTree());
+    boolean isMcoeUnknown =
+        mcoeStore != null
+            && elt != null
+            && mcoeTypeFactory != null
+            && mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, tree);
     if (isOwningCollection) {
       checker.reportError(node.getTree(), "return.owningcollection");
+    } else if (isMcoeUnknown) {
+      checker.reportError(node.getTree(), "return.without.ownership", tree);
     }
   }
 

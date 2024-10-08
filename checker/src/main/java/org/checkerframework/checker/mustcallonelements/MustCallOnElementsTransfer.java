@@ -130,7 +130,7 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
   // }
 
   /*
-   * Sets type of LHS to @MustCallOnElementsUnknown if rhs is @OwningCollection and lhs is not.
+   * Sets type of LHS to @MustCallOnElementsUnknown if rhs is @OwningCollection.
    * The semantics is that LHS is then a read-only copy
    */
   @Override
@@ -140,21 +140,13 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
     CFStore store = res.getRegularStore();
     Node lhs = node.getTarget();
     Node rhs = node.getExpression();
-    boolean lhsIsOwningCollection =
-        lhs != null
-            && lhs.getTree() != null
-            && TreeUtils.elementFromTree(lhs.getTree()) != null
-            && TreeUtils.elementFromTree(lhs.getTree()).getAnnotation(OwningCollection.class)
-                != null;
     boolean rhsIsOwningCollection =
         rhs != null
             && rhs.getTree() != null
             && TreeUtils.elementFromTree(rhs.getTree()) != null
             && TreeUtils.elementFromTree(rhs.getTree()).getAnnotation(OwningCollection.class)
                 != null;
-    if (!lhsIsOwningCollection
-        && rhsIsOwningCollection
-        && !(rhs.getTree() instanceof ArrayAccessTree)) {
+    if (rhsIsOwningCollection && !(rhs.getTree() instanceof ArrayAccessTree)) {
       JavaExpression lhsJavaExpression = JavaExpression.fromNode(lhs);
       store.clearValue(lhsJavaExpression);
       store.insertValue(lhsJavaExpression, getMustCallOnElementsUnknown());
