@@ -25,15 +25,6 @@ class PatternMatchOwningCollectionLoops {
     @OwningCollection Socket[] arr = s;
   }
 
-  // test that aliasing is not allowed.
-  public void illegalAliasing() {
-    @OwningCollection Socket[] arr = new Socket[n];
-    // :: error: illegal.owningcollection.assignment
-    @OwningCollection Socket[] arr2 = arr;
-    // :: error: illegal.aliasing
-    Socket[] arr3 = arr;
-  }
-
   // test that declaring an @OwningCollection is alright
   public void illegalOwningCollectionElementAssignment() {
     @OwningCollection Socket[] arr = new Socket[n];

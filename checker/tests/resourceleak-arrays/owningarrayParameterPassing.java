@@ -114,7 +114,7 @@ class OwningarrayParameterPassing {
 
 @InheritableMustCall("close")
 class OwningCollectionWrapper {
-  final @OwningCollection Resource[] arr;
+  private final @OwningCollection Resource[] arr;
 
   public OwningCollectionWrapper(@OwningCollection Resource[] arr) {
     this.arr = arr;

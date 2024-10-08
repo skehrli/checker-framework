@@ -14,16 +14,18 @@ class Resource {
 class illegalOwningCollectionField {
   // non-final owningcollection field is illegal
   // :: error: owningcollection.field.not.final
+  // :: error: owningcollection.field.not.private
   @OwningCollection Resource[] arr;
   // static owningcollection field is illegal
   // :: error: owningcollection.field.static
+  // :: error: owningcollection.field.not.private
   // :: error: unfulfilled.mustcallonelements.obligations
   static final @OwningCollection Resource[] arr2 = new Resource[1];
 }
 
 @InheritableMustCall("close")
 class multipleOwningCollectionFieldAssignment {
-  final @OwningCollection Resource[] arr;
+  private final @OwningCollection Resource[] arr;
 
   @EnsuresCalledMethodsOnElements(
       value = "arr",
@@ -63,14 +65,14 @@ class multipleOwningCollectionFieldAssignment {
 class NoDestructorMethodForOwningCollectionField {
   // no mustcall annotation on class (for destructor method)
   // :: error: unfulfilled.mustcallonelements.obligations
-  final @OwningCollection Resource[] arr = new Resource[10];
+  private final @OwningCollection Resource[] arr = new Resource[10];
 }
 
 @InheritableMustCall("close")
 class DestructorMethodWithoutEnsuresCmoeForOwningCollectionField {
   // mustcall annotation on class doesn't have a EnsuresCmoe annotation
   // :: error: unfulfilled.mustcallonelements.obligations
-  final @OwningCollection Resource[] arr = new Resource[10];
+  private final @OwningCollection Resource[] arr = new Resource[10];
 
   public void close() {}
 }
@@ -79,7 +81,7 @@ class DestructorMethodWithoutEnsuresCmoeForOwningCollectionField {
 class DestructorMethodWithInsufficientEnsuresCmoeForOwningCollectionField {
   // destructor method doesn't cover all calling obligations
   // :: error: unfulfilled.mustcallonelements.obligations
-  final @OwningCollection Resource[] arr = new Resource[10];
+  private final @OwningCollection Resource[] arr = new Resource[10];
 
   @EnsuresCalledMethodsOnElements(value = "arr", methods = "close")
   public void close() {
@@ -91,7 +93,7 @@ class DestructorMethodWithInsufficientEnsuresCmoeForOwningCollectionField {
 
 @InheritableMustCall("close")
 class DestructorMethodWithInvalidEnsuresCmoeForOwningCollectionField {
-  final @OwningCollection Resource[] arr = new Resource[10];
+  private final @OwningCollection Resource[] arr = new Resource[10];
 
   @EnsuresCalledMethodsOnElements(
       value = "arr",
@@ -103,7 +105,7 @@ class DestructorMethodWithInvalidEnsuresCmoeForOwningCollectionField {
 
 @InheritableMustCall({"destruct", "close"})
 class ValidOwningCollectionField {
-  final @OwningCollection Resource[] arr;
+  private final @OwningCollection Resource[] arr;
 
   public Resource[] getField() {
     // :: error: return.owningcollection
@@ -149,15 +151,6 @@ class EvilOwningCollectionWrapperClient {
     }
     // give up ownership to constructor
     ValidOwningCollectionField d = new ValidOwningCollectionField(localarr);
-    // this loop doesn't pattern-match, simply because d.arr is not accepted
-    // as an identifier (it is a MemberSelectTree). A warning is issued to inform
-    // the programmer that d.arr is an unexpected collection/array expression.
-    for (int i = 0; i < d.arr.length; i++) {
-      // :: error: required.method.not.called
-      // :: error: illegal.owningcollection.field.elements.assignment
-      // :: warning: unexpected.collection.expression
-      d.arr[i] = new Resource();
-    }
     // fulfill the obligations of 'd'
     d.destruct();
     d.close();
@@ -190,15 +183,6 @@ class EvilOwningCollectionWrapperClient {
     for (int i = 0; i < n; i++) {
       localarr[i] = new Resource();
     }
-
-    // try to capture the @OwningCollection field of 'd'
-    // since the RHS of the assignment is @OwningCollection, that is illegal aliasing.
-    // :: error: illegal.aliasing
-    Resource[] capture = d.arr;
-    // this illegal assignment counts as a field assignment
-    // and since the field is @OwningCollection, it is forbidden
-    // :: error: owningcollection.field.assigned.outside.constructor
-    d.arr[0] = null;
 
     // fulfill the obligations of 'd'
     d.destruct();

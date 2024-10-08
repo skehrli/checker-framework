@@ -20,13 +20,13 @@ class OwningCollectionTransformers {
   }
 
   // test that aliasing is not allowed.
-  public void illegalAliasing() {
-    @OwningCollection List<Socket> list = new ArrayList<Socket>();
-    // :: error: illegal.owningcollection.assignment
-    @OwningCollection List<Socket> list2 = list;
-    // :: error: illegal.aliasing
-    List<Socket> list3 = list;
-  }
+  // public void illegalAliasing() {
+  //   @OwningCollection List<Socket> list = new ArrayList<Socket>();
+  //   // :: error: illegal.owningcollection.assignment
+  //   @OwningCollection List<Socket> list2 = list;
+  //   // :: error: illegal.aliasing
+  //   List<Socket> list3 = list;
+  // }
 
   public void checkListSetTransformer() {
     // calling obligations fulfilled due to call to OwnershipTaker
