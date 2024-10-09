@@ -40,7 +40,7 @@ class OwningCollectionAliasingTest {
     nonOwningCollectionAlias2[0] = createSocket();
     // check that null-assignments also don't work
     // :: error: assignment.without.ownership
-    nonOwningCollectionAlias[0] = null;
+    nonOwningCollectionAlias2[0] = null;
     // method calls should also not work
     // :: error: argument.with.revoked.ownership
     // :: error: argument
