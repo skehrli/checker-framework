@@ -1379,11 +1379,6 @@ public class MustCallConsistencyAnalyzer {
             argVar = getTempVarOrNode(argExpr);
             removeObligationForVar(obligations, argVar);
 
-            // also remove obligation for the entire method invocation node
-            Node methodCallExpr = NodeUtils.removeCasts(min);
-            Node methodCallVar = getTempVarOrNode(methodCallExpr);
-            removeObligationForVar(obligations, methodCallVar);
-
             checksForOverwritingMethodOnOwningCollection(receiver, min);
             return;
         }
@@ -3876,8 +3871,6 @@ public class MustCallConsistencyAnalyzer {
       if (!reportedErrorAliases.contains(firstAlias)) {
         if (!checker.shouldSkipUses(TreeUtils.elementFromTree(firstAlias.tree))) {
           reportedErrorAliases.add(firstAlias);
-          System.out.println(
-              "reporting error for " + firstAlias + " of kind: " + firstAlias.tree.getKind());
           checker.reportError(
               firstAlias.tree,
               "required.method.not.called",
