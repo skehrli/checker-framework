@@ -2210,30 +2210,13 @@ public class MustCallConsistencyAnalyzer {
                 lhs.getTree().toString());
           }
         } else if (lhs.getTree() instanceof ArrayAccessTree) {
-          if (lhsIsMcoeUnknown) {
-            checker.reportError(
-                assignmentNode.getTree(), "assignment.without.ownership", lhs.getTree());
-          }
-          // assignment is to an element of the array, not the array pointer itself:
-          // check whether assignment is in a pattern-matched loop. if not, issue warning.
-          if (!MustCallOnElementsAnnotatedTypeFactory.doesAssignmentCreateArrayObligation(
-              (AssignmentTree) assignmentNode.getTree())) {
-            // enforces 5. assignment rule:
-            // assignment not in a pattern-matched loop - not permitted for @OwningCollection
-            checker.reportError(
-                assignmentNode.getTree(), "illegal.owningcollection.element.assignment");
-          } else {
-            // Remove Obligations from local variables, now that the @OwningCollection is
-            // responsible.
-            // (When obligation creation is turned off, non-final fields cannot take ownership.)
-            if (!(rhs instanceof LocalVariableNode)) {
-              throw new BugInCF(
-                  "rhs of pattern-matched assignment assumed to be LocalVariableNode, but its tree"
-                      + " is "
-                      + rhs.getTree().getKind());
-            }
-            removeObligationForNode(obligations, (LocalVariableNode) rhs);
-          }
+          // Assignment to an element of an @OwningCollection array, which may or may not be
+          // in a pattern-matched assignment loop.
+          // Remove Obligations from local variables, now that the @OwningCollection is
+          // responsible.
+          // If the assignment is invalid, an error has already been reported
+          // by the MustCallOnElements assignment transformer.
+          removeObligationForVar(obligations, rhs);
         } else {
           throw new BugInCF(
               "uncovered case in MCConsistencyAnalyzer#updateObligationsForAssignment(): lhs "

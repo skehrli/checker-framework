@@ -57,11 +57,8 @@ class OwningCollectionAliasingTest {
 
     // create an @OwningCollection read-only alias
     @OwningCollection Socket[] owningCollectionAlias = sockets;
-    // this assignment is thus illegal. Since the reference is @OwningCollection array,
-    // assignments outside an assigning loop are not permitted anyways.
-    // :: error: required.method.not.called
+    // this assignment is thus illegal.
     // :: error: assignment.without.ownership
-    // :: error: illegal.owningcollection.element.assignment
     owningCollectionAlias[0] = createSocket();
     // method calls should also not work
     // :: error: argument.with.revoked.ownership
@@ -77,9 +74,7 @@ class OwningCollectionAliasingTest {
     // create a second-degree @OwningCollection read-only alias
     @OwningCollection Socket[] owningCollectionAlias2 = owningCollectionAlias;
     // this assignment is thus illegal
-    // :: error: required.method.not.called
     // :: error: assignment.without.ownership
-    // :: error: illegal.owningcollection.element.assignment
     owningCollectionAlias2[0] = createSocket();
     // method calls should also not work
     // :: error: argument.with.revoked.ownership

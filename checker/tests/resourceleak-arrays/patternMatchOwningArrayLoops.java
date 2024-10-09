@@ -27,14 +27,22 @@ class PatternMatchOwningCollectionLoops {
 
   // test that declaring an @OwningCollection is alright
   public void illegalOwningCollectionElementAssignment() {
+    // :: error: unfulfilled.mustcallonelements.obligations
     @OwningCollection Socket[] arr = new Socket[n];
     try {
-      // :: error: illegal.owningcollection.element.assignment
-      // :: error: required.method.not.called
+      // since arr has no previous calling obligations, this write is safe
       arr[0] = new Socket(myHost, myPort);
     } catch (Exception e) {
     }
-    // :: error: illegal.owningcollection.element.assignment
+
+    try {
+      // since arr now has open calling obligations, this write is not allowed,
+      // since it could overwrite previous elements
+      // :: error: illegal.owningcollection.write
+      arr[1] = new Socket(myHost, myPort);
+    } catch (Exception e) {
+    }
+    // :: error: illegal.owningcollection.write
     arr[0] = null;
   }
 

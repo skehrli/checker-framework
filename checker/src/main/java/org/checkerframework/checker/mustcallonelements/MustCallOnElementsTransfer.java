@@ -154,17 +154,29 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
             && TreeUtils.elementFromTree(rhs.getTree()).getAnnotation(OwningCollection.class)
                 != null;
 
-    boolean assignmentOfOCArrayElementOutsideLoop =
-        lhsIsOwningCollection
-            && lhs.getTree().getKind() == Tree.Kind.ARRAY_ACCESS
-            && !MustCallOnElementsAnnotatedTypeFactory.doesAssignmentCreateArrayObligation(
-                (AssignmentTree) node.getTree());
+    boolean assignmentOfOwningCollectionArrayElement =
+        lhsIsOwningCollection && lhs.getTree().getKind() == Tree.Kind.ARRAY_ACCESS;
 
-    if (assignmentOfOCArrayElementOutsideLoop) {
-      // ExpressionTree arrayExpression = ((ArrayAccessTree) lhs.getTree()).getExpression();
-      // JavaExpression arrayJx = JavaExpression.fromTree(arrayExpression);
+    if (assignmentOfOwningCollectionArrayElement) {
+      ExpressionTree arrayExpression = ((ArrayAccessTree) lhs.getTree()).getExpression();
+      JavaExpression arrayJx = JavaExpression.fromTree(arrayExpression);
 
-      // store = transformWriteToOwningCollection(arrayJx, node.getExpression(), store, true);
+      boolean inAssigningLoop =
+          MustCallOnElementsAnnotatedTypeFactory.doesAssignmentCreateArrayObligation(
+              (AssignmentTree) node.getTree());
+
+      if (inAssigningLoop) {
+        boolean collectionIsReadOnly =
+            atypeFactory.isMustCallOnElementsUnknown(store, arrayExpression);
+        if (collectionIsReadOnly) {
+          // previous value is @MustCallOnElementsUnknown - i.e. no write permission. Throw error.
+          atypeFactory
+              .getChecker()
+              .reportError(node.getTree(), "assignment.without.ownership", arrayExpression);
+        }
+      } else {
+        store = transformWriteToOwningCollection(arrayJx, node.getExpression(), store, true);
+      }
     } else if (rhsIsOwningCollection && !(rhs.getTree() instanceof ArrayAccessTree)) {
       JavaExpression lhsJavaExpression = JavaExpression.fromNode(lhs);
       store.clearValue(lhsJavaExpression);
@@ -208,7 +220,7 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
           .getChecker()
           .reportError(
               rhs.getTree(),
-              "illegal.owningcollection.allocation",
+              "illegal.owningcollection.write",
               receiverCollection,
               formatMissingMustCallMethods(previousMcoeMethods));
     }
