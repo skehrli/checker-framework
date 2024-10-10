@@ -40,7 +40,33 @@ class OwningCollectionReturnTest {
     } catch (Exception e) {
     }
 
-    sockets = getOwningSocketList(); // works since lhs has no open obligations
+    // the previously owned elements of socket go out of scope without having their
+    // obligations fulfilled, which reports an error at the declaration point of sockets.
+    // The reference is now used to own the list returned by getOwningSocketList().
+    // Since these obligations are also not fulfilled, there is another error for unfulfilled
+    // obligations of the list returned by getOwningSocketList.
+    // :: error: unfulfilled.mustcallonelements.obligations
+    sockets = getOwningSocketList();
+  }
+
+  /*
+   * The following method assigns an OwningCollection with open calling obligations to the
+   * return value of a method. Ensure this reports an error for unfulfilled calling obligations.
+   */
+  void assignNonEmptyList2() {
+    // :: error: unfulfilled.mustcallonelements.obligations
+    @OwningCollection List<Socket> sockets = new ArrayList<Socket>(); // declare owning socket list
+
+    try {
+      sockets.add(new Socket(myHost, myPort));
+    } catch (Exception e) {
+    }
+
+    // the previously owned elements of socket go out of scope without having their
+    // obligations fulfilled, which reports an error at the declaration point of sockets.
+    // The reference is now used to own the list returned by getOwningSocketList().
+    // It fulfills the calling obligations for that list in a loop below.
+    sockets = getOwningSocketList();
 
     for (Socket s : sockets) {
       try {
@@ -50,23 +76,24 @@ class OwningCollectionReturnTest {
     }
   }
 
-  // /*
-  //  * Reassign list to the parameter is passed (and was returned again).
-  //  */
-  // void partialFulfillment() {
-  //   @OwningCollection List<Socket> sockets = new ArrayList<Socket>(); // declare owning socket
-  // list
-  //   sockets = fulfillPartially(sockets);
-  // }
+  /*
+   * Reassign list to the parameter is passed (and was returned again).
+   */
+  void partialFulfillment() {
+    @OwningCollection List<Socket> sockets = new ArrayList<Socket>(); // declare owning socket list
+    sockets = fulfillPartially(sockets);
+  }
 
-  // @OwningCollection List<Socket> fulfillPartially(@OwningCollection List<Socket> sockets) {
-  //   for (Socket s : sockets) {
-  //     try {
-  //       s.close();
-  //     } catch (Exception e) {}
-  //   }
-  //   return sockets;
-  // }
+  @OwningCollection
+  List<Socket> fulfillPartially(@OwningCollection List<Socket> sockets) {
+    for (Socket s : sockets) {
+      try {
+        s.close();
+      } catch (Exception e) {
+      }
+    }
+    return sockets;
+  }
 
   @OwningCollection
   @MustCallOnElements("close")

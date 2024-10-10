@@ -11,11 +11,10 @@ class OwningCollectionTransformers {
   // :: error: owning.collection
   @Owning List<Socket> s;
 
-  public void illegalOwningCollectionAssignment() {
+  public void owningCollectionAssignmentToNonOwningCollectionList() {
     List<Socket> s = new ArrayList<Socket>();
     // this is a false positive, but we only allow assignment
     // of an @OwningCollection to a new Collection/Listay.
-    // :: error: illegal.owningcollection.assignment
     @OwningCollection List<Socket> list = s;
   }
 

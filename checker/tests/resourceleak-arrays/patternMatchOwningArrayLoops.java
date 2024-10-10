@@ -17,11 +17,10 @@ class PatternMatchOwningCollectionLoops {
     @OwningCollection Socket[][] sMultiDimensional;
   }
 
-  public void illegalOwningCollectionAssignment() {
+  public void legalOwningCollectionAssignment() {
     Socket[] s = new Socket[n];
-    // this is a false positive, but we only allow assignment
-    // of an @OwningCollection to a new [].
-    // :: error: illegal.owningcollection.assignment
+    // this is legal. A non-@OwningCollection cannot possibly have calling obligations,
+    // so giving an @OwningCollection ownership over it is safe.
     @OwningCollection Socket[] arr = s;
   }
 

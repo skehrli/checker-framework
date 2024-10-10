@@ -89,6 +89,7 @@ class OwningarrayParameterPassing {
     OwningCollectionWrapper wrapper = new OwningCollectionWrapper(owningArr);
     // :: error: argument
     // :: error: argument.with.revoked.ownership
+    // :: error: unexpected.argument.ownership
     nonOwningParameter(owningArr);
     // :: error: argument
     // :: error: argument.with.revoked.ownership

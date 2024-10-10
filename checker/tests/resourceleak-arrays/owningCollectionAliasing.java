@@ -23,7 +23,7 @@ class OwningCollectionAliasingTest {
     // method calls should also not work
     // :: error: argument.with.revoked.ownership
     // :: error: argument
-    doSomethingWeird(nonOwningCollectionAlias);
+    doSomethingWeirdNonOwning(nonOwningCollectionAlias);
     // however, I can call methods on the array
     try {
       nonOwningCollectionAlias[0].close();
@@ -44,7 +44,7 @@ class OwningCollectionAliasingTest {
     // method calls should also not work
     // :: error: argument.with.revoked.ownership
     // :: error: argument
-    doSomethingWeird(nonOwningCollectionAlias2);
+    doSomethingWeirdNonOwning(nonOwningCollectionAlias2);
     // however, I can call methods on the array
     try {
       nonOwningCollectionAlias2[0].close();
@@ -56,47 +56,47 @@ class OwningCollectionAliasingTest {
     @OwningCollection Socket[] sockets = new Socket[n];
 
     // create an @OwningCollection read-only alias
-    @OwningCollection Socket[] owningCollectionAlias = sockets;
+    @OwningCollection Socket[] newOwner = sockets;
     // this assignment is thus illegal.
     // :: error: assignment.without.ownership
-    owningCollectionAlias[0] = createSocket();
+    sockets[0] = createSocket();
     // method calls should also not work
     // :: error: argument.with.revoked.ownership
     // :: error: argument
-    doSomethingWeird(owningCollectionAlias);
+    doSomethingWeird(sockets);
 
     // however, I can call methods on the array
     try {
-      owningCollectionAlias[0].close();
+      sockets[0].close();
     } catch (Exception e) {
     }
 
     // create a second-degree @OwningCollection read-only alias
-    @OwningCollection Socket[] owningCollectionAlias2 = owningCollectionAlias;
+    @OwningCollection Socket[] newOwner2 = sockets;
     // this assignment is thus illegal
     // :: error: assignment.without.ownership
-    owningCollectionAlias2[0] = createSocket();
+    newOwner2[0] = createSocket();
     // method calls should also not work
     // :: error: argument.with.revoked.ownership
     // :: error: argument
-    doSomethingWeird(owningCollectionAlias2);
+    doSomethingWeird(newOwner2);
     // however, I can call methods on the array
     try {
-      owningCollectionAlias2[0].close();
+      newOwner2[0].close();
     } catch (Exception e) {
     }
 
     // I can reassign the ro alias to its own collection
-    owningCollectionAlias2 = new Socket[n];
+    newOwner2 = new Socket[n];
     // now, its not ro anymore
     for (int i = 0; i < n; i++) {
       // owningCollectionAlias2[i] = createSocket();
       try {
-        owningCollectionAlias2[i] = new Socket(myHost, myPort);
+        newOwner2[i] = new Socket(myHost, myPort);
       } catch (Exception e) {
       }
     }
-    for (Socket s : owningCollectionAlias2) {
+    for (Socket s : newOwner2) {
       close(s);
     }
   }
@@ -120,9 +120,17 @@ class OwningCollectionAliasingTest {
     }
   }
 
-  void doSomethingWeird(Socket[] sockets) {
-    // a simple attempt to assign a resource into a collection that is not @OwningCollection
+  void doSomethingWeirdNonOwning(Socket[] sockets) {
     // :: error: required.method.not.called
+    sockets[0] = createSocket();
+  }
+
+  // :: error: unfulfilled.mustcallonelements.obligations
+  void doSomethingWeird(@OwningCollection Socket[] sockets) {
+    // since the default Mcoe type for @OwningCollection parameters is the Mc values of the
+    // component type, sockets has Mcoe("close") here. Thus, it is not safe to write to its
+    // elements, as there might be a resource there that has not been closed.
+    // :: error: illegal.owningcollection.write
     sockets[0] = createSocket();
   }
 

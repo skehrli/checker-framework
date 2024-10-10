@@ -123,8 +123,10 @@ class ValidOwningCollectionField {
 
   public ValidOwningCollectionField(Resource[] arr, int k) {
     // k is here simply because without it, we would have a duplicate constructor.
-    // assignment is illegal since the arr parameter is not @OwningCollection
-    // :: error: illegal.owningcollection.field.assignment
+    // this assignment is legal, since arr cannot possibly have open calling obligations.
+    // If the parameter is not @OwningCollection, a call will only be accepted if the
+    // argument is not @OwningCollection as well. A non-@OwningCollection array/collection
+    // cannot have any calling obligations for its elements.
     this.arr = arr;
   }
 
