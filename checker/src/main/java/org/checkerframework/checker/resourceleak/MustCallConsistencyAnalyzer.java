@@ -1073,7 +1073,7 @@ public class MustCallConsistencyAnalyzer {
           updateObligationsForAssignment(obligations, cfg, (AssignmentNode) node);
         } else if (node instanceof ReturnNode) {
           updateObligationsForOwningReturn(obligations, cfg, (ReturnNode) node);
-          verifyReturnStatement((ReturnNode) node);
+          verifyReturnStatement((ReturnNode) node, cfg);
         } else if (node instanceof MethodInvocationNode || node instanceof ObjectCreationNode) {
           updateObligationsForInvocation(obligations, node, successorAndExceptionType.second);
         } else if (node instanceof LessThanNode) {
@@ -3089,11 +3089,18 @@ public class MustCallConsistencyAnalyzer {
    *
    * @param node the return node
    */
-  private void verifyReturnStatement(ReturnNode node) {
+  private void verifyReturnStatement(ReturnNode node, ControlFlowGraph cfg) {
     Node result = node.getResult();
     Tree tree = result == null ? null : result.getTree();
     Element elt = tree == null ? null : TreeUtils.elementFromTree(tree);
+
+    MethodTree enclosingMethod = cfg.getEnclosingMethod(tree);
+    Tree returnType = enclosingMethod.getReturnType();
+    Element returnTypeElt = returnType == null ? null : TreeUtils.elementFromTree(returnType);
+
     boolean isOwningCollection = elt != null && cmAtf.hasOwningCollection(elt);
+    boolean isField = elt != null && elt.getKind().isField();
+    boolean returnTypeIsOwningCollection = elt != null && cmAtf.hasOwningCollection(returnTypeElt);
     CFStore mcoeStore =
         mcoeTypeFactory == null ? null : mcoeTypeFactory.getStoreBefore(node.getTree());
     boolean isMcoeUnknown =
@@ -3101,8 +3108,12 @@ public class MustCallConsistencyAnalyzer {
             && elt != null
             && mcoeTypeFactory != null
             && mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, tree);
-    if (isOwningCollection) {
-      checker.reportError(node.getTree(), "return.owningcollection");
+    if (isOwningCollection && isField) {
+      checker.reportError(node.getTree(), "owningcollection.field.returned");
+    } else if (isOwningCollection && !returnTypeIsOwningCollection) {
+      checker.reportError(node.getTree(), "owningcollection.return.value", tree);
+    } else if (!isOwningCollection && returnTypeIsOwningCollection) {
+      checker.reportError(node.getTree(), "non.owningcollection.return.value", tree);
     } else if (isMcoeUnknown) {
       checker.reportError(node.getTree(), "return.without.ownership", tree);
     }
