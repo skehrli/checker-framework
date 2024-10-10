@@ -5,6 +5,7 @@ import com.sun.source.tree.Tree;
 import java.util.List;
 import java.util.stream.Collectors;
 import javax.lang.model.element.AnnotationMirror;
+import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeKind;
@@ -12,6 +13,7 @@ import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcall.MustCallChecker;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsChecker;
+import org.checkerframework.checker.mustcallonelements.MustCallOnElementsTransfer;
 import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory;
@@ -20,6 +22,7 @@ import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTy
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyAssigningLoop;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyFulfillingLoop;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsChecker;
+import org.checkerframework.dataflow.analysis.RegularTransferResult;
 import org.checkerframework.dataflow.analysis.TransferInput;
 import org.checkerframework.dataflow.analysis.TransferResult;
 import org.checkerframework.dataflow.cfg.node.LessThanNode;
@@ -171,9 +174,22 @@ public abstract class CollectionTransfer extends CFTransfer {
       MethodInvocationNode node, TransferResult<CFValue, CFStore> res, JavaExpression receiver);
 
   /**
+   * Abstract transformer for when an {@code @OwningColletion} variable is passed to an
+   * {@code @OwningCollection} method parameter (constructor or method invocation).
+   *
+   * @param store the store to update
+   * @param collectionArg the {@code @OwningCollection} argument
+   */
+  protected abstract void transformOwningCollectionArg(CFStore store, JavaExpression collectionArg);
+
+  /**
    * Responsible for:
    *
    * <ol>
+   *   <li>Updating store with method invocation temp-var.
+   *   <li>Finding {@code @OwningCollection} arguments and calling the respective abstract
+   *       transformer on them.
+   *   <li>Enforcing rules regarding {@code @OwningCollection} parameter/argument annotations.
    *   <li>Checking whether the {@code MethodInvocationNode} corresponds to a method being called on
    *       a receiver collection and then call the corresponding abstract transformer if this is the
    *       case.
@@ -190,6 +206,12 @@ public abstract class CollectionTransfer extends CFTransfer {
   public TransferResult<CFValue, CFStore> visitMethodInvocation(
       MethodInvocationNode node, TransferInput<CFValue, CFStore> input) {
     TransferResult<CFValue, CFStore> res = super.visitMethodInvocation(node, input);
+
+    updateStoreWithTempVar(res, node);
+
+    ExecutableElement method = node.getTarget().getMethod();
+    List<Node> args = node.getArguments();
+    res = checkOwningCollectionArgs(method, args, res);
 
     McoeObligationAlteringLoop loop =
         MustCallOnElementsAnnotatedTypeFactory.getLoopForCondition(node);
@@ -238,16 +260,97 @@ public abstract class CollectionTransfer extends CFTransfer {
           throw new BugInCF("unhandled MethodSigType " + methodSigType);
       }
     }
-    updateStoreWithTempVar(res, node);
     return res;
   }
 
+  /**
+   * Responsible for:
+   *
+   * <ol>
+   *   <li>Updating store with constructor invocation temp-var.
+   *   <li>Finding {@code @OwningCollection} arguments and calling the respective abstract
+   *       transformer on them.
+   *   <li>Enforcing rules regarding {@code @OwningCollection} parameter/argument annotations.
+   * </ol>
+   *
+   * @param node an {@code ObjectCreationNode}
+   * @param input the {@code TransferInput}
+   * @return updated {@code TransferResult}
+   */
   @Override
   public TransferResult<CFValue, CFStore> visitObjectCreation(
       ObjectCreationNode node, TransferInput<CFValue, CFStore> input) {
     TransferResult<CFValue, CFStore> res = super.visitObjectCreation(node, input);
+
     updateStoreWithTempVar(res, node);
+
+    ExecutableElement constructor = TreeUtils.elementFromUse(node.getTree());
+    List<Node> args = node.getArguments();
+    res = checkOwningCollectionArgs(constructor, args, res);
+
     return res;
+  }
+
+  /**
+   * Checks that every argument is {@code @OwningCollection} if and only if its corresponding
+   * parameter is and reports an error if this is violated. Calls the dedicated abstract transformer
+   * for {@code @OwningCollection} arguments.
+   *
+   * @param method the method whose arguments/parameters are checked
+   * @param args the list of method arguments
+   * @param res the transfer result so far
+   * @return the updated transfer result
+   */
+  private TransferResult<CFValue, CFStore> checkOwningCollectionArgs(
+      ExecutableElement method, List<Node> args, TransferResult<CFValue, CFStore> res) {
+    // ensure method call args respects ownership consistency
+    // also, empty mcoe type of @OwningCollection args that are passed as @OwningCollection params
+    List<? extends VariableElement> params = method.getParameters();
+
+    for (int i = 0; i < Math.min(args.size(), params.size()); i++) {
+      VariableElement param = params.get(i);
+      Node arg = args.get(i);
+      arg = getNodeOrTempVar(arg);
+      Element argElt = arg.getTree() != null ? TreeUtils.elementFromTree(arg.getTree()) : null;
+
+      boolean argIsOwningCollection =
+          argElt != null && argElt.getAnnotation(OwningCollection.class) != null;
+      boolean paramIsOwningCollection =
+          param != null && param.getAnnotation(OwningCollection.class) != null;
+      boolean argIsMcoeUnknown =
+          ((MustCallOnElementsAnnotatedTypeFactory)
+                  RLCUtils.getTypeFactory(MustCallOnElementsChecker.class, atypeFactory))
+              .isMustCallOnElementsUnknown(res.getRegularStore(), arg.getTree());
+
+      if (argIsMcoeUnknown) {
+        reportError(arg.getTree(), "argument.with.revoked.ownership", arg.getTree());
+      }
+
+      if (paramIsOwningCollection) {
+        if (!argIsOwningCollection) {
+          reportError(arg.getTree(), "unexpected.argument.ownership");
+        } else {
+          JavaExpression argCollection = JavaExpression.fromNode(arg);
+          CFStore store = res.getRegularStore();
+          transformOwningCollectionArg(store, argCollection);
+          return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
+        }
+      } else if (argIsOwningCollection) {
+        // param non-@OwningCollection and arg @OwningCollection
+        reportError(arg.getTree(), "unexpected.argument.ownership");
+      }
+    }
+    return res;
+  }
+
+  /**
+   * Wrapper for reporting errors, such that only one of both subclasses (MustCallOnElementsTransfer
+   * and CalledMethodsOnElementsTransfer) reports an error.
+   */
+  private void reportError(Tree location, String code, Object... args) {
+    if (this instanceof MustCallOnElementsTransfer) {
+      atypeFactory.getChecker().reportError(location, code, args);
+    }
   }
 
   /**

@@ -1873,8 +1873,8 @@ public class MustCallConsistencyAnalyzer {
               // Transfer ownership!
               obligations.remove(localObligation);
             }
-          } else if (cmAtf.hasOwningCollection(parameter) && node instanceof ObjectCreationNode) {
-            // remove obligation for @OwningCollection constructor call
+          } else if (cmAtf.hasOwningCollection(parameter)) {
+            // remove obligation for @OwningCollection argument
             Obligation localObligation = getObligationForVar(obligations, local);
             obligations.remove(localObligation);
           }

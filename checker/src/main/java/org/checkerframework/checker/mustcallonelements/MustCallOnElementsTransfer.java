@@ -6,14 +6,11 @@ import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.Tree;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
-import javax.lang.model.element.ExecutableElement;
-import javax.lang.model.element.VariableElement;
 import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcall.qual.InheritableMustCall;
 import org.checkerframework.checker.mustcall.qual.MustCall;
@@ -30,7 +27,6 @@ import org.checkerframework.dataflow.analysis.TransferResult;
 import org.checkerframework.dataflow.cfg.node.AssignmentNode;
 import org.checkerframework.dataflow.cfg.node.MethodInvocationNode;
 import org.checkerframework.dataflow.cfg.node.Node;
-import org.checkerframework.dataflow.cfg.node.ObjectCreationNode;
 import org.checkerframework.dataflow.expression.JavaExpression;
 import org.checkerframework.framework.flow.CFAnalysis;
 import org.checkerframework.framework.flow.CFStore;
@@ -239,39 +235,6 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
     return store;
   }
 
-  /*
-   * Empties the @MustCallOnElements() type of arguments passed as @OwningCollection parameters to the
-   * constructor and enforces that only @OwningCollection arguments are passed to @OwningCollection parameters.
-   */
-  @Override
-  public TransferResult<CFValue, CFStore> visitObjectCreation(
-      ObjectCreationNode node, TransferInput<CFValue, CFStore> input) {
-    TransferResult<CFValue, CFStore> res = super.visitObjectCreation(node, input);
-
-    ExecutableElement constructor = TreeUtils.elementFromUse(node.getTree());
-    List<? extends VariableElement> params = constructor.getParameters();
-    List<Node> args = node.getArguments();
-    Iterator<? extends VariableElement> paramIterator = params.iterator();
-    Iterator<Node> argIterator = args.iterator();
-    while (paramIterator.hasNext() && argIterator.hasNext()) {
-      VariableElement param = paramIterator.next();
-      Node arg = argIterator.next();
-      boolean paramIsOwningCollection = param.getAnnotation(OwningCollection.class) != null;
-      if (paramIsOwningCollection) {
-        if (TreeUtils.elementFromTree(arg.getTree()).getAnnotation(OwningCollection.class)
-            == null) {
-          atypeFactory.getChecker().reportError(node.getTree(), "unexpected.argument.ownership");
-        }
-        JavaExpression array = JavaExpression.fromNode(arg);
-        CFStore store = res.getRegularStore();
-        store.clearValue(array);
-        store.insertValue(array, getMustCallOnElementsUnknown());
-        return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
-      }
-    }
-    return res;
-  }
-
   /**
    * Returns a list of {@code @MustCall} values of the given node. Returns the empty list if the
    * node has no {@code @MustCall} values or is null.
@@ -367,53 +330,20 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
     return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
   }
 
-  /*
-   * Emptying the @MustCallOnElements type of arguments passed as @OwningCollection parameters to the
-   * method.
+  /**
+   * Abstract transformer for when an {@code @OwningColletion} variable is passed to an
+   * {@code @OwningCollection} method parameter (constructor or method invocation).
    *
-   * Enforcing that only @OwningCollection arguments are passed to @OwningCollection parameters.
+   * <p>Sets the type of the passed argument to {@code MustCallOnElementsUnknown} to indicate it
+   * becomes a read-only alias.
+   *
+   * @param store the store to update
+   * @param collectionArg the {@code @OwningCollection} argument
    */
   @Override
-  public TransferResult<CFValue, CFStore> visitMethodInvocation(
-      MethodInvocationNode node, TransferInput<CFValue, CFStore> input) {
-    TransferResult<CFValue, CFStore> res = super.visitMethodInvocation(node, input);
-
-    // ensure method call args respects ownership consistency
-    // also, empty mcoe type of @OwningCollection args that are passed as @OwningCollection params
-    ExecutableElement method = node.getTarget().getMethod();
-    List<? extends VariableElement> params = method.getParameters();
-    List<Node> args = node.getArguments();
-    Iterator<? extends VariableElement> paramIterator = params.iterator();
-    Iterator<Node> argIterator = args.iterator();
-    while (paramIterator.hasNext() && argIterator.hasNext()) {
-      VariableElement param = paramIterator.next();
-      Node arg = argIterator.next();
-      Element argElt = arg.getTree() != null ? TreeUtils.elementFromTree(arg.getTree()) : null;
-      boolean argIsOwningCollection =
-          argElt != null && argElt.getAnnotation(OwningCollection.class) != null;
-      boolean paramIsOwningCollection =
-          param != null && param.getAnnotation(OwningCollection.class) != null;
-      boolean argIsMcoeUnknown =
-          atypeFactory.isMustCallOnElementsUnknown(res.getRegularStore(), arg.getTree());
-      if (argIsMcoeUnknown) {
-        atypeFactory
-            .getChecker()
-            .reportError(arg.getTree(), "argument.with.revoked.ownership", arg.getTree());
-      } else if (paramIsOwningCollection) {
-        if (!argIsOwningCollection) {
-          atypeFactory.getChecker().reportError(arg.getTree(), "unexpected.argument.ownership");
-        }
-        JavaExpression array = JavaExpression.fromNode(arg);
-        CFStore store = res.getRegularStore();
-        store.clearValue(array);
-        store.insertValue(array, getMustCallOnElementsType(new HashSet<>()));
-        return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
-      } else if (argIsOwningCollection) {
-        // param non-@OwningCollection and arg @OwningCollection would imply we have an alias
-        atypeFactory.getChecker().reportError(arg.getTree(), "unexpected.argument.ownership");
-      }
-    }
-    return res;
+  protected void transformOwningCollectionArg(CFStore store, JavaExpression collectionArg) {
+    store.clearValue(collectionArg);
+    store.insertValue(collectionArg, getMustCallOnElementsUnknown());
   }
 
   /**
