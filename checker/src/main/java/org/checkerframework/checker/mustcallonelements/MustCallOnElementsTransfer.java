@@ -136,7 +136,9 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
     TransferResult<CFValue, CFStore> res = super.visitAssignment(node, input);
     CFStore store = res.getRegularStore();
     Node lhs = node.getTarget();
+    lhs = getNodeOrTempVar(lhs);
     Node rhs = node.getExpression();
+    rhs = getNodeOrTempVar(rhs);
     boolean lhsIsOwningCollection =
         lhs != null
             && lhs.getTree() != null
@@ -173,6 +175,15 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
       } else {
         store = transformWriteToOwningCollection(arrayJx, node.getExpression(), store, true);
       }
+    } else if (lhsIsOwningCollection && rhsIsOwningCollection) {
+      // this transfers ownership from rhs to lhs. If the rhs has mcoeunknown (i.e. revoked
+      // ownership),
+      // this doesn't require special handling. The lhs will automatically also get this type, since
+      // it
+      // is top of the hierarchy.
+      JavaExpression rhsJavaExpression = JavaExpression.fromNode(rhs);
+      store.clearValue(rhsJavaExpression);
+      store.insertValue(rhsJavaExpression, getMustCallOnElementsUnknown());
     } else if (rhsIsOwningCollection && !(rhs.getTree() instanceof ArrayAccessTree)) {
       JavaExpression lhsJavaExpression = JavaExpression.fromNode(lhs);
       store.clearValue(lhsJavaExpression);

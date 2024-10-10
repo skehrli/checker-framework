@@ -14,7 +14,6 @@ import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.ModifiersTree;
-import com.sun.source.tree.NewArrayTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
@@ -2010,11 +2009,15 @@ public class MustCallConsistencyAnalyzer {
    * @param node the node to remove obligations of
    */
   private void removeObligationForVar(Set<Obligation> obligations, Node node) {
+    // node = removeCastsAndGetTmpVarIfPresent(node); // TODO is this correct? idempotent function?
     if (node instanceof LocalVariableNode) {
       removeObligationForNode(obligations, (LocalVariableNode) node);
       return;
     } else if (node instanceof NullLiteralNode) {
       // no obligation to remove
+      return;
+    } else if (node instanceof ArrayCreationNode) {
+      // array doesn't have mustcall obligations
       return;
     } else {
       throw new BugInCF(
@@ -2096,13 +2099,10 @@ public class MustCallConsistencyAnalyzer {
       if (enclosingMethod == null) {
         // this is a declaration-site-assignment of an @OwningCollection field. nothing to check.
       } else if (inConstructor && lhsIsField) {
-        // assigning @OwningCollection field to an @OwningCollection argument in constructor is
-        // allowed
-        // verify whether rhs is an @OwningCollection parameter
         Tree lhsTree = lhs.getTree();
-        boolean rhsIsParam = rhsElement != null && rhsElement.getKind() == ElementKind.PARAMETER;
+
+        // possibly an assignment within allocating for-loop for the field
         if (lhsTree instanceof ArrayAccessTree) {
-          // possibly allocating for-loop
           if (MustCallOnElementsAnnotatedTypeFactory.doesAssignmentCreateArrayObligation(
               (AssignmentTree) assignmentNode.getTree())) {
             // allocating for-loop: remove obligation of RHS
@@ -2135,21 +2135,10 @@ public class MustCallConsistencyAnalyzer {
             checker.reportError(
                 assignmentNode.getTree(), "illegal.owningcollection.field.elements.assignment");
           }
-        } else if (rhsIsParam && rhsIsOwningCollection) {
-          // assigning @OwningCollection parameter to @OwningCollection field. remove obligation for
-          // parameter
-          removeObligationForNode(obligations, (LocalVariableNode) rhs);
-        } else if (rhs.getTree() instanceof NewArrayTree) {
-          // this is an allowed assignment case. "final" enforces that there is only one
-          // assignment overall
         } else {
-          // check whether rhs is new collection
-          boolean rhsIsNewCollection = isNewCollection(rhsExpr);
-          if (!rhsIsNewCollection) {
-            // any other assignment to @OwningCollection field is not allowed (enforce 1. rule)
-            checker.reportError(
-                assignmentNode.getTree(), "illegal.owningcollection.field.assignment");
-          }
+          // normal assignment to field. final keyword ensures it's the only one.
+          // remove the obligation of the rhs.
+          removeObligationForVar(obligations, rhs);
         }
       } else {
         if (lhsIsField) {
@@ -2159,22 +2148,14 @@ public class MustCallConsistencyAnalyzer {
           checker.reportError(
               assignmentNode.getTree(), "owningcollection.field.assigned.outside.constructor");
         } else if (lhs.getTree() instanceof VariableTree) {
-          // declaration of local @OwningCollection. Can't be field since we're in the else clause
-          if ((rhs instanceof ArrayCreationNode) || isNewCollection(rhsExpr)) {
-            Obligation newObligation = CollectionObligation.fromTree(lhs.getTree());
-            obligations.add(newObligation);
-          } else if (rhsIsOwningCollection) {
-            // declaration of a read-only alias for the RHS @OwningCollection
-            // Ownership remains with the RHS collection. LHS gets type @MustCallOnElementsUnknown.
-            // This is not an error.
-          } else {
-            // enforces 3. assignment rule for @OwningCollection declaration:
-            // assigning an @OwningCollection to anything else is not allowed outside of constructor
-            checker.reportError(
-                assignmentNode.getTree(),
-                "illegal.owningcollection.assignment",
-                lhs.getTree().toString());
+          // declaration of local @OwningCollection. Can't be field since we're in the else clause.
+          // add obligation for the collection and remove for the initializer.
+          ExpressionTree declarationRhs = ((VariableTree) lhs.getTree()).getInitializer();
+          if (declarationRhs != null) {
+            removeObligationForVar(obligations, rhs);
           }
+          Obligation newObligation = CollectionObligation.fromTree(lhs.getTree());
+          obligations.add(newObligation);
         } else if (lhs.getTree() instanceof IdentifierTree) {
           // definition of local @OwningCollection. If the array was previously assigned, the old
           // (in-memory) array goes out of scope and must be checked.
@@ -2190,17 +2171,9 @@ public class MustCallConsistencyAnalyzer {
                 "array is reassigned at " + assignmentNode.getTree());
             obligations.remove(obligation);
           }
-          if (rhs instanceof ArrayCreationNode || isNewCollection(rhsExpr)) {
-            Obligation newObligation = CollectionObligation.fromTree(lhs.getTree());
-            obligations.add(newObligation);
-          } else {
-            // enforces 3. assignment rule for @OwningCollection definition (assignment):
-            // assigning an @OwningCollection to anything else is not allowed outside of constructor
-            checker.reportError(
-                assignmentNode.getTree(),
-                "illegal.owningcollection.assignment",
-                lhs.getTree().toString());
-          }
+          removeObligationForVar(obligations, rhs);
+          Obligation newObligation = CollectionObligation.fromTree(lhs.getTree());
+          obligations.add(newObligation);
         } else if (lhs.getTree() instanceof ArrayAccessTree) {
           // Assignment to an element of an @OwningCollection array, which may or may not be
           // in a pattern-matched assignment loop.
@@ -2224,22 +2197,22 @@ public class MustCallConsistencyAnalyzer {
     }
   }
 
-  /**
-   * Returns true if {@code node} is of the syntactic form {@code new C(...)} where {@code C} is
-   * part of the Java Collection framework.
-   *
-   * @param node the node
-   * @return true if {@code node} is of the syntactic form {@code new C(...)} where {@code C} is
-   *     part of the Java Collection framework.
-   */
-  private boolean isNewCollection(Node node) {
-    if (node.getTree() != null && node.getTree().getKind() == Tree.Kind.NEW_CLASS) {
-      NewClassTree nctree = (NewClassTree) node.getTree();
-      ExpressionTree constructedClassName = nctree.getIdentifier();
-      return RLCUtils.isCollection(constructedClassName, mcoeTypeFactory);
-    }
-    return false;
-  }
+  // /**
+  //  * Returns true if {@code node} is of the syntactic form {@code new C(...)} where {@code C} is
+  //  * part of the Java Collection framework.
+  //  *
+  //  * @param node the node
+  //  * @return true if {@code node} is of the syntactic form {@code new C(...)} where {@code C} is
+  //  *     part of the Java Collection framework.
+  //  */
+  // private boolean isNewCollection(Node node) {
+  //   if (node.getTree() != null && node.getTree().getKind() == Tree.Kind.NEW_CLASS) {
+  //     NewClassTree nctree = (NewClassTree) node.getTree();
+  //     ExpressionTree constructedClassName = nctree.getIdentifier();
+  //     return RLCUtils.isCollection(constructedClassName, mcoeTypeFactory);
+  //   }
+  //   return false;
+  // }
 
   /**
    * Updates a set of Obligations to account for an assignment and enforces the assignment rules for
@@ -3086,10 +3059,12 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Checks whether the given return statement returns an {@code @OwningCollection} and reports an
-   * error if it does.
+   * Checks whether the given return statement returns an {@code @OwningCollection} if and only if
+   * the return type is annotated {@code @OwningCollection} and it is not a field. Violations of
+   * this rule result in a reported error.
    *
    * @param node the return node
+   * @param cfg the control flow graph to get the enclosing method
    */
   private void verifyReturnStatement(ReturnNode node, ControlFlowGraph cfg) {
     Node result = node.getResult();
@@ -3120,6 +3095,7 @@ public class MustCallConsistencyAnalyzer {
       AnnotationMirror anno = TreeUtils.annotationFromAnnotationTree(annoTree);
       if (AnnotationUtils.areSameByName(anno, OwningCollection.class.getCanonicalName())) {
         returnTypeIsOwningCollection = true;
+        break;
       }
     }
 
