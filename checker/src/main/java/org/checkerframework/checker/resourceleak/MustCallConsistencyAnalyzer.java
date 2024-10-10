@@ -4,6 +4,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
+import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.ArrayAccessTree;
 import com.sun.source.tree.AssignmentTree;
 import com.sun.source.tree.ClassTree;
@@ -12,6 +13,7 @@ import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.MethodTree;
+import com.sun.source.tree.ModifiersTree;
 import com.sun.source.tree.NewArrayTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
@@ -3094,13 +3096,8 @@ public class MustCallConsistencyAnalyzer {
     Tree tree = result == null ? null : result.getTree();
     Element elt = tree == null ? null : TreeUtils.elementFromTree(tree);
 
-    MethodTree enclosingMethod = cfg.getEnclosingMethod(tree);
-    Tree returnType = enclosingMethod.getReturnType();
-    Element returnTypeElt = returnType == null ? null : TreeUtils.elementFromTree(returnType);
-
     boolean isOwningCollection = elt != null && cmAtf.hasOwningCollection(elt);
     boolean isField = elt != null && elt.getKind().isField();
-    boolean returnTypeIsOwningCollection = elt != null && cmAtf.hasOwningCollection(returnTypeElt);
     CFStore mcoeStore =
         mcoeTypeFactory == null ? null : mcoeTypeFactory.getStoreBefore(node.getTree());
     boolean isMcoeUnknown =
@@ -3110,7 +3107,23 @@ public class MustCallConsistencyAnalyzer {
             && mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, tree);
     if (isOwningCollection && isField) {
       checker.reportError(node.getTree(), "owningcollection.field.returned");
-    } else if (isOwningCollection && !returnTypeIsOwningCollection) {
+    }
+
+    MethodTree enclosingMethod = cfg.getEnclosingMethod(node.getTree());
+    if (enclosingMethod == null) {
+      return;
+    }
+
+    ModifiersTree modifiers = enclosingMethod.getModifiers();
+    boolean returnTypeIsOwningCollection = false;
+    for (AnnotationTree annoTree : modifiers.getAnnotations()) {
+      AnnotationMirror anno = TreeUtils.annotationFromAnnotationTree(annoTree);
+      if (AnnotationUtils.areSameByName(anno, OwningCollection.class.getCanonicalName())) {
+        returnTypeIsOwningCollection = true;
+      }
+    }
+
+    if (isOwningCollection && !returnTypeIsOwningCollection) {
       checker.reportError(node.getTree(), "owningcollection.return.value", tree);
     } else if (!isOwningCollection && returnTypeIsOwningCollection) {
       checker.reportError(node.getTree(), "non.owningcollection.return.value", tree);

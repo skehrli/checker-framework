@@ -21,7 +21,7 @@ class ReturnTest {
       } catch (Exception e) {
       }
     }
-    // :: error: return.owningcollection
+    // :: error: owningcollection.return.value
     return arr;
   }
 

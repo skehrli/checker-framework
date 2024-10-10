@@ -107,8 +107,13 @@ class DestructorMethodWithInvalidEnsuresCmoeForOwningCollectionField {
 class ValidOwningCollectionField {
   private final @OwningCollection Resource[] arr;
 
-  public Resource[] getField() {
-    // :: error: return.owningcollection
+  /*
+   * This method tries to return the @OwningCollection field, which is not allowed.
+   * It would allow the ownership of the field being transferred multiple times
+   * (every time the method is called), which is unsound.
+   */
+  public @OwningCollection Resource[] getField() {
+    // :: error: owningcollection.field.returned
     return arr;
   }
 
