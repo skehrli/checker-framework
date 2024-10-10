@@ -24,6 +24,43 @@ class PatternMatchOwningCollectionLoops {
     @OwningCollection Socket[] arr = s;
   }
 
+  /*
+   * TODO in the future we would like to be able to have an arbitrary rhs in the
+   * assignment in an allocating for loop. This is currently not easily achievable
+   * since the pattern match code sits in the MustCallVisitor, which runs even before
+   * the MustCall analysis and thus has no information about the mustcall type of the
+   * rhs. We would have to move the pattern match code for this.
+   */
+  // public void checkAssignmentLoop() {
+  //   // :: error: unfulfilled.mustcallonelements.obligations
+  //   @OwningCollection Socket[] arr = new Socket[n];
+  //   for (int i = 0; i < n; i++) {
+  //     try {
+  //       arr[i] = getSocket();
+  //     } catch (Exception e) {
+  //     }
+  //   }
+  // }
+
+  public Socket getSocket() {
+    try {
+      return new Socket(myHost, myPort);
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
+  public void checkAssignment() {
+    // :: error: unfulfilled.mustcallonelements.obligations
+    @OwningCollection Socket[] arr = new Socket[n];
+
+    // write is safe since arr has no open calling obligations
+    try {
+      arr[0] = getSocket();
+    } catch (Exception e) {
+    }
+  }
+
   // test that declaring an @OwningCollection is alright
   public void illegalOwningCollectionElementAssignment() {
     // :: error: unfulfilled.mustcallonelements.obligations

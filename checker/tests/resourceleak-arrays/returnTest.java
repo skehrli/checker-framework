@@ -26,9 +26,13 @@ class ReturnTest {
   }
 
   /*
-   * Illustrate how allowing a return of an @OwningCollection is never sound.
-   * This method does not throw an error. The only thing preventing this horrible
-   * unsoundness is that returning @OwningCollection is forbidden.
+   * Illustrate how allowing a return of an @OwningCollection as a non-@OwningCollection
+   * is not sound.
+   * This method does not throw an error. Even though returnOwningCollection has non-empty
+   * MustCallOnElements type and so does arr after assignments, there is no tracked obligation
+   * for arr since it is not annotated @OwningCollection.
+   * If returnOwningCollection() was annotated @OwningCollection, the method call temp-var itself
+   * would have an obligation (which could be fulfilled by assigning it to an @OwningCollection).
    */
   void assignNonOwningCollectionToCollectionWithObligations() {
     Socket[] arr = returnOwningCollection();

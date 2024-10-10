@@ -27,6 +27,15 @@ class OwningCollectionReturnTest {
     sockets = getOwningSocketList(); // works since lhs has no open obligations
   }
 
+  void checkTernary(boolean b) {
+    @OwningCollection List<Socket> sockets = new ArrayList<Socket>(); // declare owning socket list
+    // sockets is allowed to be reassigned, since it doesn't have open obligations.
+    // it possibly takes ownership of a list returned by getOwningSocketList, whose
+    // obligations it does not fulfill. This reports an error.
+    // :: error: unfulfilled.mustcallonelements.obligations
+    sockets = b ? null : getOwningSocketList(); // works since lhs has no open obligations
+  }
+
   /*
    * The following method assigns an OwningCollection with open calling obligations to the
    * return value of a method. Ensure this reports an error for unfulfilled calling obligations.
