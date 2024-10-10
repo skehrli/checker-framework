@@ -1683,7 +1683,12 @@ public class MustCallConsistencyAnalyzer {
     if (mustCallAliases.isEmpty()) {
       // If mustCallAliases is an empty List, add tmpVarAsResourceAlias to a new set.
       ResourceAlias tmpVarAsResourceAlias = new ResourceAlias(new LocalVariable(tmpVar), tree);
-      obligations.add(new Obligation(ImmutableSet.of(tmpVarAsResourceAlias), MethodExitKind.ALL));
+      if (cmAtf.hasOwningCollection(TreeUtils.elementFromTree(node.getTree()))) {
+        obligations.add(
+            new CollectionObligation(ImmutableSet.of(tmpVarAsResourceAlias), MethodExitKind.ALL));
+      } else {
+        obligations.add(new Obligation(ImmutableSet.of(tmpVarAsResourceAlias), MethodExitKind.ALL));
+      }
     } else {
       for (Node mustCallAlias : mustCallAliases) {
         if (mustCallAlias instanceof FieldAccessNode) {
@@ -1740,6 +1745,7 @@ public class MustCallConsistencyAnalyzer {
    *       invocation in the corresponding position is an owning field.
    *   <li>The method's return type is non-owning, which can either be because the method has no
    *       return type or because the return type is annotated with {@link NotOwning}.
+   *   <li>The method's return type is not {@code OwningCollection}.
    * </ul>
    *
    * <p>This method can also side-effect {@code obligations}, if node is a super or this constructor
@@ -1943,31 +1949,15 @@ public class MustCallConsistencyAnalyzer {
    * array identifier) The list is extracted from the store passed as an argument.
    *
    * @param cmoeStore the store holding cmoe type annotation information
-   * @param arrTree the array identifier tree
-   * @return list of the methods called on the elements of the given array (in dedicated,
-   *     pattern-matched for-loops)
+   * @param tree the expression tree
+   * @return list of the CalledMethodsOnElements values of the given expression in the given store
    */
-  private List<String> getCalledMethodsOnElements(CFStore cmoeStore, Tree arrTree) {
-    if (arrTree instanceof AssignmentTree) {
-      arrTree = ((AssignmentTree) arrTree).getVariable();
-    }
-    if (!(arrTree instanceof VariableTree) && !(arrTree instanceof IdentifierTree)) {
-      throw new BugInCF(
-          "MCOE obligation %s must be either from definition or declaration, but is %s",
-          arrTree, arrTree.getClass().getCanonicalName());
-    }
-    JavaExpression arrayJX =
-        (arrTree instanceof VariableTree)
-            ? JavaExpression.fromVariableTree((VariableTree) arrTree)
-            : JavaExpression.fromTree((IdentifierTree) arrTree);
-    CFValue cfval = cmoeStore.getValue(arrayJX);
-    Element arrElm =
-        (arrTree instanceof VariableTree)
-            ? TreeUtils.elementFromDeclaration((VariableTree) arrTree)
-            : TreeUtils.elementFromTree((IdentifierTree) arrTree);
-    if (arrElm.getKind() == ElementKind.FIELD
-        && arrElm.getAnnotation(OwningCollection.class) != null) {
-      if (ElementUtils.isFinal(arrElm)) {
+  private List<String> getCalledMethodsOnElements(CFStore cmoeStore, JavaExpression jx, Tree tree) {
+    CFValue cfval = cmoeStore.getValue(jx);
+    Element collectionElm = TreeUtils.elementFromTree(tree);
+    if (collectionElm.getKind() == ElementKind.FIELD
+        && collectionElm.getAnnotation(OwningCollection.class) != null) {
+      if (ElementUtils.isFinal(collectionElm)) {
         if (cfval == null) {
           // entry block doesn't have final field in store yet
           return Collections.emptyList();
@@ -1978,14 +1968,14 @@ public class MustCallConsistencyAnalyzer {
         return Collections.emptyList();
       }
     }
-    assert cfval != null : "No mcoe annotation for " + arrTree + " in store.";
+    assert cfval != null : "No cmoe annotation for " + jx + " in store.";
     AnnotationMirror cmoeAnno =
         AnnotationUtils.getAnnotationByClass(cfval.getAnnotations(), CalledMethodsOnElements.class);
     AnnotationMirror cmoeAnnoBottom =
         AnnotationUtils.getAnnotationByClass(
             cfval.getAnnotations(), CalledMethodsOnElementsBottom.class);
     assert cmoeAnno != null || cmoeAnnoBottom != null
-        : "No cmoe annotation for " + arrTree + " in store.";
+        : "No cmoe annotation for " + jx + " in store.";
     if (cmoeAnnoBottom != null) {
       return Collections.emptyList();
     } else {
@@ -3036,7 +3026,13 @@ public class MustCallConsistencyAnalyzer {
     if (type.getKind() == TypeKind.VOID || type.getKind().isPrimitive()) {
       return false;
     }
+    List<String> mcoeValues = RLCUtils.getMcoeValuesInManualAnno(type);
     TypeElement typeElt = TypesUtils.getTypeElement(type);
+    // track if there's an @OwningCollection or non-empty @MustCallOnElements annotation
+    if ((typeElt != null && cmAtf.hasOwningCollection(typeElt))
+        || (mcoeValues != null && mcoeValues.size() > 0)) {
+      return true;
+    }
     // no need to track if type has no possible @MustCall obligation
     if (typeElt != null
         && cmAtf.hasEmptyMustCallValue(typeElt)
@@ -3455,11 +3451,8 @@ public class MustCallConsistencyAnalyzer {
 
         MethodExitKind exitKind =
             exceptionType == null ? MethodExitKind.NORMAL_RETURN : MethodExitKind.EXCEPTIONAL_EXIT;
-        if (obligation.whenToEnforce.contains(exitKind)) {
-          if (!(obligation instanceof CollectionObligation) && !isLoopBodyAnalysis) {
-            checkMustCall(obligation, cmStore, mcStore, exitReasonForErrorMessage);
-          }
-          if (!isLoopBodyAnalysis) {
+        if (obligation.whenToEnforce.contains(exitKind) && !isLoopBodyAnalysis) {
+          if (obligation instanceof CollectionObligation) {
             checkMustCallOnElements(
                 obligation,
                 mcoeStoreCurrent,
@@ -3467,6 +3460,8 @@ public class MustCallConsistencyAnalyzer {
                 true,
                 null,
                 exitReasonForErrorMessage);
+          } else {
+            checkMustCall(obligation, cmStore, mcStore, exitReasonForErrorMessage);
           }
         }
       } else {
@@ -3693,7 +3688,7 @@ public class MustCallConsistencyAnalyzer {
     Set<String> cmoeValues = new HashSet<>();
     for (ResourceAlias alias : obligation.resourceAliases) {
       List<String> mcoeValuesOfAlias =
-          mcoeTypeFactory.getMustCallOnElementsObligations(mcoeStore, alias.tree);
+          mcoeTypeFactory.getMustCallOnElementsObligations(mcoeStore, alias.reference);
       boolean isOwningCollection =
           alias.element != null && cmAtf.hasOwningCollection(alias.element);
       boolean hasRevokedOwnership = mcoeValuesOfAlias == null && isOwningCollection;
@@ -3720,7 +3715,7 @@ public class MustCallConsistencyAnalyzer {
       // mcoeValuesOfAlias is null for read-only aliases
       if (!isReadOnlyAlias) {
         mcoeValues.addAll(mcoeValuesOfAlias);
-        cmoeValues.addAll(getCalledMethodsOnElements(cmoeStore, alias.tree));
+        cmoeValues.addAll(getCalledMethodsOnElements(cmoeStore, alias.reference, alias.tree));
       }
     }
     ResourceAlias firstAlias = obligation.resourceAliases.iterator().next();

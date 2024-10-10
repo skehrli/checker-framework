@@ -1,10 +1,15 @@
 package org.checkerframework.checker.resourceleak;
 
+import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.Tree;
 import java.util.List;
 import java.util.stream.Collectors;
+import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.VariableElement;
+import javax.lang.model.type.TypeKind;
+import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
+import org.checkerframework.checker.mustcall.MustCallChecker;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsChecker;
 import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
@@ -18,9 +23,11 @@ import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsChecker;
 import org.checkerframework.dataflow.analysis.TransferInput;
 import org.checkerframework.dataflow.analysis.TransferResult;
 import org.checkerframework.dataflow.cfg.node.LessThanNode;
+import org.checkerframework.dataflow.cfg.node.LocalVariableNode;
 import org.checkerframework.dataflow.cfg.node.MethodAccessNode;
 import org.checkerframework.dataflow.cfg.node.MethodInvocationNode;
 import org.checkerframework.dataflow.cfg.node.Node;
+import org.checkerframework.dataflow.cfg.node.ObjectCreationNode;
 import org.checkerframework.dataflow.expression.JavaExpression;
 import org.checkerframework.dataflow.util.NodeUtils;
 import org.checkerframework.framework.flow.CFAbstractAnalysis;
@@ -29,7 +36,9 @@ import org.checkerframework.framework.flow.CFTransfer;
 import org.checkerframework.framework.flow.CFValue;
 import org.checkerframework.framework.type.AnnotatedTypeFactory;
 import org.checkerframework.javacutil.BugInCF;
+import org.checkerframework.javacutil.ElementUtils;
 import org.checkerframework.javacutil.TreeUtils;
+import org.checkerframework.javacutil.TypesUtils;
 
 /**
  * An abstract transfer function that is implemented by the transfer functions of the {@code
@@ -225,12 +234,19 @@ public abstract class CollectionTransfer extends CFTransfer {
         case SET:
           res = transformListSet(node, res, receiverJx);
           break;
-          // case "add(int,E)":
-          //   return transformCollectionAddWithIdx(node, res, parameters);
         default:
           throw new BugInCF("unhandled MethodSigType " + methodSigType);
       }
     }
+    updateStoreWithTempVar(res, node);
+    return res;
+  }
+
+  @Override
+  public TransferResult<CFValue, CFStore> visitObjectCreation(
+      ObjectCreationNode node, TransferInput<CFValue, CFStore> input) {
+    TransferResult<CFValue, CFStore> res = super.visitObjectCreation(node, input);
+    updateStoreWithTempVar(res, node);
     return res;
   }
 
@@ -272,5 +288,49 @@ public abstract class CollectionTransfer extends CFTransfer {
       return tempVarForNode;
     }
     return node;
+  }
+
+  /**
+   * This method either creates or looks up the temp var t for node, and then updates the store to
+   * give t the same type as node. Temporary variables are supported for expressions throughout this
+   * checker (and the Must Call Checker) to enable refinement of their types. See the documentation
+   * of {@link MustCallConsistencyAnalyzer} for more details.
+   *
+   * @param node the node to be assigned to a temporary variable
+   * @param result the transfer result containing the store to be modified
+   */
+  public void updateStoreWithTempVar(TransferResult<CFValue, CFStore> result, Node node) {
+    // If the node is a void method invocation then do not create temp vars for it.
+    if (node instanceof MethodInvocationNode) {
+      MethodInvocationTree methodInvocationTree = (MethodInvocationTree) node.getTree();
+      ExecutableElement executableElement = TreeUtils.elementFromUse(methodInvocationTree);
+      if (ElementUtils.getType(executableElement).getKind() == TypeKind.VOID) {
+        return;
+      }
+    }
+    // mcoe obligations on primitives are not supported.
+    if (!TypesUtils.isPrimitiveOrBoxed(node.getType())) {
+      MustCallAnnotatedTypeFactory mcAtf =
+          (MustCallAnnotatedTypeFactory)
+              RLCUtils.getTypeFactory(MustCallChecker.class, atypeFactory);
+      LocalVariableNode temp = mcAtf.getTempVar(node);
+      if (temp != null) {
+        // cmAtf.addTempVar(temp, node.getTree());
+        JavaExpression localExp = JavaExpression.fromNode(temp);
+        AnnotationMirror top =
+            atypeFactory.getQualifierHierarchy().getTopAnnotations().iterator().next();
+        AnnotationMirror anm =
+            atypeFactory.getAnnotatedType(node.getTree()).getPrimaryAnnotationInHierarchy(top);
+        if (anm == null) {
+          anm = top;
+        }
+        if (result.containsTwoStores()) {
+          result.getThenStore().insertValue(localExp, anm);
+          result.getElseStore().insertValue(localExp, anm);
+        } else {
+          result.getRegularStore().insertValue(localExp, anm);
+        }
+      }
+    }
   }
 }

@@ -99,10 +99,9 @@ public class MustCallAnnotatedTypeFactory extends BaseAnnotatedTypeFactory
    * because it is a resource alias, but without a temporary variable that represents that
    * expression in the store, the resource leak checker wouldn't be able to determine that.
    *
-   * <p>These temporary variables are only created once---here---but are used by all three parts of
-   * the resource leak checker by calling {@link #getTempVar(Node)}. The temporary variables are
-   * shared in the same way that subcheckers share CFG structure; see {@link
-   * #getSharedCFGForTree(Tree)}.
+   * <p>These temporary variables are only created once---here---but are used by all parts of the
+   * resource leak checker by calling {@link #getTempVar(Node)}. The temporary variables are shared
+   * in the same way that subcheckers share CFG structure; see {@link #getSharedCFGForTree(Tree)}.
    */
   /*package-private*/ final IdentityHashMap<Tree, LocalVariableNode> tempVars =
       new IdentityHashMap<>(100);

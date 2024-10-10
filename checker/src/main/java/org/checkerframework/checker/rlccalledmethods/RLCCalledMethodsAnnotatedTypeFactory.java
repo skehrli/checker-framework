@@ -475,6 +475,7 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
    * @return whether there is an OwningCollection annotation on the given element
    */
   public boolean hasOwningCollection(Element elt) {
+    if (elt == null) return false;
     MustCallAnnotatedTypeFactory mcatf = getMustCallAnnotatedTypeFactory();
     return mcatf.getDeclAnnotation(elt, OwningCollection.class) != null;
   }

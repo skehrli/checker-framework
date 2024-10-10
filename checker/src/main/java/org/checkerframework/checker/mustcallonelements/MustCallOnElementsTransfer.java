@@ -247,6 +247,7 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
   public TransferResult<CFValue, CFStore> visitObjectCreation(
       ObjectCreationNode node, TransferInput<CFValue, CFStore> input) {
     TransferResult<CFValue, CFStore> res = super.visitObjectCreation(node, input);
+
     ExecutableElement constructor = TreeUtils.elementFromUse(node.getTree());
     List<? extends VariableElement> params = constructor.getParameters();
     List<Node> args = node.getArguments();

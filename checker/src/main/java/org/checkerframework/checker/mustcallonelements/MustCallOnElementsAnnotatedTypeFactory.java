@@ -448,29 +448,18 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
    * store passed as an argument.
    *
    * @param mcoeStore store containing MustCallOnElements type annotation information
-   * @param collectionTree the array/collection variable/identifier tree
-   * @return list of the MustCallOnElements obligations of the given array/collection
+   * @param tree the expression
+   * @return list of the MustCallOnElements type values of the given expression in the given store
    */
-  public List<String> getMustCallOnElementsObligations(CFStore mcoeStore, Tree collectionTree) {
-    if (collectionTree instanceof AssignmentTree) {
-      collectionTree = ((AssignmentTree) collectionTree).getVariable();
+  public List<String> getMustCallOnElementsObligations(CFStore mcoeStore, ExpressionTree tree) {
+    if (tree instanceof AssignmentTree) {
+      tree = ((AssignmentTree) tree).getVariable();
     }
-    if (collectionTree instanceof ArrayAccessTree) {
-      collectionTree = ((ArrayAccessTree) collectionTree).getExpression();
+    if (tree instanceof ArrayAccessTree) {
+      tree = ((ArrayAccessTree) tree).getExpression();
     }
-    if (!(collectionTree instanceof VariableTree) && !(collectionTree instanceof IdentifierTree)) {
-      throw new BugInCF(
-          "MCOE obligation %s must be either from definition or declaration, but is %s",
-          collectionTree, collectionTree.getClass().getCanonicalName());
-    }
-    Element collectionElm =
-        (collectionTree instanceof VariableTree)
-            ? TreeUtils.elementFromDeclaration((VariableTree) collectionTree)
-            : TreeUtils.elementFromTree((IdentifierTree) collectionTree);
-    JavaExpression collectionJx =
-        (collectionTree instanceof VariableTree)
-            ? JavaExpression.fromVariableTree((VariableTree) collectionTree)
-            : JavaExpression.fromTree((IdentifierTree) collectionTree);
+    Element collectionElm = TreeUtils.elementFromTree(tree);
+    JavaExpression collectionJx = JavaExpression.fromTree(tree);
     if (collectionElm.getKind() == ElementKind.FIELD
         && collectionElm.getAnnotation(OwningCollection.class) != null) {
       if (ElementUtils.isFinal(collectionElm)) {
