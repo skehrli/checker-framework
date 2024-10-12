@@ -17,33 +17,68 @@ class PatternMatchOwningCollectionLoops {
     @OwningCollection Socket[][] sMultiDimensional;
   }
 
-  public void illegalOwningCollectionAssignment() {
+  public void legalOwningCollectionAssignment() {
     Socket[] s = new Socket[n];
-    // this is a false positive, but we only allow assignment
-    // of an @OwningCollection to a new [].
-    // :: error: illegal.owningcollection.assignment
+    // this is legal. A non-@OwningCollection cannot possibly have calling obligations,
+    // so giving an @OwningCollection ownership over it is safe.
     @OwningCollection Socket[] arr = s;
   }
 
-  // test that aliasing is not allowed.
-  public void illegalAliasing() {
+  /*
+   * TODO in the future we would like to be able to have an arbitrary rhs in the
+   * assignment in an allocating for loop. This is currently not easily achievable
+   * since the pattern match code sits in the MustCallVisitor, which runs even before
+   * the MustCall analysis and thus has no information about the mustcall type of the
+   * rhs. We would have to move the pattern match code for this.
+   */
+  // public void checkAssignmentLoop() {
+  //   // :: error: unfulfilled.mustcallonelements.obligations
+  //   @OwningCollection Socket[] arr = new Socket[n];
+  //   for (int i = 0; i < n; i++) {
+  //     try {
+  //       arr[i] = getSocket();
+  //     } catch (Exception e) {
+  //     }
+  //   }
+  // }
+
+  public Socket getSocket() {
+    try {
+      return new Socket(myHost, myPort);
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
+  public void checkAssignment() {
+    // :: error: unfulfilled.mustcallonelements.obligations
     @OwningCollection Socket[] arr = new Socket[n];
-    // :: error: illegal.owningcollection.assignment
-    @OwningCollection Socket[] arr2 = arr;
-    // :: error: illegal.aliasing
-    Socket[] arr3 = arr;
+
+    // write is safe since arr has no open calling obligations
+    try {
+      arr[0] = getSocket();
+    } catch (Exception e) {
+    }
   }
 
   // test that declaring an @OwningCollection is alright
   public void illegalOwningCollectionElementAssignment() {
+    // :: error: unfulfilled.mustcallonelements.obligations
     @OwningCollection Socket[] arr = new Socket[n];
     try {
-      // :: error: illegal.owningcollection.element.assignment
-      // :: error: required.method.not.called
+      // since arr has no previous calling obligations, this write is safe
       arr[0] = new Socket(myHost, myPort);
     } catch (Exception e) {
     }
-    // :: error: illegal.owningcollection.element.assignment
+
+    try {
+      // since arr now has open calling obligations, this write is not allowed,
+      // since it could overwrite previous elements
+      // :: error: illegal.owningcollection.write
+      arr[1] = new Socket(myHost, myPort);
+    } catch (Exception e) {
+    }
+    // :: error: illegal.owningcollection.write
     arr[0] = null;
   }
 

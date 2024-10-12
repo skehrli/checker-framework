@@ -89,6 +89,7 @@ class OwningarrayParameterPassing {
     OwningCollectionWrapper wrapper = new OwningCollectionWrapper(owningArr);
     // :: error: argument
     // :: error: argument.with.revoked.ownership
+    // :: error: unexpected.argument.ownership
     nonOwningParameter(owningArr);
     // :: error: argument
     // :: error: argument.with.revoked.ownership
@@ -114,7 +115,7 @@ class OwningarrayParameterPassing {
 
 @InheritableMustCall("close")
 class OwningCollectionWrapper {
-  final @OwningCollection Resource[] arr;
+  private final @OwningCollection Resource[] arr;
 
   public OwningCollectionWrapper(@OwningCollection Resource[] arr) {
     this.arr = arr;

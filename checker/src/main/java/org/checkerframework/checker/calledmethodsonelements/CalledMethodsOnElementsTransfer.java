@@ -3,28 +3,20 @@ package org.checkerframework.checker.calledmethodsonelements;
 import com.sun.source.tree.ExpressionTree;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.ExecutableElement;
-import javax.lang.model.element.VariableElement;
-import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
-import org.checkerframework.checker.mustcall.MustCallChecker;
-import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.CollectionTransfer;
-import org.checkerframework.checker.resourceleak.RLCUtils;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyAssigningLoop;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory.PotentiallyFulfillingLoop;
 import org.checkerframework.dataflow.analysis.ConditionalTransferResult;
 import org.checkerframework.dataflow.analysis.RegularTransferResult;
-import org.checkerframework.dataflow.analysis.TransferInput;
 import org.checkerframework.dataflow.analysis.TransferResult;
 import org.checkerframework.dataflow.cfg.node.MethodInvocationNode;
-import org.checkerframework.dataflow.cfg.node.Node;
 import org.checkerframework.dataflow.expression.JavaExpression;
 import org.checkerframework.framework.flow.CFStore;
 import org.checkerframework.framework.flow.CFValue;
@@ -70,130 +62,18 @@ public class CalledMethodsOnElementsTransfer extends CollectionTransfer {
     env = atypeFactory.getProcessingEnv();
   }
 
-  /*
-   * Empties the @MustCallOnElements() type of arguments passed as @OwningCollection method parameters to the
-   * constructor and enforces that only @OwningCollection arguments are passed to @OwningCollection parameters.
-   */
-  // @Override
-  // public TransferResult<CFValue, CFStore> visitObjectCreation(
-  //     ObjectCreationNode node, TransferInput<CFValue, CFStore> input) {
-  //   TransferResult<CFValue, CFStore> res = super.visitObjectCreation(node, input);
-  //   ExecutableElement constructor = TreeUtils.elementFromUse(node.getTree());
-  //   List<? extends VariableElement> params = constructor.getParameters();
-  //   List<Node> args = node.getArguments();
-  //   Iterator<? extends VariableElement> paramIterator = params.iterator();
-  //   Iterator<Node> argIterator = args.iterator();
-  //   while (paramIterator.hasNext() && argIterator.hasNext()) {
-  //     VariableElement param = paramIterator.next();
-  //     Node arg = argIterator.next();
-  //     boolean paramIsOwningCollection = param.getAnnotation(OwningCollection.class) != null;
-  //     if (paramIsOwningCollection) {
-  //       JavaExpression array = JavaExpression.fromNode(arg);
-  //       AnnotationMirror oldType =
-  // res.getRegularStore().getValue(array).getAnnotations().first();
-
-  //       // extract the @MustCallOnElement values of the parameter
-  //       List<String> mcoeObligationsOfComponent = Collections.emptyList();
-  //       for (AnnotationMirror paramAnno : param.asType().getAnnotationMirrors()) {
-  //         DeclaredType annotype = paramAnno.getAnnotationType();
-  //         String annotypeQualifiedName =
-  //             ElementUtils.getBinaryName((TypeElement) annotype.asElement()).toString();
-  //         String mustCallOnElementsQualifiedName = MustCallOnElements.class.getCanonicalName();
-  //         if (annotypeQualifiedName.equals(mustCallOnElementsQualifiedName)) {
-  //           // is @MustCallOnElements annotation
-  //           for (ExecutableElement key : paramAnno.getElementValues().keySet()) {
-  //             AnnotationValue value = paramAnno.getElementValues().get(key);
-  //             if ("value".equals(key.getSimpleName().toString())) {
-  //               // Assuming the value is a list of strings (which it should be for a String array
-  //               // annotation element)
-  //               List<?> values = (List<?>) value.getValue();
-  //               List<String> stringValues =
-  //                   values.stream().map(Object::toString).collect(Collectors.toList());
-  //               mcoeObligationsOfComponent =
-  //                   CollectionsPlume.concatenate(mcoeObligationsOfComponent, stringValues);
-  //             }
-  //           }
-  //         }
-  //       }
-  //       res.getRegularStore().clearValue(array);
-  //       res.getRegularStore()
-  //           .insertValue(
-  //               array, getUpdatedCalledMethodsOnElementsType(oldType,
-  // mcoeObligationsOfComponent));
-  //     }
-  //   }
-  //   return res;
-  // }
-  //
-
-  // @Override
-  // public TransferResult<CFValue, CFStore> visitArrayAccess(
-  //     ArrayAccessNode node, TransferInput<CFValue, CFStore> input) {
-  //   // ExpressionTree arrayExpr = node.getArrayExpression();
-  //   // System.out.println("arrayexpre: " + arrayExpr);
-  //   return super.visitArrayAccess(node, input);
-  // }
-
-  // /**
-  //  * if the method invocation corresponds to the condition of a (desugared) enhanced for loop,
-  //  * the method adds the methods called in that loop to the CMOE type of the corresponding array.
-  //  *
-  //  * @param node the method invocation node
-  //  * @param input the transfer input
-  //  */
-  // private void updateStoreForEnhancedForLoop(
-  //     LessThanNode node, TransferInput<CFValue, CFStore> input) {
-  //   ExpressionTree iterableExpr = node.getIterableExpression();
-  //   if (iterableExpr != null) {
-  //     System.out.println("iterableexpr: " + node.getIterableExpression());
-  //     System.out.println("            " + input);
-  //   }
-  // }
-
-  /*
-   * Checks whether there are any arguments are @OwningCollection, in which case the @MustCall type
-   * of the corresponding method parameter is determined and these type values are added to the
-   * @CalledMethodsOnElements type of the @OwningCollection argument.
+  /**
+   * Abstract transformer for when an {@code @OwningColletion} variable is passed to an
+   * {@code @OwningCollection} method parameter (constructor or method invocation).
+   *
+   * <p>Resets the type of the passed argument to {@code CalledMethodsOnElements()}.
+   *
+   * @param store the store to update
+   * @param collectionArg the {@code @OwningCollection} argument
    */
   @Override
-  public TransferResult<CFValue, CFStore> visitMethodInvocation(
-      MethodInvocationNode node, TransferInput<CFValue, CFStore> input) {
-    TransferResult<CFValue, CFStore> res = super.visitMethodInvocation(node, input);
-
-    ExecutableElement method = node.getTarget().getMethod();
-    List<? extends VariableElement> params = method.getParameters();
-    List<Node> args = node.getArguments();
-    Iterator<? extends VariableElement> paramIterator = params.iterator();
-    Iterator<Node> argIterator = args.iterator();
-
-    while (paramIterator.hasNext() && argIterator.hasNext()) {
-      VariableElement param = paramIterator.next();
-      Node arg = argIterator.next();
-      boolean paramIsOwningCollection = param.getAnnotation(OwningCollection.class) != null;
-
-      // If the parameter is @OwningCollection, so is the argument (else, an error is reported
-      // elsewhere)
-      // Add the Mcoe type values of the parameter to the Cmoe type of the @OwningCollection
-      // argument.
-      if (paramIsOwningCollection) {
-        JavaExpression collection = JavaExpression.fromNode(arg);
-        AnnotationMirror oldType =
-            res.getRegularStore().getValue(collection).getAnnotations().first();
-
-        MustCallAnnotatedTypeFactory mcAtf =
-            (MustCallAnnotatedTypeFactory)
-                RLCUtils.getTypeFactory(MustCallChecker.class, atypeFactory);
-        List<String> mcoeObligationsOfCollection =
-            RLCUtils.getMcoeValuesOfOwningCollection(param, mcAtf);
-        CFStore store = res.getRegularStore();
-        store.clearValue(collection);
-        store.insertValue(
-            collection,
-            getUpdatedCalledMethodsOnElementsType(oldType, mcoeObligationsOfCollection));
-        return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
-      }
-    }
-    return res;
+  protected void transformOwningCollectionArg(CFStore store, JavaExpression collectionArg) {
+    resetCmoeValue(store, collectionArg);
   }
 
   /**
@@ -315,36 +195,6 @@ public class CalledMethodsOnElementsTransfer extends CollectionTransfer {
     }
     return res;
   }
-
-  // /**
-  //  * update {@code @CalledMethodsOnElements} type for pattern-matched loop that has a LessThan as
-  //  * its condition.
-  //  */
-  // @Override
-  // public TransferResult<CFValue, CFStore> visitLessThan(
-  //     LessThanNode node, TransferInput<CFValue, CFStore> input) {
-  //   TransferResult<CFValue, CFStore> res = super.visitLessThan(node, input);
-  //   if (TreeUtils.statementIsSynthetic(node.getTree())) {
-  //     BinaryTree lessThanTree = node.getTree();
-  //     System.out.println("ltTree: " + lessThanTree);
-  //       Node rhs = node.getRightOperand();
-  //       System.out.println("rhs: " + rhs);
-  //       if (rhs instanceof FieldAccessNode) {
-  //         FieldAccessNode accessNode = (FieldAccessNode) rhs;
-  //         if (accessNode.getFieldName().equals("length")) {
-  //           MustCallAnnotatedTypeFactory mcatf =
-  //               new MustCallAnnotatedTypeFactory(atypeFactory.getChecker());
-  //           Node collectionNode = accessNode.getReceiver();
-  //           System.out.println("receiver: " + collectionNode);
-  //           if (mcatf.getDeclAnnotation(
-  //                   TreeUtils.elementFromTree(collectionNode.getTree()), OwningCollection.class)
-  //               != null) {
-  //             System.out.println("collectionNode: " + accessNode.getFieldName());
-  //           }
-  //         }
-  //       }
-  //   }
-  // }
 
   /**
    * Extract the current called-methods type from {@code currentType}, and then add {@code

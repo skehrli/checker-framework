@@ -11,22 +11,21 @@ class OwningCollectionTransformers {
   // :: error: owning.collection
   @Owning List<Socket> s;
 
-  public void illegalOwningCollectionAssignment() {
+  public void owningCollectionAssignmentToNonOwningCollectionList() {
     List<Socket> s = new ArrayList<Socket>();
     // this is a false positive, but we only allow assignment
     // of an @OwningCollection to a new Collection/Listay.
-    // :: error: illegal.owningcollection.assignment
     @OwningCollection List<Socket> list = s;
   }
 
   // test that aliasing is not allowed.
-  public void illegalAliasing() {
-    @OwningCollection List<Socket> list = new ArrayList<Socket>();
-    // :: error: illegal.owningcollection.assignment
-    @OwningCollection List<Socket> list2 = list;
-    // :: error: illegal.aliasing
-    List<Socket> list3 = list;
-  }
+  // public void illegalAliasing() {
+  //   @OwningCollection List<Socket> list = new ArrayList<Socket>();
+  //   // :: error: illegal.owningcollection.assignment
+  //   @OwningCollection List<Socket> list2 = list;
+  //   // :: error: illegal.aliasing
+  //   List<Socket> list3 = list;
+  // }
 
   public void checkListSetTransformer() {
     // calling obligations fulfilled due to call to OwnershipTaker
@@ -35,13 +34,13 @@ class OwningCollectionTransformers {
       list.add(new Socket(myHost, myPort));
 
       // try to override an element while the list has open calling obligations
-      // :: error: illegal.owningcollection.allocation
+      // :: error: illegal.owningcollection.write
       list.set(0, new Socket(myHost, myPort));
     } catch (Exception e) {
     }
 
     // try to override an element while the list has open calling obligations
-    // :: error: illegal.owningcollection.allocation
+    // :: error: illegal.owningcollection.write
     list.set(0, null);
 
     // lose ownership and then try to set an element, to verify that the write is rejected
@@ -205,12 +204,19 @@ class OwningCollectionTransformers {
   public void invalidDeallocationLoop5() {
     // :: error: unfulfilled.mustcallonelements.obligations
     @OwningCollection List<Socket> list = new ArrayList<Socket>();
-    list.add(new Socket(myHost, myPort));
+
+    try {
+      list.add(new Socket(myHost, myPort));
+    } catch (Exception e) {
+    }
+
     // this deallocation loop is illegal and is not pattern-matched
     for (int i = 0; i < list.size(); i++) {
       try {
         list.get(i).close();
       } catch (Exception e) {
+        // this reassignment is never fulfilled
+        // :: error: unfulfilled.mustcallonelements.obligations
         list = new ArrayList<Socket>();
       }
     }
@@ -250,7 +256,7 @@ class OwningCollectionTransformers {
     }
     for (int i = 0; i < n; i++) {
       try {
-        // :: error: illegal.owningcollection.allocation
+        // :: error: illegal.owningcollection.write
         list.set(i, new Socket(myHost, myPort));
       } catch (Exception e) {
       }

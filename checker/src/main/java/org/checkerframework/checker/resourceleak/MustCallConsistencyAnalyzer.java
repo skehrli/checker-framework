@@ -4,6 +4,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
+import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.ArrayAccessTree;
 import com.sun.source.tree.AssignmentTree;
 import com.sun.source.tree.ClassTree;
@@ -12,7 +13,7 @@ import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.MethodTree;
-import com.sun.source.tree.NewArrayTree;
+import com.sun.source.tree.ModifiersTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
@@ -93,6 +94,7 @@ import org.checkerframework.dataflow.cfg.node.ObjectCreationNode;
 import org.checkerframework.dataflow.cfg.node.ReturnNode;
 import org.checkerframework.dataflow.cfg.node.SuperNode;
 import org.checkerframework.dataflow.cfg.node.ThisNode;
+import org.checkerframework.dataflow.cfg.node.VariableDeclarationNode;
 import org.checkerframework.dataflow.expression.FieldAccess;
 import org.checkerframework.dataflow.expression.IteratedCollectionElement;
 import org.checkerframework.dataflow.expression.JavaExpression;
@@ -794,7 +796,7 @@ public class MustCallConsistencyAnalyzer {
    * Traverses the cfg of a method to find and mark enhanced-for-loops that are potentially {@code
    * MustCallOnElements} fulfilling.
    *
-   * @param cfg cfg of the method to analyze
+   * @param cfg the cfg of the method to analyze
    */
   public void findFulfillingForEachLoops(ControlFlowGraph cfg) {
     // The `visited` set contains everything that has been added to the worklist, even if it has
@@ -816,7 +818,9 @@ public class MustCallConsistencyAnalyzer {
           getSuccessorsExceptIgnoredExceptions(currentBlock)) {
         for (Node node : currentBlock.getNodes()) {
           if (node instanceof MethodInvocationNode) {
-            patternMatchEnhancedForLoop((MethodInvocationNode) node, cfg);
+            patternMatchEnhancedCollectionForLoop((MethodInvocationNode) node, cfg);
+          } else if (node instanceof ArrayAccessNode) {
+            patternMatchEnhancedArrayForLoop((ArrayAccessNode) node, cfg);
           }
         }
         propagate(
@@ -1070,7 +1074,7 @@ public class MustCallConsistencyAnalyzer {
           updateObligationsForAssignment(obligations, cfg, (AssignmentNode) node);
         } else if (node instanceof ReturnNode) {
           updateObligationsForOwningReturn(obligations, cfg, (ReturnNode) node);
-          verifyReturnStatement((ReturnNode) node);
+          verifyReturnStatement((ReturnNode) node, cfg);
         } else if (node instanceof MethodInvocationNode || node instanceof ObjectCreationNode) {
           updateObligationsForInvocation(obligations, node, successorAndExceptionType.second);
         } else if (node instanceof LessThanNode) {
@@ -1099,10 +1103,108 @@ public class MustCallConsistencyAnalyzer {
     }
   }
 
-  private void patternMatchEnhancedForLoop(
+  /**
+   * Checks whether the given {@code ArrayAccessNode} is desugared from an enhanced for loop and
+   * calls a loop-body-analysis on the detected loop if it is.
+   *
+   * <p>If an {@code ArrayAccessNode} is desugared from an enhanced for loop over an array, it
+   * corresponds to the node in the synthetic {@code s = array#numX[index#numY]} assignment, where
+   * the loop iterator variable is assigned. The AST node corresponding to the loop itself is in
+   * this case contained as a field in the {@code ArrayAccessNode}, which is set in the CFG
+   * translation phase one.
+   *
+   * <p>This method now traverses the CFG upwards to find the loop condition and downwards to find
+   * the first block of the loop body. With these two blocks, it can then call a loop-body-analysis
+   * to find the methods the loop calls on the elements of the iterated collection, as part of the
+   * MustCallOnElements checker.
+   *
+   * @param arrayAccessNode the {@code ArrayAccessNode}, for which it is checked, whether it is
+   *     desugared from an enhanced for loop.
+   * @param cfg the enclosing cfg of the {@code ArrayAccessNode}
+   */
+  private void patternMatchEnhancedArrayForLoop(
+      ArrayAccessNode arrayAccessNode, ControlFlowGraph cfg) {
+    boolean nodeIsDesugaredFromEnhancedForLoop = arrayAccessNode.getArrayExpression() != null;
+    if (nodeIsDesugaredFromEnhancedForLoop && cfg != null) {
+      // this is the arr[i] access desugared from an enhanced-for-loop (in iter = arr[i];)
+      EnhancedForLoopTree loop = arrayAccessNode.getEnhancedForLoop();
+      if (loop == null) {
+        throw new BugInCF(
+            "MethodInvocationNode.iterableExpression should be non-null iff"
+                + " MethodInvocationNode.enhancedForLoop is non-null");
+      }
+
+      // Find the first block of the loop body.
+      SingleSuccessorBlock ssblock = (SingleSuccessorBlock) arrayAccessNode.getBlock();
+      Block loopBodyEntryBlock = ssblock.getSuccessor();
+
+      // Find the loop condition
+      // Start from the synthetic (desugared) arr[i] node and traverse the cfg
+      // backwards until the LessThan node is found.
+      // It corresponds to the desugared loop condition (index#numX < array#numX.length).
+      Block block = arrayAccessNode.getBlock();
+      Iterator<Node> nodeIterator = block.getNodes().iterator();
+      Node loopVarNode = null;
+      Node node;
+      do {
+        while (!nodeIterator.hasNext()) {
+          Set<Block> predBlocks = block.getPredecessors();
+          if (predBlocks.size() == 1) {
+            block = predBlocks.iterator().next();
+            nodeIterator = block.getNodes().iterator();
+          } else {
+            throw new BugInCF(
+                "Encountered more than one CFG Block predeccessor trying to find the"
+                    + " enhanced-for-loop update block.");
+          }
+        }
+        node = nodeIterator.next();
+        if (node instanceof VariableDeclarationNode) {
+          // variable declaration of public iterator
+          loopVarNode = node;
+        }
+      } while (!(node instanceof LessThanNode));
+
+      // add the blocks into a static datastructure in the calledmethodsatf, such that it can
+      // analyze
+      // them (call MustCallConsistencyAnalyzer.analyzeFulfillingLoops, which in turn adds the trees
+      // to the static datastructure in McoeAtf)
+      PotentiallyFulfillingLoop pfLoop =
+          new PotentiallyFulfillingLoop(
+              loop.getExpression(),
+              loopVarNode.getTree(),
+              node.getTree(),
+              loopBodyEntryBlock,
+              block,
+              loopVarNode);
+      this.analyzeObligationFulfillingLoop(cfg, pfLoop);
+    }
+  }
+
+  /**
+   * Checks whether the given {@code MethodInvocationNode} is desugared from an enhanced for loop
+   * and calls a loop-body-analysis on the detected loop if it is.
+   *
+   * <p>If a {@code MethodInvocationNode} is desugared from an enhanced for loop over a collection
+   * it corresponds to the node in the synthetic {@code Iterator.next()} method call, which is the
+   * loop update instruction. The AST node corresponding to the loop itself is in this case
+   * contained as a field in the {@code MethodInvocationNode}, which is set in the CFG translation
+   * phase one.
+   *
+   * <p>This method now traverses the CFG upwards to find the loop condition and downwards to find
+   * the first block of the loop body. With these two blocks, it can then call a loop-body-analysis
+   * to find the methods the loop calls on the elements of the iterated collection, as part of the
+   * MustCallOnElements checker.
+   *
+   * @param methodInvocationNode the {@code MethodInvocationNode}, for which it is checked, whether
+   *     it is desugared from an enhanced for loop.
+   * @param cfg the enclosing cfg of the {@code MethodInvocationNode}
+   */
+  private void patternMatchEnhancedCollectionForLoop(
       MethodInvocationNode methodInvocationNode, ControlFlowGraph cfg) {
-    boolean nodeDesugaredFromEnhancedForLoop = methodInvocationNode.getIterableExpression() != null;
-    if (nodeDesugaredFromEnhancedForLoop) {
+    boolean nodeIsDesugaredFromEnhancedForLoop =
+        methodInvocationNode.getIterableExpression() != null;
+    if (nodeIsDesugaredFromEnhancedForLoop) {
       // this is the Iterator.next() call desugared from an enhanced-for-loop
       EnhancedForLoopTree loop = methodInvocationNode.getEnhancedForLoop();
       if (loop == null) {
@@ -1211,9 +1313,9 @@ public class MustCallConsistencyAnalyzer {
               if (ElementUtils.isStatic(memberElm)) {
                 checker.reportError(member, "owningcollection.field.static", tree.getName());
               }
-              // if (!ElementUtils.isPrivate(memberElm)) {
-              //   checker.reportError(member, "owningcollection.field.private", tree.getName());
-              // }
+              if (!ElementUtils.isPrivate(memberElm)) {
+                checker.reportError(member, "owningcollection.field.not.private", tree.getName());
+              }
               if (!isArray && !isCollection) {
                 checker.reportError(member, "owningcollection.noncollection", tree.getName());
               }
@@ -1262,35 +1364,69 @@ public class MustCallConsistencyAnalyzer {
           case ADD_E:
             Node argExpr = NodeUtils.removeCasts(args.get(0));
             Node argVar = getTempVarOrNode(argExpr);
-            // System.out.println("removing obligation for " + argVar);
             removeObligationForVar(obligations, argVar);
+
+            checksForWritingMethodOnOwningCollection(receiver, min);
             return;
           case ADD_INT_E:
             argExpr = NodeUtils.removeCasts(args.get(1));
             argVar = getTempVarOrNode(argExpr);
             removeObligationForVar(obligations, argVar);
+
+            checksForWritingMethodOnOwningCollection(receiver, min);
             return;
           case SET:
             argExpr = NodeUtils.removeCasts(args.get(1));
             argVar = getTempVarOrNode(argExpr);
             removeObligationForVar(obligations, argVar);
 
-            // also remove obligation for the entire method invocation node
-            Node methodCallExpr = NodeUtils.removeCasts(min);
-            Node methodCallVar = getTempVarOrNode(methodCallExpr);
-            removeObligationForVar(obligations, methodCallVar);
-
-            forbidIfReceiverIsField(receiver, min);
+            checksForOverwritingMethodOnOwningCollection(receiver, min);
             return;
         }
       }
     }
   }
 
-  private void forbidIfReceiverIsField(Node receiver, MethodInvocationNode min) {
+  /**
+   * Checks for a method call on an {@code @OwningCollection}, which makes an overwriting write to
+   * the underlying collection (for example {@code List.set(int,E)}), whether it is valid and
+   * reports an error if it is not.
+   *
+   * <p>Checks that receiver is not a field and that it is not a read-only reference.
+   *
+   * @param receiver the receiver node of the method call
+   * @param min the method invocation node
+   */
+  private void checksForOverwritingMethodOnOwningCollection(
+      Node receiver, MethodInvocationNode min) {
+    checksForWritingMethodOnOwningCollection(receiver, min);
+
     Element receiverElt = TreeUtils.elementFromTree(receiver.getTree());
     if (receiverElt.getKind() == ElementKind.FIELD) {
       checker.reportError(min.getTree(), "owningcollection.field.element.overwrite", receiver);
+    }
+  }
+
+  /**
+   * Checks for a method call on an {@code @OwningCollection}, which writes to the underlying
+   * collection (for example {@code Collection.add(E)}), whether the receiver is not read-only and
+   * reports an error if it is.
+   *
+   * <p>In this checker, {@code @MustCallOnElementsUnknown} encodes a read-only reference. The
+   * method checks whether the passed receiver node has {@code @MustCallOnElementsUnknown} type at
+   * the time of the given method invocation node and reports an error in this case. The reason is
+   * that writing methods cannot be called on a collection reference that is read-only.
+   *
+   * @param receiver the receiver node of the method call
+   * @param min the method invocation node
+   */
+  private void checksForWritingMethodOnOwningCollection(Node receiver, MethodInvocationNode min) {
+    CFStore mcoeStore =
+        mcoeTypeFactory == null ? null : mcoeTypeFactory.getStoreBefore(min.getTree());
+    boolean receiverIsRo =
+        mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, receiver.getTree());
+    if (receiverIsRo) {
+      checker.reportError(min.getTree(), "assignment.without.ownership", receiver);
     }
   }
 
@@ -1548,7 +1684,12 @@ public class MustCallConsistencyAnalyzer {
     if (mustCallAliases.isEmpty()) {
       // If mustCallAliases is an empty List, add tmpVarAsResourceAlias to a new set.
       ResourceAlias tmpVarAsResourceAlias = new ResourceAlias(new LocalVariable(tmpVar), tree);
-      obligations.add(new Obligation(ImmutableSet.of(tmpVarAsResourceAlias), MethodExitKind.ALL));
+      if (cmAtf.hasOwningCollection(TreeUtils.elementFromTree(node.getTree()))) {
+        obligations.add(
+            new CollectionObligation(ImmutableSet.of(tmpVarAsResourceAlias), MethodExitKind.ALL));
+      } else {
+        obligations.add(new Obligation(ImmutableSet.of(tmpVarAsResourceAlias), MethodExitKind.ALL));
+      }
     } else {
       for (Node mustCallAlias : mustCallAliases) {
         if (mustCallAlias instanceof FieldAccessNode) {
@@ -1605,6 +1746,7 @@ public class MustCallConsistencyAnalyzer {
    *       invocation in the corresponding position is an owning field.
    *   <li>The method's return type is non-owning, which can either be because the method has no
    *       return type or because the return type is annotated with {@link NotOwning}.
+   *   <li>The method's return type is not {@code OwningCollection}.
    * </ul>
    *
    * <p>This method can also side-effect {@code obligations}, if node is a super or this constructor
@@ -1732,8 +1874,8 @@ public class MustCallConsistencyAnalyzer {
               // Transfer ownership!
               obligations.remove(localObligation);
             }
-          } else if (cmAtf.hasOwningCollection(parameter) && node instanceof ObjectCreationNode) {
-            // remove obligation for @OwningCollection constructor call
+          } else if (cmAtf.hasOwningCollection(parameter)) {
+            // remove obligation for @OwningCollection argument
             Obligation localObligation = getObligationForVar(obligations, local);
             obligations.remove(localObligation);
           }
@@ -1808,31 +1950,15 @@ public class MustCallConsistencyAnalyzer {
    * array identifier) The list is extracted from the store passed as an argument.
    *
    * @param cmoeStore the store holding cmoe type annotation information
-   * @param arrTree the array identifier tree
-   * @return list of the methods called on the elements of the given array (in dedicated,
-   *     pattern-matched for-loops)
+   * @param tree the expression tree
+   * @return list of the CalledMethodsOnElements values of the given expression in the given store
    */
-  private List<String> getCalledMethodsOnElements(CFStore cmoeStore, Tree arrTree) {
-    if (arrTree instanceof AssignmentTree) {
-      arrTree = ((AssignmentTree) arrTree).getVariable();
-    }
-    if (!(arrTree instanceof VariableTree) && !(arrTree instanceof IdentifierTree)) {
-      throw new BugInCF(
-          "MCOE obligation %s must be either from definition or declaration, but is %s",
-          arrTree, arrTree.getClass().getCanonicalName());
-    }
-    JavaExpression arrayJX =
-        (arrTree instanceof VariableTree)
-            ? JavaExpression.fromVariableTree((VariableTree) arrTree)
-            : JavaExpression.fromTree((IdentifierTree) arrTree);
-    CFValue cfval = cmoeStore.getValue(arrayJX);
-    Element arrElm =
-        (arrTree instanceof VariableTree)
-            ? TreeUtils.elementFromDeclaration((VariableTree) arrTree)
-            : TreeUtils.elementFromTree((IdentifierTree) arrTree);
-    if (arrElm.getKind() == ElementKind.FIELD
-        && arrElm.getAnnotation(OwningCollection.class) != null) {
-      if (ElementUtils.isFinal(arrElm)) {
+  private List<String> getCalledMethodsOnElements(CFStore cmoeStore, JavaExpression jx, Tree tree) {
+    CFValue cfval = cmoeStore.getValue(jx);
+    Element collectionElm = TreeUtils.elementFromTree(tree);
+    if (collectionElm.getKind() == ElementKind.FIELD
+        && collectionElm.getAnnotation(OwningCollection.class) != null) {
+      if (ElementUtils.isFinal(collectionElm)) {
         if (cfval == null) {
           // entry block doesn't have final field in store yet
           return Collections.emptyList();
@@ -1843,14 +1969,14 @@ public class MustCallConsistencyAnalyzer {
         return Collections.emptyList();
       }
     }
-    assert cfval != null : "No mcoe annotation for " + arrTree + " in store.";
+    assert cfval != null : "No cmoe annotation for " + jx + " in store.";
     AnnotationMirror cmoeAnno =
         AnnotationUtils.getAnnotationByClass(cfval.getAnnotations(), CalledMethodsOnElements.class);
     AnnotationMirror cmoeAnnoBottom =
         AnnotationUtils.getAnnotationByClass(
             cfval.getAnnotations(), CalledMethodsOnElementsBottom.class);
     assert cmoeAnno != null || cmoeAnnoBottom != null
-        : "No cmoe annotation for " + arrTree + " in store.";
+        : "No cmoe annotation for " + jx + " in store.";
     if (cmoeAnnoBottom != null) {
       return Collections.emptyList();
     } else {
@@ -1883,11 +2009,15 @@ public class MustCallConsistencyAnalyzer {
    * @param node the node to remove obligations of
    */
   private void removeObligationForVar(Set<Obligation> obligations, Node node) {
+    // node = removeCastsAndGetTmpVarIfPresent(node); // TODO is this correct? idempotent function?
     if (node instanceof LocalVariableNode) {
       removeObligationForNode(obligations, (LocalVariableNode) node);
       return;
     } else if (node instanceof NullLiteralNode) {
       // no obligation to remove
+      return;
+    } else if (node instanceof ArrayCreationNode) {
+      // array doesn't have mustcall obligations
       return;
     } else {
       throw new BugInCF(
@@ -1938,7 +2068,7 @@ public class MustCallConsistencyAnalyzer {
    * @param cfg the ControlFlowGraph of the enclosing method
    * @param obligations the set of tracked obligations
    */
-  private void checkAssignmentToOwningCollection(
+  private void updateObligationsForAssignmentToOwningCollection(
       Node lhs,
       Node rhs,
       Node rhsExpr,
@@ -1959,21 +2089,20 @@ public class MustCallConsistencyAnalyzer {
         mcoeStore != null && mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, lhs.getTree());
     MethodTree enclosingMethod = cfg.getEnclosingMethod(assignmentNode.getTree());
     boolean inConstructor = enclosingMethod != null && TreeUtils.isConstructor(enclosingMethod);
+
     if (!lhsIsOwningCollection && rhsIsOwningCollection && !(rhsExpr instanceof ArrayAccessNode)) {
-      // enforces 7. assignment rule:
-      checker.reportError(assignmentNode.getTree(), "illegal.aliasing");
+      // declaration of a read-only alias for the RHS @OwningCollection
+      // Ownership remains with the RHS collection. LHS gets type @MustCallOnElementsUnknown.
+      // This is not an error.
     }
     if (lhsIsOwningCollection) {
       if (enclosingMethod == null) {
         // this is a declaration-site-assignment of an @OwningCollection field. nothing to check.
       } else if (inConstructor && lhsIsField) {
-        // assigning @OwningCollection field to an @OwningCollection argument in constructor is
-        // allowed
-        // verify whether rhs is an @OwningCollection parameter
         Tree lhsTree = lhs.getTree();
-        boolean rhsIsParam = rhsElement != null && rhsElement.getKind() == ElementKind.PARAMETER;
+
+        // possibly an assignment within allocating for-loop for the field
         if (lhsTree instanceof ArrayAccessTree) {
-          // possibly allocating for-loop
           if (MustCallOnElementsAnnotatedTypeFactory.doesAssignmentCreateArrayObligation(
               (AssignmentTree) assignmentNode.getTree())) {
             // allocating for-loop: remove obligation of RHS
@@ -2006,21 +2135,10 @@ public class MustCallConsistencyAnalyzer {
             checker.reportError(
                 assignmentNode.getTree(), "illegal.owningcollection.field.elements.assignment");
           }
-        } else if (rhsIsParam && rhsIsOwningCollection) {
-          // assigning @OwningCollection parameter to @OwningCollection field. remove obligation for
-          // parameter
-          removeObligationForNode(obligations, (LocalVariableNode) rhs);
-        } else if (rhs.getTree() instanceof NewArrayTree) {
-          // this is an allowed assignment case. "final" enforces that there is only one
-          // assignment overall
         } else {
-          // check whether rhs is new collection
-          boolean rhsIsNewCollection = isNewCollection(rhsExpr);
-          if (!rhsIsNewCollection) {
-            // any other assignment to @OwningCollection field is not allowed (enforce 1. rule)
-            checker.reportError(
-                assignmentNode.getTree(), "illegal.owningcollection.field.assignment");
-          }
+          // normal assignment to field. final keyword ensures it's the only one.
+          // remove the obligation of the rhs.
+          removeObligationForVar(obligations, rhs);
         }
       } else {
         if (lhsIsField) {
@@ -2030,18 +2148,14 @@ public class MustCallConsistencyAnalyzer {
           checker.reportError(
               assignmentNode.getTree(), "owningcollection.field.assigned.outside.constructor");
         } else if (lhs.getTree() instanceof VariableTree) {
-          // declaration of local @OwningCollection. Can't be field since we're in the else clause
-          if ((rhs instanceof ArrayCreationNode) || isNewCollection(rhsExpr)) {
-            Obligation newObligation = CollectionObligation.fromTree(lhs.getTree());
-            obligations.add(newObligation);
-          } else {
-            // enforces 3. assignment rule for @OwningCollection declaration:
-            // assigning an @OwningCollection to anything else is not allowed outside of constructor
-            checker.reportError(
-                assignmentNode.getTree(),
-                "illegal.owningcollection.assignment",
-                lhs.getTree().toString());
+          // declaration of local @OwningCollection. Can't be field since we're in the else clause.
+          // add obligation for the collection and remove for the initializer.
+          ExpressionTree declarationRhs = ((VariableTree) lhs.getTree()).getInitializer();
+          if (declarationRhs != null) {
+            removeObligationForVar(obligations, rhs);
           }
+          Obligation newObligation = CollectionObligation.fromTree(lhs.getTree());
+          obligations.add(newObligation);
         } else if (lhs.getTree() instanceof IdentifierTree) {
           // definition of local @OwningCollection. If the array was previously assigned, the old
           // (in-memory) array goes out of scope and must be checked.
@@ -2057,42 +2171,17 @@ public class MustCallConsistencyAnalyzer {
                 "array is reassigned at " + assignmentNode.getTree());
             obligations.remove(obligation);
           }
-          if (rhs instanceof ArrayCreationNode || isNewCollection(rhsExpr)) {
-            Obligation newObligation = CollectionObligation.fromTree(lhs.getTree());
-            obligations.add(newObligation);
-          } else {
-            // enforces 3. assignment rule for @OwningCollection definition (assignment):
-            // assigning an @OwningCollection to anything else is not allowed outside of constructor
-            checker.reportError(
-                assignmentNode.getTree(),
-                "illegal.owningcollection.assignment",
-                lhs.getTree().toString());
-          }
+          removeObligationForVar(obligations, rhs);
+          Obligation newObligation = CollectionObligation.fromTree(lhs.getTree());
+          obligations.add(newObligation);
         } else if (lhs.getTree() instanceof ArrayAccessTree) {
-          if (lhsIsMcoeUnknown) {
-            checker.reportError(
-                assignmentNode.getTree(), "assignment.without.ownership", lhs.getTree());
-          }
-          // assignment is to an element of the array, not the array pointer itself:
-          // check whether assignment is in a pattern-matched loop. if not, issue warning.
-          if (!MustCallOnElementsAnnotatedTypeFactory.doesAssignmentCreateArrayObligation(
-              (AssignmentTree) assignmentNode.getTree())) {
-            // enforces 5. assignment rule:
-            // assignment not in a pattern-matched loop - not permitted for @OwningCollection
-            checker.reportError(
-                assignmentNode.getTree(), "illegal.owningcollection.element.assignment");
-          } else {
-            // Remove Obligations from local variables, now that the @OwningCollection is
-            // responsible.
-            // (When obligation creation is turned off, non-final fields cannot take ownership.)
-            if (!(rhs instanceof LocalVariableNode)) {
-              throw new BugInCF(
-                  "rhs of pattern-matched assignment assumed to be LocalVariableNode, but its tree"
-                      + " is "
-                      + rhs.getTree().getKind());
-            }
-            removeObligationForNode(obligations, (LocalVariableNode) rhs);
-          }
+          // Assignment to an element of an @OwningCollection array, which may or may not be
+          // in a pattern-matched assignment loop.
+          // Remove Obligations from local variables, now that the @OwningCollection is
+          // responsible.
+          // If the assignment is invalid, an error has already been reported
+          // by the MustCallOnElements assignment transformer.
+          removeObligationForVar(obligations, rhs);
         } else {
           throw new BugInCF(
               "uncovered case in MCConsistencyAnalyzer#updateObligationsForAssignment(): lhs "
@@ -2101,25 +2190,29 @@ public class MustCallConsistencyAnalyzer {
                   + lhs.getTree().getKind());
         }
       }
+    } else if (lhsIsMcoeUnknown && (lhs.getTree().getKind() == Tree.Kind.ARRAY_ACCESS)) {
+      // lhs is non-@OwningCollection read-only reference and tries to assign its elements.
+      // Not allowed.
+      checker.reportError(assignmentNode.getTree(), "assignment.without.ownership", lhs.getTree());
     }
   }
 
-  /**
-   * Returns true if {@code node} is of the syntactic form {@code new C(...)} where {@code C} is
-   * part of the Java Collection framework.
-   *
-   * @param node the node
-   * @return true if {@code node} is of the syntactic form {@code new C(...)} where {@code C} is
-   *     part of the Java Collection framework.
-   */
-  private boolean isNewCollection(Node node) {
-    if (node.getTree() != null && node.getTree().getKind() == Tree.Kind.NEW_CLASS) {
-      NewClassTree nctree = (NewClassTree) node.getTree();
-      ExpressionTree constructedClassName = nctree.getIdentifier();
-      return RLCUtils.isCollection(constructedClassName, mcoeTypeFactory);
-    }
-    return false;
-  }
+  // /**
+  //  * Returns true if {@code node} is of the syntactic form {@code new C(...)} where {@code C} is
+  //  * part of the Java Collection framework.
+  //  *
+  //  * @param node the node
+  //  * @return true if {@code node} is of the syntactic form {@code new C(...)} where {@code C} is
+  //  *     part of the Java Collection framework.
+  //  */
+  // private boolean isNewCollection(Node node) {
+  //   if (node.getTree() != null && node.getTree().getKind() == Tree.Kind.NEW_CLASS) {
+  //     NewClassTree nctree = (NewClassTree) node.getTree();
+  //     ExpressionTree constructedClassName = nctree.getIdentifier();
+  //     return RLCUtils.isCollection(constructedClassName, mcoeTypeFactory);
+  //   }
+  //   return false;
+  // }
 
   /**
    * Updates a set of Obligations to account for an assignment and enforces the assignment rules for
@@ -2148,7 +2241,8 @@ public class MustCallConsistencyAnalyzer {
 
     // update obligations for assignments to @OwningCollection array
     if (!isLoopBodyAnalysis) {
-      checkAssignmentToOwningCollection(lhs, rhs, rhsExpr, assignmentNode, cfg, obligations);
+      updateObligationsForAssignmentToOwningCollection(
+          lhs, rhs, rhsExpr, assignmentNode, cfg, obligations);
     }
 
     // Ownership transfer to @Owning field.
@@ -2907,7 +3001,13 @@ public class MustCallConsistencyAnalyzer {
     if (type.getKind() == TypeKind.VOID || type.getKind().isPrimitive()) {
       return false;
     }
+    List<String> mcoeValues = RLCUtils.getMcoeValuesInManualAnno(type);
     TypeElement typeElt = TypesUtils.getTypeElement(type);
+    // track if there's an @OwningCollection or non-empty @MustCallOnElements annotation
+    if ((typeElt != null && cmAtf.hasOwningCollection(typeElt))
+        || (mcoeValues != null && mcoeValues.size() > 0)) {
+      return true;
+    }
     // no need to track if type has no possible @MustCall obligation
     if (typeElt != null
         && cmAtf.hasEmptyMustCallValue(typeElt)
@@ -2959,18 +3059,52 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Checks whether the given return statement returns an {@code @OwningCollection} and reports an
-   * error if it does.
+   * Checks whether the given return statement returns an {@code @OwningCollection} if and only if
+   * the return type is annotated {@code @OwningCollection} and it is not a field. Violations of
+   * this rule result in a reported error.
    *
    * @param node the return node
+   * @param cfg the control flow graph to get the enclosing method
    */
-  private void verifyReturnStatement(ReturnNode node) {
+  private void verifyReturnStatement(ReturnNode node, ControlFlowGraph cfg) {
     Node result = node.getResult();
     Tree tree = result == null ? null : result.getTree();
     Element elt = tree == null ? null : TreeUtils.elementFromTree(tree);
+
     boolean isOwningCollection = elt != null && cmAtf.hasOwningCollection(elt);
-    if (isOwningCollection) {
-      checker.reportError(node.getTree(), "return.owningcollection");
+    boolean isField = elt != null && elt.getKind().isField();
+    CFStore mcoeStore =
+        mcoeTypeFactory == null ? null : mcoeTypeFactory.getStoreBefore(node.getTree());
+    boolean isMcoeUnknown =
+        mcoeStore != null
+            && elt != null
+            && mcoeTypeFactory != null
+            && mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, tree);
+    if (isOwningCollection && isField) {
+      checker.reportError(node.getTree(), "owningcollection.field.returned");
+    }
+
+    MethodTree enclosingMethod = cfg.getEnclosingMethod(node.getTree());
+    if (enclosingMethod == null) {
+      return;
+    }
+
+    ModifiersTree modifiers = enclosingMethod.getModifiers();
+    boolean returnTypeIsOwningCollection = false;
+    for (AnnotationTree annoTree : modifiers.getAnnotations()) {
+      AnnotationMirror anno = TreeUtils.annotationFromAnnotationTree(annoTree);
+      if (AnnotationUtils.areSameByName(anno, OwningCollection.class.getCanonicalName())) {
+        returnTypeIsOwningCollection = true;
+        break;
+      }
+    }
+
+    if (isOwningCollection && !returnTypeIsOwningCollection) {
+      checker.reportError(node.getTree(), "owningcollection.return.value", tree);
+    } else if (!isOwningCollection && returnTypeIsOwningCollection) {
+      checker.reportError(node.getTree(), "non.owningcollection.return.value", tree);
+    } else if (isMcoeUnknown) {
+      checker.reportError(node.getTree(), "return.without.ownership", tree);
     }
   }
 
@@ -3317,11 +3451,8 @@ public class MustCallConsistencyAnalyzer {
 
         MethodExitKind exitKind =
             exceptionType == null ? MethodExitKind.NORMAL_RETURN : MethodExitKind.EXCEPTIONAL_EXIT;
-        if (obligation.whenToEnforce.contains(exitKind)) {
-          if (!(obligation instanceof CollectionObligation) && !isLoopBodyAnalysis) {
-            checkMustCall(obligation, cmStore, mcStore, exitReasonForErrorMessage);
-          }
-          if (!isLoopBodyAnalysis) {
+        if (obligation.whenToEnforce.contains(exitKind) && !isLoopBodyAnalysis) {
+          if (obligation instanceof CollectionObligation) {
             checkMustCallOnElements(
                 obligation,
                 mcoeStoreCurrent,
@@ -3329,6 +3460,8 @@ public class MustCallConsistencyAnalyzer {
                 true,
                 null,
                 exitReasonForErrorMessage);
+          } else {
+            checkMustCall(obligation, cmStore, mcStore, exitReasonForErrorMessage);
           }
         }
       } else {
@@ -3555,7 +3688,7 @@ public class MustCallConsistencyAnalyzer {
     Set<String> cmoeValues = new HashSet<>();
     for (ResourceAlias alias : obligation.resourceAliases) {
       List<String> mcoeValuesOfAlias =
-          mcoeTypeFactory.getMustCallOnElementsObligations(mcoeStore, alias.tree);
+          mcoeTypeFactory.getMustCallOnElementsObligations(mcoeStore, alias.reference);
       boolean isOwningCollection =
           alias.element != null && cmAtf.hasOwningCollection(alias.element);
       boolean hasRevokedOwnership = mcoeValuesOfAlias == null && isOwningCollection;
@@ -3582,7 +3715,7 @@ public class MustCallConsistencyAnalyzer {
       // mcoeValuesOfAlias is null for read-only aliases
       if (!isReadOnlyAlias) {
         mcoeValues.addAll(mcoeValuesOfAlias);
-        cmoeValues.addAll(getCalledMethodsOnElements(cmoeStore, alias.tree));
+        cmoeValues.addAll(getCalledMethodsOnElements(cmoeStore, alias.reference, alias.tree));
       }
     }
     ResourceAlias firstAlias = obligation.resourceAliases.iterator().next();
@@ -3716,8 +3849,6 @@ public class MustCallConsistencyAnalyzer {
       if (!reportedErrorAliases.contains(firstAlias)) {
         if (!checker.shouldSkipUses(TreeUtils.elementFromTree(firstAlias.tree))) {
           reportedErrorAliases.add(firstAlias);
-          System.out.println(
-              "reporting error for " + firstAlias + " of kind: " + firstAlias.tree.getKind());
           checker.reportError(
               firstAlias.tree,
               "required.method.not.called",
