@@ -18,15 +18,6 @@ class OwningCollectionTransformers {
     @OwningCollection List<Socket> list = s;
   }
 
-  // test that aliasing is not allowed.
-  // public void illegalAliasing() {
-  //   @OwningCollection List<Socket> list = new ArrayList<Socket>();
-  //   // :: error: illegal.owningcollection.assignment
-  //   @OwningCollection List<Socket> list2 = list;
-  //   // :: error: illegal.aliasing
-  //   List<Socket> list3 = list;
-  // }
-
   public void checkListSetTransformer() {
     // calling obligations fulfilled due to call to OwnershipTaker
     @OwningCollection List<Socket> list = new ArrayList<Socket>();
@@ -34,19 +25,19 @@ class OwningCollectionTransformers {
       list.add(new Socket(myHost, myPort));
 
       // try to override an element while the list has open calling obligations
-      // :: error: illegal.owningcollection.write
+      // :: error: illegal.owningcollection.overwrite
       list.set(0, new Socket(myHost, myPort));
     } catch (Exception e) {
     }
 
     // try to override an element while the list has open calling obligations
-    // :: error: illegal.owningcollection.write
+    // :: error: illegal.owningcollection.overwrite
     list.set(0, null);
 
     // lose ownership and then try to set an element, to verify that the write is rejected
     // for the sake of being a write on a write-disabled reference.
     new OwnershipTaker(list);
-    // :: error: assignment.without.ownership
+    // :: error: modification.without.ownership
     list.set(0, null);
 
     // verify that the ownership remains revoked after the call to set
@@ -256,7 +247,7 @@ class OwningCollectionTransformers {
     }
     for (int i = 0; i < n; i++) {
       try {
-        // :: error: illegal.owningcollection.write
+        // :: error: illegal.owningcollection.overwrite
         list.set(i, new Socket(myHost, myPort));
       } catch (Exception e) {
       }

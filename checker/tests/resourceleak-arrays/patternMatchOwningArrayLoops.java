@@ -74,11 +74,11 @@ class PatternMatchOwningCollectionLoops {
     try {
       // since arr now has open calling obligations, this write is not allowed,
       // since it could overwrite previous elements
-      // :: error: illegal.owningcollection.write
+      // :: error: illegal.owningcollection.overwrite
       arr[1] = new Socket(myHost, myPort);
     } catch (Exception e) {
     }
-    // :: error: illegal.owningcollection.write
+    // :: error: illegal.owningcollection.overwrite
     arr[0] = null;
   }
 
@@ -89,6 +89,28 @@ class PatternMatchOwningCollectionLoops {
       try {
         arr[i] = new Socket(myHost, myPort);
       } catch (Exception e) {
+      }
+    }
+  }
+
+  /*
+   * Check that fulfilling loop with null-check is also accepted
+   */
+  public void fulfillWithNullCheck() {
+    @OwningCollection Socket[] arr = new Socket[n];
+    for (int i = 0; i < n; i++) {
+      try {
+        arr[i] = new Socket(myHost, myPort);
+      } catch (Exception e) {
+      }
+    }
+
+    for (Socket s : arr) {
+      if (s != null) {
+        try {
+          s.close();
+        } catch (Exception e) {
+        }
       }
     }
   }
@@ -263,7 +285,7 @@ class PatternMatchOwningCollectionLoops {
     }
     for (int i = 0; i < n; i++) {
       try {
-        // :: error: illegal.owningcollection.allocation
+        // :: error: illegal.owningcollection.overwrite
         arr[i] = new Socket(myHost, myPort);
       } catch (Exception e) {
       }

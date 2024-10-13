@@ -17,10 +17,9 @@ class OwningCollectionAliasingForCollectionsTest {
     // create non-@OwningCollection read-only alias
     List<Socket> nonOwningCollectionAlias = sockets;
     // this assignment is thus illegal
-    // :: error: required.method.not.called
-    // :: error: assignment.without.ownership
+    // :: error: modification.without.ownership
     nonOwningCollectionAlias.set(0, createSocket());
-    // :: error: assignment.without.ownership
+    // :: error: modification.without.ownership
     nonOwningCollectionAlias.set(0, null);
     // method calls should also not work
     // :: error: argument.with.revoked.ownership
@@ -37,11 +36,10 @@ class OwningCollectionAliasingForCollectionsTest {
     List<Socket> nonOwningCollectionAlias2 = nonOwningCollectionAlias;
     // this assignment is thus illegal. The ownership of the socket is also
     // not transferred into the collection and throws an error of its own.
-    // :: error: required.method.not.called
-    // :: error: assignment.without.ownership
+    // :: error: modification.without.ownership
     nonOwningCollectionAlias2.set(0, createSocket());
     // check that null-assignments also don't work
-    // :: error: assignment.without.ownership
+    // :: error: modification.without.ownership
     nonOwningCollectionAlias2.set(0, null);
     // method calls should also not work
     // :: error: argument.with.revoked.ownership
@@ -62,7 +60,7 @@ class OwningCollectionAliasingForCollectionsTest {
   //   // this assignment is thus illegal. Since the reference is @OwningCollection array,
   //   // assignments outside an assigning loop are not permitted anyways.
   //   // :: error: required.method.not.called
-  //   // :: error: assignment.without.ownership
+  //   // :: error: modification.without.ownership
   //   // :: error: illegal.owningcollection.element.assignment
   //   owningCollectionAlias[0] = createSocket();
   //   // method calls should also not work
@@ -80,7 +78,7 @@ class OwningCollectionAliasingForCollectionsTest {
   //   @OwningCollection Socket[] owningCollectionAlias2 = owningCollectionAlias;
   //   // this assignment is thus illegal
   //   // :: error: required.method.not.called
-  //   // :: error: assignment.without.ownership
+  //   // :: error: modification.without.ownership
   //   // :: error: illegal.owningcollection.element.assignment
   //   owningCollectionAlias2[0] = createSocket();
   //   // method calls should also not work
@@ -143,7 +141,7 @@ class OwningCollectionAliasingForCollectionsTest {
   //   // McoeUnknown means no ownership. Here, it was annotated manually.
   //   // Of course, we forbid the annotation, but the following errors are
   //   // still reported.
-  //   // :: error: assignment.without.ownership
+  //   // :: error: modification.without.ownership
   //   // :: error: required.method.not.called
   //   sockets[0] = createSocket();
   // }

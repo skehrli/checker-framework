@@ -16,9 +16,9 @@ class OwningCollectionAliasingTest {
     Socket[] nonOwningCollectionAlias = sockets;
     // this assignment is thus illegal
     // :: error: required.method.not.called
-    // :: error: assignment.without.ownership
+    // :: error: modification.without.ownership
     nonOwningCollectionAlias[0] = createSocket();
-    // :: error: assignment.without.ownership
+    // :: error: modification.without.ownership
     nonOwningCollectionAlias[0] = null;
     // method calls should also not work
     // :: error: argument.with.revoked.ownership
@@ -36,10 +36,10 @@ class OwningCollectionAliasingTest {
     // this assignment is thus illegal. The ownership of the socket is also
     // not transferred into the collection and throws an error of its own.
     // :: error: required.method.not.called
-    // :: error: assignment.without.ownership
+    // :: error: modification.without.ownership
     nonOwningCollectionAlias2[0] = createSocket();
     // check that null-assignments also don't work
-    // :: error: assignment.without.ownership
+    // :: error: modification.without.ownership
     nonOwningCollectionAlias2[0] = null;
     // method calls should also not work
     // :: error: argument.with.revoked.ownership
@@ -58,7 +58,7 @@ class OwningCollectionAliasingTest {
     // create an @OwningCollection read-only alias
     @OwningCollection Socket[] newOwner = sockets;
     // this assignment is thus illegal.
-    // :: error: assignment.without.ownership
+    // :: error: modification.without.ownership
     sockets[0] = createSocket();
     // method calls should also not work
     // :: error: argument.with.revoked.ownership
@@ -74,7 +74,7 @@ class OwningCollectionAliasingTest {
     // create a second-degree @OwningCollection read-only alias
     @OwningCollection Socket[] newOwner2 = sockets;
     // this assignment is thus illegal
-    // :: error: assignment.without.ownership
+    // :: error: modification.without.ownership
     newOwner2[0] = createSocket();
     // method calls should also not work
     // :: error: argument.with.revoked.ownership
@@ -130,7 +130,7 @@ class OwningCollectionAliasingTest {
     // since the default Mcoe type for @OwningCollection parameters is the Mc values of the
     // component type, sockets has Mcoe("close") here. Thus, it is not safe to write to its
     // elements, as there might be a resource there that has not been closed.
-    // :: error: illegal.owningcollection.write
+    // :: error: illegal.owningcollection.overwrite
     sockets[0] = createSocket();
   }
 
@@ -144,7 +144,7 @@ class OwningCollectionAliasingTest {
     // McoeUnknown means no ownership. Here, it was annotated manually.
     // Of course, we forbid the annotation, but the following errors are
     // still reported.
-    // :: error: assignment.without.ownership
+    // :: error: modification.without.ownership
     // :: error: required.method.not.called
     sockets[0] = createSocket();
   }

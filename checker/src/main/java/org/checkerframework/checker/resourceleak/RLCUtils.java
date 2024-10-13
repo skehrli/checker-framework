@@ -6,6 +6,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import javax.lang.model.element.AnnotationMirror;
@@ -227,7 +228,7 @@ public class RLCUtils {
    *   <li>If the {@code TypeMirror} contains a manual {@code MustCallOnElementsUnkown} annotation,
    *       the empty list is returned, since no {@code MustCallOnElements} obligations are known to
    *       be fulfilled by the enclosing method in that case (in reality, this annotation will throw
-   *       an error, since it cannot possibly fulfill the obligation).
+   *       an error, since it is illegal).
    *   <li>If the {@code TypeMirror} contains any other manual {@code MustCallOnElements}
    *       annotation, the type values of the annotation are returned, since these methods must be
    *       called on the elements of the argument by the time the enclosing method returns.
@@ -366,5 +367,51 @@ public class RLCUtils {
     if (tree == null) return false;
     Element element = TreeUtils.elementFromTree(tree);
     return isCollection(element, atf);
+  }
+
+  /**
+   * Returns whether the given {@link TypeMirror} is an instance of Iterator (subtype). This is
+   * determined by getting the class of the TypeMirror and checking whether it is assignable from
+   * Iterator.
+   *
+   * @param type the TypeMirror
+   * @return whether type is an instance of Iterator
+   */
+  public static boolean isIterator(TypeMirror type) {
+    if (type == null) return false;
+    Class<?> elementRawType = TypesUtils.getClassFromType(type);
+    if (elementRawType == null) return false;
+    return Iterator.class.isAssignableFrom(elementRawType);
+  }
+
+  /**
+   * Returns whether the given Element is a java.util.Iterator type by checking whether the raw type
+   * of the element is assignable from java.util.Iterator. Returns false if element is null, or has
+   * no valid type.
+   *
+   * @param element the element
+   * @param atf an AnnotatedTypeFactory to get the annotated type of the element
+   * @return whether the given element is a Java.util.Iterator type
+   */
+  public static boolean isIterator(Element element, AnnotatedTypeFactory atf) {
+    if (element == null) return false;
+    AnnotatedTypeMirror elementTypeMirror = atf.getAnnotatedType(element);
+    if (elementTypeMirror == null || elementTypeMirror.getUnderlyingType() == null) return false;
+    return isIterator(elementTypeMirror.getUnderlyingType());
+  }
+
+  /**
+   * Returns whether the given Tree is a java.util.Iterator type by checking whether the raw type of
+   * the element is assignable from java.util.Iterator. Returns false if tree is null, or has no
+   * valid type.
+   *
+   * @param tree the tree
+   * @param atf an AnnotatedTypeFactory to get the annotated type of the element
+   * @return whether the given Tree is a Java.util.Iterator type
+   */
+  public static boolean isIterator(Tree tree, AnnotatedTypeFactory atf) {
+    if (tree == null) return false;
+    Element element = TreeUtils.elementFromTree(tree);
+    return isIterator(element, atf);
   }
 }

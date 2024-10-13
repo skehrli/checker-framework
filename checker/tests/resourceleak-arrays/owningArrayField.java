@@ -173,7 +173,7 @@ class EvilOwningCollectionWrapperClient {
     ValidOwningCollectionField d = new ValidOwningCollectionField(localarr);
     // try reassigning the elements of array, despite lost ownership
     for (int i = 0; i < n; i++) {
-      // :: error: assignment.without.ownership
+      // :: error: modification.without.ownership
       localarr[i] = new Resource();
     }
     // this method call is not allowed either, due to the missing ownership over localarr

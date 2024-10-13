@@ -23,8 +23,8 @@ class OwningCollectionFields {
     }
 
     public void illegalOverwrite() {
-      // cannot overwrite elements of an @OwningCollection field
-      // :: error: owningcollection.field.element.overwrite
+      // field has possibly open obligation "close", cannot overwrite elements
+      // :: error: illegal.owningcollection.overwrite
       collection.set(0, null);
     }
 

@@ -38,7 +38,6 @@ import org.checkerframework.framework.flow.CFStore;
 import org.checkerframework.framework.flow.CFTransfer;
 import org.checkerframework.framework.flow.CFValue;
 import org.checkerframework.framework.type.AnnotatedTypeFactory;
-import org.checkerframework.javacutil.BugInCF;
 import org.checkerframework.javacutil.ElementUtils;
 import org.checkerframework.javacutil.TreeUtils;
 import org.checkerframework.javacutil.TypesUtils;
@@ -75,9 +74,16 @@ public abstract class CollectionTransfer extends CFTransfer {
   public static enum MethodSigType {
     SAFE, /* Methods that are handled and cosidered safe. */
     UNSAFE, /* Methods that are either not handled or handled and cosidered unsafe. */
-    ADD_E, /* All other method signatures require special handling. */
+
+    /* method signatures that require special handling. */
+    ADD_E,
     ADD_INT_E,
-    SET
+    SET,
+    ITERATOR,
+
+    /* Iterator methods. */
+    ITER_REMOVE,
+    ITER_NEXT
   }
 
   /**
@@ -107,10 +113,44 @@ public abstract class CollectionTransfer extends CFTransfer {
         return MethodSigType.ADD_INT_E;
       case "set(int,E)":
         return MethodSigType.SET;
-      case "isEmpty()":
       case "iterator()":
+        return MethodSigType.ITERATOR;
+      case "isEmpty()":
       case "size()":
       case "get(int)":
+        return MethodSigType.SAFE;
+      default:
+        System.out.println("unhandled method " + methodSignature);
+        return MethodSigType.UNSAFE;
+    }
+  }
+
+  /**
+   * Returns the {@code MethodSigType} of the passed {@code method} called on an {@code Iterator}.
+   * {@code MethodSigType} classifies method signatures by their safety in the context of this
+   * method being called on an {@code Iterator}.
+   *
+   * <p>This method exists since multiple code locations must have a consistent method
+   * classification, such as the consistency analyzer to handle the change of obligation through the
+   * method call and the {@code MustCallOnElements} transfer function to decide the type change of
+   * the associated collection.
+   *
+   * @param method the method to consider
+   * @return the {@code MethodSigType} of the passed {@code method}
+   */
+  public static @NonNull MethodSigType getIteratorMethodSigType(ExecutableElement method) {
+    List<? extends VariableElement> parameters = method.getParameters();
+    String methodSignature =
+        method.getSimpleName().toString()
+            + parameters.stream()
+                .map(param -> param.asType().toString())
+                .collect(Collectors.joining(",", "(", ")"));
+    switch (methodSignature) {
+      case "next()":
+        return MethodSigType.ITER_NEXT;
+      case "remove()":
+        return MethodSigType.ITER_REMOVE;
+      case "hasNext()":
         return MethodSigType.SAFE;
       default:
         System.out.println("unhandled method " + methodSignature);
@@ -240,13 +280,10 @@ public abstract class CollectionTransfer extends CFTransfer {
             && ((MustCallOnElementsAnnotatedTypeFactory)
                     RLCUtils.getTypeFactory(MustCallOnElementsChecker.class, atypeFactory))
                 .isMustCallOnElementsUnknown(res.getRegularStore(), receiverTree);
-    if (isCollection && (isOwningCollection || isRoAlias)) {
+    boolean isResourceCollection = isCollection && (isOwningCollection || isRoAlias);
+    if (isResourceCollection) {
       MethodSigType methodSigType = getMethodSigType(methodAccessNode.getMethod());
       switch (methodSigType) {
-        case SAFE:
-          break;
-        case UNSAFE:
-          break;
         case ADD_E:
           res = transformCollectionAdd(node, res, receiverJx);
           break;
@@ -256,8 +293,48 @@ public abstract class CollectionTransfer extends CFTransfer {
         case SET:
           res = transformListSet(node, res, receiverJx);
           break;
-        default:
-          throw new BugInCF("unhandled MethodSigType " + methodSigType);
+        case ITERATOR:
+
+          /*
+           * Unsafe methods are handled in the consistency analyzer. No handling required here.
+           */
+        case SAFE:
+        case UNSAFE:
+
+          /*
+           * The following are methods called on an Iterator (and not a Collection)
+           * and need no handling here. They are included so that we don't need a default
+           * case.
+           */
+        case ITER_NEXT:
+        case ITER_REMOVE:
+          break;
+      }
+    }
+
+    boolean isIterator = receiverTree != null && RLCUtils.isIterator(receiverTree, atypeFactory);
+    if (isIterator) {
+      MethodSigType methodSigType = getIteratorMethodSigType(methodAccessNode.getMethod());
+      switch (methodSigType) {
+        case SAFE:
+          break;
+        case UNSAFE:
+          break;
+        case ITER_NEXT:
+          break;
+        case ITER_REMOVE:
+          break;
+
+          /*
+           * The following are methods called on a Collection (and not an Iterator)
+           * and need no handling here. They are included so that we don't need a default
+           * case.
+           */
+        case ADD_E:
+        case ADD_INT_E:
+        case SET:
+        case ITERATOR:
+          break;
       }
     }
     return res;

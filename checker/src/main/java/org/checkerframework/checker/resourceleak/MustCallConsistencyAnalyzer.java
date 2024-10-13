@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.function.BooleanSupplier;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.AnnotationValue;
@@ -337,8 +338,6 @@ public class MustCallConsistencyAnalyzer {
       } else if (tree instanceof VariableTree) {
         jx = JavaExpression.fromVariableTree((VariableTree) tree);
         elem = TreeUtils.elementFromDeclaration((VariableTree) tree);
-      } else if (tree instanceof VariableTree) {
-
       } else {
         throw new IllegalArgumentException(
             "Tree must be ExpressionTree or VariableTree but is " + tree.getClass());
@@ -588,6 +587,294 @@ public class MustCallConsistencyAnalyzer {
     public CollectionObligation getReplacement(
         Set<ResourceAlias> resourceAliases, Set<MethodExitKind> whenToEnforce) {
       return new CollectionObligation(resourceAliases, whenToEnforce);
+    }
+  }
+
+  /**
+   * Obligation for an iterator over a potentially resource-holding collection, i.e. a collection
+   * that is either {@code OwningCollection} with open calling obligations or {@code
+   * MustCallOnElementsUnknown}, i.e. a read-only alias of an {@code OwningCollection}. The
+   * obligation tracks calls to {@code Iterator.next()} and {@code Iterator.remove()} to ensure
+   * sound behavior.
+   *
+   * <p>In particular, an iterator over a {@code MustCallOnElementsUnknown} collection may never
+   * call {@code Iterator.remove()} and an iterator over an {@code OwningCollection} with open
+   * calling obligations may only call {@code Iterator.remove()} if the return value of the
+   * preceeding {@code Iterator.next()} fulfilled the obligation. Such obligations created by calls
+   * to {@code Iterator.next()} are tracked with the help of {@link IteratorNextObligation}s.
+   */
+  class IteratorObligation extends Obligation {
+    /** The obligation for the most recent call to {@code Iterator.next()}. */
+    private IteratorNextObligation iterNextObligation = null;
+
+    /**
+     * The called methods store that was cached if the return value of {@code
+     * this.iterNextObligation} already went out of scope.
+     */
+    private AccumulationStore cmStore;
+
+    /**
+     * The must call store that was cached if the return value of {@code this.iterNextObligation}
+     * already went out of scope.
+     */
+    private CFStore mcStore;
+
+    /**
+     * Whether the iterator goes over a Collection that is read-only. If this is the case, any call
+     * to {@code Iterator.remove()} is illegal.
+     */
+    private final boolean isMcoeUnknown;
+
+    /**
+     * When {@code Iterator.next()} is called on the iterator tracked by {@code this}, replace the
+     * tracked {@link IteratorNextObligation} with the new one and remove cached stores, which now
+     * refer to the previous {@code Iterator.next()} call.
+     *
+     * @param iterNextObligation the obligation of the new call to {@code Iterator.next()}
+     */
+    public void handleIterNextCall(IteratorNextObligation iterNextObligation) {
+      this.iterNextObligation = iterNextObligation;
+      this.cmStore = null;
+      this.mcStore = null;
+      // it doesn't matter if the previous iterNext had open calling obligations.
+      // As long as Iterator.remove() was not called, the obligation simply stays
+      // within the collection.
+    }
+
+    /**
+     * When {@code Iterator.remove()} is called on the iterator tracked by {@code this}, check
+     * whether the value returned by the preceeding {@code Iterator.next()} call, tracked by {@code
+     * this.iterNextObligation} had its calling obligations fulfilled and report an error if not.
+     * Remove the information about the preceeding {@code Iterator.next()} call after the check.
+     *
+     * <p>Report an error if the iterator tracked by {@code this} iterates over a read-only
+     * reference.
+     *
+     * @param node the method invocation node of the {@code Iterator.remove()} call
+     * @return the {@link IteratorNextObligation} that needs to be removed from the set of tracked
+     *     obligations if there was still a tracked obligation for a preceeding {@code
+     *     Iterator.next()} call or null else
+     */
+    public IteratorNextObligation handleIterRemoveCall(Node node) {
+      if (isMcoeUnknown) {
+        checker.reportError(
+            node.getTree(),
+            "modification.without.ownership",
+            node.getTree() // TODO get collection name, this is iterator name
+            );
+        iterNextObligation = null;
+        this.mcStore = null;
+        this.cmStore = null;
+        return null;
+      }
+
+      if (iterNextObligation == null) {
+        // Iterator.remove() without preceeding Iterator.next() call. Will
+        // throw a runtime exception.
+        return null;
+      }
+
+      IteratorNextObligation obligationToRemove = null;
+
+      if (this.mcStore != null && this.cmStore != null) {
+        checkMustCall(
+            iterNextObligation,
+            this.cmStore,
+            this.mcStore,
+            "Removed from Collection by Iterator.remove() call",
+            true);
+      } else {
+        AccumulationStore cmStore = cmAtf.getStoreBefore(node);
+        MustCallAnnotatedTypeFactory mcTypeFactory = cmAtf.getMustCallAnnotatedTypeFactory();
+        CFStore mcStore = mcTypeFactory.getStoreBefore(node);
+        checkMustCall(
+            iterNextObligation,
+            cmStore,
+            mcStore,
+            "Removed from Collection by Iterator.remove() call",
+            true);
+        obligationToRemove = this.iterNextObligation;
+      }
+      this.iterNextObligation = null;
+      this.mcStore = null;
+      this.cmStore = null;
+      return obligationToRemove;
+    }
+
+    /**
+     * When the value returned by the preceeding {@code Iterator.next()} call for the iterator
+     * tracked by {@code this} goes out of scope, cache the must call and called methods stores at
+     * this program point. If a call to {@code Iterator.remove()} follows, the obligation will be
+     * checked with the cached stores.
+     *
+     * @param cmStore the called methods store at the program point where the value returned by the
+     *     preceeding {@code Iterator.next()} call for the iterator tracked by {@code this} goes out
+     *     of scope
+     * @param mcStore the must call store at the program point where the value returned by the
+     *     preceeding {@code Iterator.next()} call for the iterator tracked by {@code this} goes out
+     *     of scope
+     */
+    public void handleIteratorNextLeavingScope(AccumulationStore cmStore, CFStore mcStore) {
+      assert cmStore != null && mcStore != null
+          : "Stores passed to IteratorNextLeavingScope are null.";
+      System.out.println("caching stores");
+      this.cmStore = cmStore;
+      this.mcStore = mcStore;
+    }
+
+    /**
+     * Create an IteratorObligation from a set of resource aliases.
+     *
+     * @param resourceAliases a set of resource aliases
+     * @param whenToEnforce when this Obligation should be enforced
+     * @param isMcoeUnknown whether the collection associated with this iterator is read-only and
+     *     thus must not call {@code Iterator.remove()}.
+     */
+    public IteratorObligation(
+        Set<ResourceAlias> resourceAliases,
+        Set<MethodExitKind> whenToEnforce,
+        boolean isMcoeUnknown) {
+      super(resourceAliases, whenToEnforce);
+      this.isMcoeUnknown = isMcoeUnknown;
+    }
+
+    /**
+     * Create an IteratorObligation.
+     *
+     * @param resourceAliases a set of resource aliases
+     * @param whenToEnforce when this Obligation should be enforced
+     * @param isMcoeUnknown whether the collection associated with this iterator is read-only and
+     *     thus must not call {@code Iterator.remove()}
+     * @param mcStore the cached mcStore
+     * @param mcStore the cached cmStore
+     * @param iterNextObligation the tracked {@link IteratorNextObligation}.
+     */
+    private IteratorObligation(
+        Set<ResourceAlias> resourceAliases,
+        Set<MethodExitKind> whenToEnforce,
+        boolean isMcoeUnknown,
+        CFStore mcStore,
+        AccumulationStore cmStore,
+        IteratorNextObligation iterNextObligation) {
+      super(resourceAliases, whenToEnforce);
+      this.isMcoeUnknown = isMcoeUnknown;
+      this.mcStore = mcStore;
+      this.cmStore = cmStore;
+      this.iterNextObligation = iterNextObligation;
+    }
+
+    /**
+     * Create an IteratorObligation from an Obligation.
+     *
+     * @param obligation the obligation to create a IteratorObligation from
+     * @param isMcoeUnknown whether the collection associated with this iterator is read-only and
+     *     thus must not call {@code Iterator.remove()}.
+     */
+    public IteratorObligation(Obligation obligation, boolean isMcoeUnknown) {
+      super(obligation.resourceAliases, obligation.whenToEnforce);
+      this.isMcoeUnknown = isMcoeUnknown;
+    }
+
+    /**
+     * Returns a new IteratorObligation.
+     *
+     * <p>We need this method since we frequently need to replace obligations and if the old
+     * obligation was a IteratorObligation we want the replacement to be as well. Dynamic method
+     * dispatch then allows us to simply call getReplacement() on an obligation and get the
+     * replacement of the right class.
+     *
+     * @param resourceAliases set of resource aliases for the new obligation
+     * @return a new IteratorObligation with the passed traits
+     */
+    @Override
+    public IteratorObligation getReplacement(
+        Set<ResourceAlias> resourceAliases, Set<MethodExitKind> whenToEnforce) {
+      return new IteratorObligation(
+          resourceAliases,
+          whenToEnforce,
+          this.isMcoeUnknown,
+          this.mcStore,
+          this.cmStore,
+          this.iterNextObligation);
+    }
+  }
+
+  /**
+   * Obligation for a value returned by {@code Iterator.next()}. This is a special case since the
+   * returned value only takes ownership, if a call to {@code Iterator.remove()} follows. If no such
+   * call follows, the obligation over the element remains in the collection. If there is such a
+   * call, either the collection must have already had its obligations fulfilled
+   */
+  static class IteratorNextObligation extends Obligation {
+    /**
+     * The {@link IteratorObligation} for {@code iter} in the {@code iter.next()} call tracked by
+     * {@code this}.
+     */
+    IteratorObligation parentIteratorObligation;
+
+    /**
+     * When the value returned by the {@code Iterator.next()} call tracked by {@code this} goes out
+     * of scope, inform the parent iterator obligation.
+     */
+    public void leaveScope(AccumulationStore cmStore, CFStore mcStore) {
+      parentIteratorObligation.handleIteratorNextLeavingScope(cmStore, mcStore);
+    }
+
+    /**
+     * Create an IteratorNextObligation.
+     *
+     * @param resourceAliases a set of resource aliases
+     * @param whenToEnforce when this Obligation should be enforced
+     * @param parentIteratorObligation the obligation of the iterator
+     */
+    public IteratorNextObligation(
+        Set<ResourceAlias> resourceAliases,
+        Set<MethodExitKind> whenToEnforce,
+        IteratorObligation parentIteratorObligation) {
+      super(resourceAliases, whenToEnforce);
+      this.parentIteratorObligation = parentIteratorObligation;
+    }
+
+    /**
+     * Creates and returns a IteratorNextObligation derived from the temp-var node and tree for an
+     * {@code Iterator.next()} call and the {@link IteratorObligation} for the respective iterator.
+     *
+     * <p>The tree argument is the tree of the {@link MethodInvocationNode} and not the temp-var,
+     * which is required for reporting errors, since the temp-var is not in the AST.
+     *
+     * @param tempVarNode the temp-var node for the {@code Iterator.next()} call, from which the
+     *     IteratorNextObligation is to be created.
+     * @param tree the tree for the {@code Iterator.next()} call.
+     * @param parentIteratorObligation the iterator obligation for {@code iter} in the {@code
+     *     iter.next()} call.
+     * @return a IteratorNextObligation derived from the given arguments
+     */
+    public static IteratorNextObligation fromIterNextCall(
+        Node tempVarNode, MethodInvocationTree tree, IteratorObligation parentIteratorObligation) {
+      JavaExpression jx = JavaExpression.fromTree((ExpressionTree) tempVarNode.getTree());
+      Element elem = TreeUtils.elementFromTree(tempVarNode.getTree());
+
+      return new IteratorNextObligation(
+          ImmutableSet.of(new ResourceAlias(jx, elem, tree)),
+          Collections.singleton(MethodExitKind.NORMAL_RETURN),
+          parentIteratorObligation);
+    }
+
+    /**
+     * Returns a new IteratorNextObligation.
+     *
+     * <p>We need this method since we frequently need to replace obligations and if the old
+     * obligation was a IteratorNextObligation we want the replacement to be as well. Dynamic method
+     * dispatch then allows us to simply call getReplacement() on an obligation and get the
+     * replacement of the right class.
+     *
+     * @param resourceAliases set of resource aliases for the new obligation
+     * @return a new IteratorNextObligation with the passed traits
+     */
+    @Override
+    public IteratorNextObligation getReplacement(
+        Set<ResourceAlias> resourceAliases, Set<MethodExitKind> whenToEnforce) {
+      return new IteratorNextObligation(resourceAliases, whenToEnforce, parentIteratorObligation);
     }
   }
 
@@ -1077,9 +1364,6 @@ public class MustCallConsistencyAnalyzer {
           verifyReturnStatement((ReturnNode) node, cfg);
         } else if (node instanceof MethodInvocationNode || node instanceof ObjectCreationNode) {
           updateObligationsForInvocation(obligations, node, successorAndExceptionType.second);
-        } else if (node instanceof LessThanNode) {
-          verifyAllocatingForLoop((LessThanNode) node, obligations);
-          // verifyFulfillingForLoop((LessThanNode) node, obligations);
         }
         // All other types of nodes are ignored. This is safe, because other kinds of
         // nodes cannot create or modify the resource-alias sets that the algorithm is
@@ -1346,13 +1630,81 @@ public class MustCallConsistencyAnalyzer {
       MethodInvocationNode min = (MethodInvocationNode) node;
       MethodAccessNode man = min.getTarget();
       Node receiver = man.getReceiver();
+      Node methodCallTmpVar = removeCastsAndGetTmpVarIfPresent(node);
+
+      CFStore mcoeStore = mcoeTypeFactory == null ? null : mcoeTypeFactory.getStoreBefore(node);
+      CFStore cmoeStore = cmoeTypeFactory == null ? null : cmoeTypeFactory.getStoreBefore(node);
+
       boolean isCollection =
           receiver.getTree() != null && RLCUtils.isCollection(receiver.getTree(), cmoeTypeFactory);
+      boolean isIterator =
+          receiver.getTree() != null && RLCUtils.isIterator(receiver.getTree(), cmoeTypeFactory);
       boolean isOwningCollection =
           receiver.getTree() != null
               && TreeUtils.elementFromTree(receiver.getTree()) != null
               && cmAtf.hasOwningCollection(TreeUtils.elementFromTree(receiver.getTree()));
-      if (isCollection && isOwningCollection) {
+      boolean isRoAlias =
+          receiver.getTree() != null
+              && mcoeStore != null // ensure store exists
+              && mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, receiver.getTree());
+      boolean isResourceCollection = isCollection && (isOwningCollection || isRoAlias);
+
+      BooleanSupplier checkNoOpenMcoeObligations =
+          () -> {
+            Obligation o = getObligationForVar(obligations, receiver.getTree());
+            if (o == null) {
+              return false;
+            }
+            // assert o != null : "No obligation for @OwningCollection " + receiver.getTree();
+            return checkMustCallOnElements(
+                o, mcoeStore, cmoeStore, false, false, node.getTree(), "");
+          };
+
+      Runnable checkWritingMethodOnOwningCollection =
+          () -> {
+            if (isRoAlias) {
+              checker.reportError(
+                  min.getTree(), "modification.without.ownership", receiver.getTree());
+            }
+          };
+
+      Runnable checkOverwritingMethodOnOwningCollection =
+          () -> {
+            // explicitly check for ro alias here, since it might not have an obligation
+            if (isRoAlias) {
+              checker.reportError(
+                  min.getTree(), "modification.without.ownership", receiver.getTree());
+              return;
+            }
+
+            Obligation o = getObligationForVar(obligations, receiver.getTree());
+            if (o == null) {
+              List<String> mcoeValues =
+                  mcoeTypeFactory.getMustCallOnElementsObligations(
+                      mcoeStore, (ExpressionTree) receiver.getTree());
+              // mcoeValues would be null if receiver was McoeUnknown, but then, the isRoAlias
+              // branch
+              // would've been taken and the method had returned, so mcoeValues is not null here.
+              // If there are no McoeValues in the store, use the default Mcoe values.
+              if (mcoeValues.isEmpty()) {
+                MustCallAnnotatedTypeFactory mcAtf = cmAtf.getMustCallAnnotatedTypeFactory();
+                mcoeValues.addAll(
+                    RLCUtils.getMcoeValuesOfOwningCollection(
+                        TreeUtils.elementFromTree(receiver.getTree()), mcAtf));
+              }
+              if (!mcoeValues.isEmpty()) {
+                checker.reportError(
+                    min.getTree(),
+                    "illegal.owningcollection.overwrite",
+                    receiver.getTree(),
+                    formatMissingMustCallMethods(new ArrayList<>(mcoeValues)));
+              }
+            } else {
+              checkMustCallOnElements(o, mcoeStore, cmoeStore, false, true, node.getTree(), "");
+            }
+          };
+
+      if (isResourceCollection) {
         List<Node> args = min.getArguments();
         MethodSigType methodSigType = CollectionTransfer.getMethodSigType(man.getMethod());
         switch (methodSigType) {
@@ -1365,68 +1717,88 @@ public class MustCallConsistencyAnalyzer {
             Node argExpr = NodeUtils.removeCasts(args.get(0));
             Node argVar = getTempVarOrNode(argExpr);
             removeObligationForVar(obligations, argVar);
-
-            checksForWritingMethodOnOwningCollection(receiver, min);
+            checkWritingMethodOnOwningCollection.run();
             return;
           case ADD_INT_E:
             argExpr = NodeUtils.removeCasts(args.get(1));
             argVar = getTempVarOrNode(argExpr);
             removeObligationForVar(obligations, argVar);
-
-            checksForWritingMethodOnOwningCollection(receiver, min);
+            checkWritingMethodOnOwningCollection.run();
             return;
           case SET:
             argExpr = NodeUtils.removeCasts(args.get(1));
             argVar = getTempVarOrNode(argExpr);
             removeObligationForVar(obligations, argVar);
+            checkOverwritingMethodOnOwningCollection.run();
+            return;
+          case ITERATOR:
+            // if receiver collection has no open MustCallOnElements obligations,
+            // there is no need to track an obligation for the iterator.
 
-            checksForOverwritingMethodOnOwningCollection(receiver, min);
+            // if mcoe obligations fulfilled, don't create this obligation.
+            // If it's mcoeunknown, give a flag to the
+            // IteratorObligation that reports an error if iter.remove()
+            // is called.
+            if (isRoAlias) {
+              IteratorObligation iterObligation =
+                  new IteratorObligation(Obligation.fromTree(methodCallTmpVar.getTree()), true);
+              obligations.add(iterObligation);
+            } else {
+              if (!checkNoOpenMcoeObligations.getAsBoolean()) {
+                IteratorObligation iterObligation =
+                    new IteratorObligation(Obligation.fromTree(methodCallTmpVar.getTree()), false);
+                obligations.add(iterObligation);
+              }
+            }
+            return;
+
+            /*
+             * The following cases correspond to methods called on an Iterator, not a collection.
+             * They are handled in below switch-case statement.
+             */
+          case ITER_REMOVE:
+          case ITER_NEXT:
+            return;
+        }
+      } else if (isIterator) {
+        Obligation o = getObligationForVar(obligations, receiver.getTree());
+        if (o == null || !(o instanceof IteratorObligation)) {
+          return;
+        }
+        IteratorObligation iterObligation = (IteratorObligation) o;
+
+        MethodSigType methodSigType = CollectionTransfer.getIteratorMethodSigType(man.getMethod());
+        switch (methodSigType) {
+          case SAFE:
+            return;
+          case UNSAFE:
+            checker.reportError(node.getTree(), "unsafe.method", man);
+            return;
+          case ITER_REMOVE:
+            IteratorNextObligation obligationToRemove = iterObligation.handleIterRemoveCall(node);
+            if (obligationToRemove != null) {
+              obligations.remove(obligationToRemove);
+            }
+            return;
+          case ITER_NEXT:
+            IteratorNextObligation iterNextObligation =
+                IteratorNextObligation.fromIterNextCall(
+                    methodCallTmpVar, (MethodInvocationTree) node.getTree(), iterObligation);
+            iterObligation.handleIterNextCall(iterNextObligation);
+            obligations.add(iterNextObligation);
+            return;
+
+            /*
+             * The following cases correspond to methods called on a collection, not an iterator.
+             * They are handled in the above switch-case statement.
+             */
+          case ADD_E:
+          case ADD_INT_E:
+          case SET:
+          case ITERATOR:
             return;
         }
       }
-    }
-  }
-
-  /**
-   * Checks for a method call on an {@code @OwningCollection}, which makes an overwriting write to
-   * the underlying collection (for example {@code List.set(int,E)}), whether it is valid and
-   * reports an error if it is not.
-   *
-   * <p>Checks that receiver is not a field and that it is not a read-only reference.
-   *
-   * @param receiver the receiver node of the method call
-   * @param min the method invocation node
-   */
-  private void checksForOverwritingMethodOnOwningCollection(
-      Node receiver, MethodInvocationNode min) {
-    checksForWritingMethodOnOwningCollection(receiver, min);
-
-    Element receiverElt = TreeUtils.elementFromTree(receiver.getTree());
-    if (receiverElt.getKind() == ElementKind.FIELD) {
-      checker.reportError(min.getTree(), "owningcollection.field.element.overwrite", receiver);
-    }
-  }
-
-  /**
-   * Checks for a method call on an {@code @OwningCollection}, which writes to the underlying
-   * collection (for example {@code Collection.add(E)}), whether the receiver is not read-only and
-   * reports an error if it is.
-   *
-   * <p>In this checker, {@code @MustCallOnElementsUnknown} encodes a read-only reference. The
-   * method checks whether the passed receiver node has {@code @MustCallOnElementsUnknown} type at
-   * the time of the given method invocation node and reports an error in this case. The reason is
-   * that writing methods cannot be called on a collection reference that is read-only.
-   *
-   * @param receiver the receiver node of the method call
-   * @param min the method invocation node
-   */
-  private void checksForWritingMethodOnOwningCollection(Node receiver, MethodInvocationNode min) {
-    CFStore mcoeStore =
-        mcoeTypeFactory == null ? null : mcoeTypeFactory.getStoreBefore(min.getTree());
-    boolean receiverIsRo =
-        mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, receiver.getTree());
-    if (receiverIsRo) {
-      checker.reportError(min.getTree(), "assignment.without.ownership", receiver);
     }
   }
 
@@ -2030,35 +2402,27 @@ public class MustCallConsistencyAnalyzer {
    * Updates a set of Obligations to account for an assignment and enforces the assignment rules for
    * the MustCallOnElements checker.
    *
-   * <p>Obligation creation rules for MustCallOnElements checker.
+   * <p>Obligation creation rules for {@code @OwningCollection}s.
    *
    * <ul>
    *   <li>1. A declaration assignment where the lhs is {@code @OwningCollection} always creates an
-   *       obligation for the array annotated {@code @OwningCollection}.
-   *   <li>2. A reassignment to a new array where lhs is {@code @OwningCollection} and
-   *       {@code @MustCallOnElementsUnknown} creates an obligation for the array.
-   *   <li>3. A constructor assignment of an {@code @OwningCollection} parameter to an
-   *       {@code @OwningCollection} field removes the obligation of the parameter.
-   *   <li>4. An assignment in a pattern-matched assignment loop removes the obligation of the rhs.
+   *       obligation for the array/collection annotated {@code @OwningCollection} and removes the
+   *       obligation for the rhs.
+   *   <li>2. An assignment where lhs is {@code @OwningCollection} and
+   *       {@code @MustCallOnElementsUnknown} creates an obligation for the lhs array/collection and
+   *       removes the obligation for the rhs.
    * </ul>
    *
    * <p>Assignment rules:
    *
    * <ul>
-   *   <li>1. An {@code @OwningCollection} field may only be assigned to a new array or an
-   *       {@code @OwningCollection} parameter and only in the constructor.
-   *   <li>2. {@code @OwningCollection} field and its elements may not be assigned outside of
-   *       constructor.
-   *   <li>3. When lhs is a local {@code @OwningCollection} identifier, the rhs may only be a newly
-   *       allocated array.
-   *   <li>4. Before an assignment-loop for {@code @OwningCollection} arr, arr must not have any
-   *       open calling obligations. Enforced in {@code verifyAllocatingForLoop()}.
-   *   <li>5. The elements of an {@code @OwningCollection} may only be assigned in an allocating
-   *       loop.
-   *   <li>6. The elements of an {@code @OwningCollection} field may only be assigned once in the
-   *       constructor.
-   *   <li>7. The rhs of an assignment may only be {@code @OwningCollection} if it is an array
-   *       access (for example {@code arr[i]}) and the lhs is not an {@code @OwningCollection}.
+   *   <li>1. An {@code @OwningCollection} field and its elements may not be assigned outside of a
+   *       constructor (except at declaration site). The elements of such a field may only be
+   *       assigned once per constructor in a pattern-matched assignment loop.
+   *   <li>2. An overwriting assignment to the elements of an {@code OwningCollection} is only
+   *       allowed if the collection has no open calling obligations.
+   *   <li>3. Any collection/array reference with type {@code MustCallOnElementsUnknown} cannot
+   *       write to its elements.
    * </ul>
    *
    * @param lhs node of the lhs of the assignment
@@ -2110,7 +2474,7 @@ public class MustCallConsistencyAnalyzer {
                 : "rhs of pattern-matched assignment assumed to be LocalVariableNode,"
                     + " but its tree is "
                     + rhs.getTree().getKind();
-            removeObligationForNode(obligations, (LocalVariableNode) rhs);
+            removeObligationForVar(obligations, rhs);
 
             // check whether elements of field have been assigned previously in the constructor
             ExpressionTree arrayTree = ((ArrayAccessTree) lhsTree).getExpression();
@@ -2120,7 +2484,7 @@ public class MustCallConsistencyAnalyzer {
                     + " of kind "
                     + arrayTree.getKind();
             Name arrayName = ((IdentifierTree) arrayTree).getName();
-            // enforces 6. assignment rule:
+            // enforces 1. assignment rule:
             // elements of @OwningCollection field may only be assigned once in constructor
             if (this.alreadyAllocatedArrays.contains(arrayName)) {
               checker.reportError(
@@ -2130,7 +2494,7 @@ public class MustCallConsistencyAnalyzer {
               this.alreadyAllocatedArrays.add(arrayName);
             }
           } else {
-            // enforces 5. assignment rule:
+            // enforces 1. assignment rule:
             // illegal assignment to elements of @OwningCollection field in constructor
             checker.reportError(
                 assignmentNode.getTree(), "illegal.owningcollection.field.elements.assignment");
@@ -2142,7 +2506,7 @@ public class MustCallConsistencyAnalyzer {
         }
       } else {
         if (lhsIsField) {
-          // enforce 2. assignment rule:
+          // enforce 1. assignment rule:
           // @OwningCollection field may not be assigned (neither its elements) outside of
           // constructor
           checker.reportError(
@@ -2167,6 +2531,7 @@ public class MustCallConsistencyAnalyzer {
                 mcoeStore,
                 cmoeStore,
                 true,
+                true,
                 lhs.getTree(),
                 "array is reassigned at " + assignmentNode.getTree());
             obligations.remove(obligation);
@@ -2179,8 +2544,18 @@ public class MustCallConsistencyAnalyzer {
           // in a pattern-matched assignment loop.
           // Remove Obligations from local variables, now that the @OwningCollection is
           // responsible.
-          // If the assignment is invalid, an error has already been reported
-          // by the MustCallOnElements assignment transformer.
+          // Report an error of the receiver collection is read-only or has unfulfilled
+          // MustCallOnElements obligations. Enforces 2. assignment rule.
+          ExpressionTree receiverArray = ((ArrayAccessTree) lhs.getTree()).getExpression();
+          if (lhsIsMcoeUnknown) {
+            // enforces 3. assignment rule: no assignment without ownership
+            checker.reportError(
+                assignmentNode.getTree(), "modification.without.ownership", receiverArray);
+          } else {
+            Obligation o = getObligationForVar(obligations, receiverArray);
+            assert o != null : "No obligation for @OwningCollection " + receiverArray;
+            checkMustCallOnElements(o, mcoeStore, cmoeStore, false, true, receiverArray, "");
+          }
           removeObligationForVar(obligations, rhs);
         } else {
           throw new BugInCF(
@@ -2191,28 +2566,12 @@ public class MustCallConsistencyAnalyzer {
         }
       }
     } else if (lhsIsMcoeUnknown && (lhs.getTree().getKind() == Tree.Kind.ARRAY_ACCESS)) {
+      // enforces 3. assignment rule: no assignment without ownership
       // lhs is non-@OwningCollection read-only reference and tries to assign its elements.
-      // Not allowed.
-      checker.reportError(assignmentNode.getTree(), "assignment.without.ownership", lhs.getTree());
+      checker.reportError(
+          assignmentNode.getTree(), "modification.without.ownership", lhs.getTree());
     }
   }
-
-  // /**
-  //  * Returns true if {@code node} is of the syntactic form {@code new C(...)} where {@code C} is
-  //  * part of the Java Collection framework.
-  //  *
-  //  * @param node the node
-  //  * @return true if {@code node} is of the syntactic form {@code new C(...)} where {@code C} is
-  //  *     part of the Java Collection framework.
-  //  */
-  // private boolean isNewCollection(Node node) {
-  //   if (node.getTree() != null && node.getTree().getKind() == Tree.Kind.NEW_CLASS) {
-  //     NewClassTree nctree = (NewClassTree) node.getTree();
-  //     ExpressionTree constructedClassName = nctree.getIdentifier();
-  //     return RLCUtils.isCollection(constructedClassName, mcoeTypeFactory);
-  //   }
-  //   return false;
-  // }
 
   /**
    * Updates a set of Obligations to account for an assignment and enforces the assignment rules for
@@ -2582,7 +2941,8 @@ public class MustCallConsistencyAnalyzer {
             obligation,
             cmAtf.getStoreBefore(node),
             mcAtf.getStoreBefore(node),
-            "variable overwritten by assignment " + node.getTree());
+            "variable overwritten by assignment " + node.getTree(),
+            false);
         replacements.put(obligation, null);
       } else {
         replacements.put(
@@ -3139,82 +3499,6 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Is called only from propagateObligationsToSuccessorBlocks.
-   *
-   * <p>Check if the node corresponds to the condition of an allocating for-loop and whether the
-   * array the loop iterates over has any open obligations, in which case the loop is illegal and an
-   * error is reported. Since @OwningCollection fields don't have an empty mcoe default type, don't
-   * execute the check for them as it would always indicate the loop is illegal. Their loop must be
-   * in a constructor and is checked in updateObligationsForAssignment().
-   *
-   * <p>The code calls {@code @checkMustCallOnElements()}, which checks that the given arrayTree has
-   * no open calling obligations, that is, its {@code @MustCallOnElements} value is a subset of its
-   * {@code @CalledMethodsOnElements} value. Else, an error is reported.
-   *
-   * @param node the {@code LessThanNode}, possibly corresponding to the condition of an allocating
-   *     for-loop
-   * @param obligations the set of obligations tracked in the analysis
-   */
-  private void verifyAllocatingForLoop(LessThanNode node, Set<Obligation> obligations) {
-    ExpressionTree arr =
-        MustCallOnElementsAnnotatedTypeFactory.getCollectionTreeForLoopWithThisCondition(
-            node.getTree());
-    boolean isOwningCollectionField =
-        arr != null
-            && TreeUtils.elementFromTree(arr).getAnnotation(OwningCollection.class) != null
-            && TreeUtils.elementFromTree(arr).getKind() == ElementKind.FIELD;
-    boolean isAllocatingForLoop =
-        MustCallOnElementsAnnotatedTypeFactory.whichObligationsDoesLoopWithThisConditionCreate(
-                    node.getTree())
-                != null
-            && MustCallOnElementsAnnotatedTypeFactory
-                    .whichObligationsDoesLoopWithThisConditionCreate(node.getTree())
-                    .size()
-                > 0;
-    if (!isOwningCollectionField && arr != null && isAllocatingForLoop) {
-      Obligation currentObligation = getObligationForVar(obligations, arr);
-      if (currentObligation != null) {
-        checkMustCallOnElements(
-            currentObligation,
-            mcoeTypeFactory.getStoreForTree(arr),
-            cmoeTypeFactory.getStoreForTree(arr),
-            false,
-            arr,
-            "");
-      }
-    }
-  }
-
-  // /**
-  //  * Check whether the given node is the condition of an mcoe-obligation-fulfilling-loop. and
-  //  * whether the loop actually fulfills all the methods it promises to call by checking the
-  //  * {@code @CalledMethods} type of the collection/array element in the loop body. Also, add an
-  //  * obligation for the array/collection element iterated over.
-  //  *
-  //  * @param node lessthannode that may be the condition of a mcoe fulfilling for loop
-  //  * @param obligations the set of tracked obligations in the analysis
-  //  */
-  // private void verifyFulfillingForLoop(LessThanNode node, Set<Obligation> obligations) {
-  //   ExpressionTree collectionAccess =
-  //       MustCallOnElementsAnnotatedTypeFactory.getCollectionAccessTreeForLoopWithThisCondition(
-  //           node.getTree());
-  //   Set<String> calledMethods =
-  //       MustCallOnElementsAnnotatedTypeFactory.whichMethodsDoesLoopWithThisConditionCall(
-  //           node.getTree());
-  //   boolean isFulfillingForLoop = calledMethods != null && calledMethods.size() > 0;
-  //   if (collectionAccess != null && isFulfillingForLoop) {
-  //     // Element elt = TreeUtils.elementFromTree(collectionAccess);
-  //     if (obligations != null) {}
-  //     // obligations.add(
-  //     //     new Obligation(
-  //     //         ImmutableSet.of(
-  //     //             new ResourceAlias(
-  //     //                 JavaExpression.fromTree(collectionAccess), elt, collectionAccess)),
-  //     //         Collections.singleton(MethodExitKind.NORMAL_RETURN)));
-  //   }
-  // }
-
-  /**
    * If this exception is thrown, it indicates to the caller of the method that the loop body
    * analysis should be aborted and immediately return. This happens if a {@code Block} is
    * encountered, which does not have an incoming store, meaning the analysis is not supposed to
@@ -3458,10 +3742,11 @@ public class MustCallConsistencyAnalyzer {
                 mcoeStoreCurrent,
                 cmoeStoreCurrent,
                 true,
+                true,
                 null,
                 exitReasonForErrorMessage);
           } else {
-            checkMustCall(obligation, cmStore, mcStore, exitReasonForErrorMessage);
+            checkMustCall(obligation, cmStore, mcStore, exitReasonForErrorMessage, false);
           }
         }
       } else {
@@ -3662,6 +3947,7 @@ public class MustCallConsistencyAnalyzer {
    * @param cmoeStore the calledMethodsOnElements store
    * @param occurence tree where the check is called from (for logging purposes)
    * @param isExit whether the check occurs for an exit
+   * @param reportErrors whether to report errors
    * @param exitReasonForErrorMessage if the {@code @MustCallOnElements} obligation is not
    *     satisfied, a useful explanation to include in the error message
    * @return true if the check is successful, i.e. either the obligation is not a
@@ -3673,6 +3959,7 @@ public class MustCallConsistencyAnalyzer {
       CFStore mcoeStore,
       CFStore cmoeStore,
       boolean isExit,
+      boolean reportErrors,
       Tree occurence,
       String exitReasonForErrorMessage) {
     if (!(obligation instanceof CollectionObligation)) {
@@ -3698,17 +3985,22 @@ public class MustCallConsistencyAnalyzer {
           // since the obligation is revoked in the case of an exit, this has to be a manual
           // mcoeUnknown
           // annotation to mask obligations. report an error for unfulfilled obligations.
-          checker.reportError(
-              alias.tree,
-              "unfulfilled.mustcallonelements.obligations",
-              "unknown",
-              alias.tree.toString(),
-              exitReasonForErrorMessage);
+          if (reportErrors) {
+            checker.reportError(
+                alias.tree,
+                "unfulfilled.mustcallonelements.obligations",
+                "unknown",
+                alias.tree.toString(),
+                exitReasonForErrorMessage);
+          }
           return false;
         } else {
-          // this is not an exit, but verification of assignment loop. Cannot reassign with revoked
-          // ownership.
-          checker.reportError(alias.tree, "assignment.without.ownership", alias.tree.toString());
+          // this is not an exit, but verification of modifiying operation.
+          // Cannot remove access to collection elements with revoked ownership.
+          if (reportErrors) {
+            checker.reportError(
+                alias.tree, "modification.without.ownership", alias.tree.toString());
+          }
           return false;
         }
       }
@@ -3720,42 +4012,46 @@ public class MustCallConsistencyAnalyzer {
     }
     ResourceAlias firstAlias = obligation.resourceAliases.iterator().next();
     if (isExit) {
-      System.out.println(
-          "verifying exit "
-              + obligation.hashCode()
-              + ": "
-              + obligation
-              + " "
-              + mcoeValues
-              + "\n        -> "
-              + cmoeValues);
+      // System.out.println(
+      //     "verifying exit "
+      //         + obligation.hashCode()
+      //         + ": "
+      //         + obligation
+      //         + " "
+      //         + mcoeValues
+      //         + "\n        -> "
+      //         + cmoeValues);
     } else {
-      System.out.println(
-          "verifying assignmentloop "
-              + obligation.hashCode()
-              + ": "
-              + obligation
-              + " "
-              + mcoeValues
-              + "\n        -> "
-              + cmoeValues);
+      // System.out.println(
+      //     "verifying assignmentloop "
+      //         + obligation.hashCode()
+      //         + ": "
+      //         + obligation
+      //         + " "
+      //         + mcoeValues
+      //         + "\n        -> "
+      //         + cmoeValues);
     }
     mcoeValues.removeAll(cmoeValues);
     if (!mcoeValues.isEmpty()) {
       if (isExit) {
-        checker.reportError(
-            firstAlias.tree,
-            "unfulfilled.mustcallonelements.obligations",
-            formatMissingMustCallMethods(new ArrayList<>(mcoeValues)),
-            firstAlias.tree,
-            exitReasonForErrorMessage);
+        if (reportErrors) {
+          checker.reportError(
+              firstAlias.tree,
+              "unfulfilled.mustcallonelements.obligations",
+              formatMissingMustCallMethods(new ArrayList<>(mcoeValues)),
+              firstAlias.tree,
+              exitReasonForErrorMessage);
+        }
         return false;
       } else {
-        checker.reportError(
-            occurence,
-            "illegal.owningcollection.allocation",
-            occurence.toString(),
-            formatMissingMustCallMethods(new ArrayList<>(mcoeValues)));
+        if (reportErrors) {
+          checker.reportError(
+              occurence,
+              "illegal.owningcollection.overwrite",
+              occurence.toString(),
+              formatMissingMustCallMethods(new ArrayList<>(mcoeValues)));
+        }
         return false;
       }
     }
@@ -3772,9 +4068,23 @@ public class MustCallConsistencyAnalyzer {
    * @param mcStore the must-call store
    * @param outOfScopeReason if the {@code @MustCall} obligation is not satisfied, a useful
    *     explanation to include in the error message
+   * @param checkIteratorNextObligation whether to check {@code IteratorNextObligation}s.
    */
   private void checkMustCall(
-      Obligation obligation, AccumulationStore cmStore, CFStore mcStore, String outOfScopeReason) {
+      Obligation obligation,
+      AccumulationStore cmStore,
+      CFStore mcStore,
+      String outOfScopeReason,
+      boolean checkIteratorNextObligation) {
+
+    if ((obligation instanceof IteratorNextObligation) && !checkIteratorNextObligation) {
+      // cache the cmStore and mcStore for the obligation corresponding to the value returned by
+      // an Iterator.next() in case it went out of scope before a call to Iterator.remove(),
+      // where we have to check whether the MustCall values of the preceding
+      // Iterator.next() call have been fulfilled.
+      ((IteratorNextObligation) obligation).leaveScope(cmStore, mcStore);
+      return;
+    }
 
     Map<ResourceAlias, List<String>> mustCallValues = obligation.getMustCallMethods(cmAtf, mcStore);
 
