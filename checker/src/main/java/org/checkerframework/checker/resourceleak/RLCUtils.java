@@ -1,5 +1,6 @@
 package org.checkerframework.checker.resourceleak;
 
+import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.Tree;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -34,6 +35,9 @@ import org.checkerframework.checker.nullness.qual.NonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsChecker;
 import org.checkerframework.common.basetype.BaseTypeChecker;
+import org.checkerframework.dataflow.cfg.node.MethodAccessNode;
+import org.checkerframework.dataflow.cfg.node.MethodInvocationNode;
+import org.checkerframework.dataflow.cfg.node.Node;
 import org.checkerframework.framework.source.SourceChecker;
 import org.checkerframework.framework.type.AnnotatedTypeFactory;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
@@ -272,6 +276,7 @@ public class RLCUtils {
       if (isArray) {
         TypeMirror componentType = ((ArrayType) typeMirror).getComponentType();
         mcoeValues = getMcValues(componentType, mcAtf);
+        return mcoeValues != null ? mcoeValues : new ArrayList<String>();
       } else if (isCollection) {
         assert typeMirror instanceof DeclaredType
             : "Collection TypeMirror assumed to be DeclaredType, but is: "
@@ -281,29 +286,41 @@ public class RLCUtils {
         assert typeArgs.size() == 1 : "Collections are expected to have only one type variable.";
         TypeMirror typeArg = typeArgs.get(0);
         mcoeValues = getMcValues(typeArg, mcAtf);
+        return mcoeValues != null ? mcoeValues : new ArrayList<String>();
       } else {
         throw new BugInCF(
             "Argument for @OwningCollection parameter is neither ArrayType, nor Collection but "
                 + typeMirror.getClass().getCanonicalName());
       }
-      return mcoeValues;
     }
   }
 
   /**
-   * Returns the list of mustcall obligations for the given {@code TypeMirror}.
+   * Returns the list of mustcall obligations for the given {@code TypeMirror} upper bound (either
+   * the type variable itself if it is concrete or the upper bound if its a wildcard or generic).
+   *
+   * <p>If the type variable has no upper bound, for instance if it is a wildcard with no extends
+   * clause the method returns null
    *
    * @param type the {@code TypeMirror}
    * @param mcAtf the {@code MustCallAnnotatedTypeFactory} to get the {@code MustCall} type
-   * @return the list of mustcall obligations for {@code type}
+   * @return the list of mustcall obligations for the upper bound of {@code type} or null if the
+   *     upper bound is null.
    */
-  public static List<String> getMcValues(TypeMirror type, MustCallAnnotatedTypeFactory mcAtf) {
+  public static @Nullable List<String> getMcValues(
+      TypeMirror type, MustCallAnnotatedTypeFactory mcAtf) {
     if (type instanceof TypeVariable) {
-      // a generic - replace with upper bound
+      // a generic - replace with upper bound and return null if it has no upper bound
       type = ((TypeVariable) type).getUpperBound();
+      if (type == null) {
+        return null;
+      }
     } else if (type instanceof WildcardType) {
-      // a wildcard - replace with upper bound
+      // a wildcard - replace with upper bound and return null if it has no upper bound
       type = ((WildcardType) type).getExtendsBound();
+      if (type == null) {
+        return null;
+      }
     }
     TypeElement typeElement = TypesUtils.getTypeElement(type);
     AnnotationMirror imcAnnotation =
@@ -411,7 +428,30 @@ public class RLCUtils {
    */
   public static boolean isIterator(Tree tree, AnnotatedTypeFactory atf) {
     if (tree == null) return false;
+    if (tree instanceof MethodInvocationTree) {
+      tree = ((MethodInvocationTree) tree).getMethodSelect();
+    }
     Element element = TreeUtils.elementFromTree(tree);
     return isIterator(element, atf);
+  }
+
+  /**
+   * Returns whether the given Node is a java.util.Iterator type by checking whether the raw type of
+   * the element is assignable from java.util.Iterator. If node is a method invocation or access,
+   * its return type is analyzed instead. Returns false if tree is null, or has no valid type.
+   *
+   * @param node the node
+   * @param atf an AnnotatedTypeFactory to get the annotated type of the element
+   * @return whether the given Node is a Java.util.Iterator type
+   */
+  public static boolean isIterator(Node node, AnnotatedTypeFactory atf) {
+    if (node == null) return false;
+    if (node instanceof MethodInvocationNode) {
+      node = ((MethodInvocationNode) node).getTarget();
+    }
+    if (node instanceof MethodAccessNode) {
+      return isIterator(((MethodAccessNode) node).getMethod().getReturnType());
+    }
+    return isIterator(node.getTree(), atf);
   }
 }

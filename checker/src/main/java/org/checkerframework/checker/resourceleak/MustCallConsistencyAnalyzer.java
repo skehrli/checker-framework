@@ -46,6 +46,7 @@ import javax.lang.model.element.Name;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.ArrayType;
+import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import org.checkerframework.checker.calledmethods.qual.CalledMethods;
@@ -605,25 +606,19 @@ public class MustCallConsistencyAnalyzer {
    */
   class IteratorObligation extends Obligation {
     /** The obligation for the most recent call to {@code Iterator.next()}. */
-    private IteratorNextObligation iterNextObligation = null;
+    IteratorNextObligation iterNextObligation = null;
 
     /**
      * The called methods store that was cached if the return value of {@code
      * this.iterNextObligation} already went out of scope.
      */
-    private AccumulationStore cmStore;
+    private AccumulationStore cmStore = null;
 
     /**
      * The must call store that was cached if the return value of {@code this.iterNextObligation}
      * already went out of scope.
      */
-    private CFStore mcStore;
-
-    /**
-     * Whether the iterator goes over a Collection that is read-only. If this is the case, any call
-     * to {@code Iterator.remove()} is illegal.
-     */
-    private final boolean isMcoeUnknown;
+    private CFStore mcStore = null;
 
     /**
      * When {@code Iterator.next()} is called on the iterator tracked by {@code this}, replace the
@@ -651,54 +646,31 @@ public class MustCallConsistencyAnalyzer {
      * reference.
      *
      * @param node the method invocation node of the {@code Iterator.remove()} call
-     * @return the {@link IteratorNextObligation} that needs to be removed from the set of tracked
-     *     obligations if there was still a tracked obligation for a preceeding {@code
-     *     Iterator.next()} call or null else
      */
-    public IteratorNextObligation handleIterRemoveCall(Node node) {
-      if (isMcoeUnknown) {
-        checker.reportError(
-            node.getTree(),
-            "modification.without.ownership",
-            node.getTree() // TODO get collection name, this is iterator name
-            );
-        iterNextObligation = null;
-        this.mcStore = null;
-        this.cmStore = null;
-        return null;
-      }
-
+    public void handleIterRemoveCall(MethodInvocationNode node) {
       if (iterNextObligation == null) {
-        // Iterator.remove() without preceeding Iterator.next() call. Will
-        // throw a runtime exception.
-        return null;
-      }
-
-      IteratorNextObligation obligationToRemove = null;
-
-      if (this.mcStore != null && this.cmStore != null) {
-        checkMustCall(
-            iterNextObligation,
-            this.cmStore,
-            this.mcStore,
-            "Removed from Collection by Iterator.remove() call",
-            true);
+        // Iterator.remove() without preceeding Iterator.next() call.
+        // It could be an actual programmer mistake, in which case there would be
+        // a runtime exception, but the iterator could also be a field.
+        // In the latter case, another method might have called Iterator.next().
+        // There are other such cases, for instance if the iterator was returned by
+        // a method or is a parameter.
+        Node receiverIterator = node.getTarget().getReceiver();
+        checker.reportError(node.getTree(), "unsafe.iterator.remove", receiverIterator.getTree());
       } else {
-        AccumulationStore cmStore = cmAtf.getStoreBefore(node);
-        MustCallAnnotatedTypeFactory mcTypeFactory = cmAtf.getMustCallAnnotatedTypeFactory();
-        CFStore mcStore = mcTypeFactory.getStoreBefore(node);
-        checkMustCall(
-            iterNextObligation,
-            cmStore,
-            mcStore,
-            "Removed from Collection by Iterator.remove() call",
-            true);
-        obligationToRemove = this.iterNextObligation;
+        iterNextObligation.checkObligation = true;
+
+        if (this.mcStore != null && this.cmStore != null) {
+          checkMustCall(
+              iterNextObligation,
+              this.cmStore,
+              this.mcStore,
+              "Removed from Collection by Iterator.remove() call");
+        }
       }
       this.iterNextObligation = null;
       this.mcStore = null;
       this.cmStore = null;
-      return obligationToRemove;
     }
 
     /**
@@ -717,34 +689,27 @@ public class MustCallConsistencyAnalyzer {
     public void handleIteratorNextLeavingScope(AccumulationStore cmStore, CFStore mcStore) {
       assert cmStore != null && mcStore != null
           : "Stores passed to IteratorNextLeavingScope are null.";
-      System.out.println("caching stores");
       this.cmStore = cmStore;
       this.mcStore = mcStore;
     }
 
-    /**
-     * Create an IteratorObligation from a set of resource aliases.
-     *
-     * @param resourceAliases a set of resource aliases
-     * @param whenToEnforce when this Obligation should be enforced
-     * @param isMcoeUnknown whether the collection associated with this iterator is read-only and
-     *     thus must not call {@code Iterator.remove()}.
-     */
-    public IteratorObligation(
-        Set<ResourceAlias> resourceAliases,
-        Set<MethodExitKind> whenToEnforce,
-        boolean isMcoeUnknown) {
-      super(resourceAliases, whenToEnforce);
-      this.isMcoeUnknown = isMcoeUnknown;
-    }
+    // /**
+    //  * Create an IteratorObligation from a set of resource aliases.
+    //  *
+    //  * @param resourceAliases a set of resource aliases
+    //  * @param whenToEnforce when this Obligation should be enforced
+    //  */
+    // public IteratorObligation(
+    //     Set<ResourceAlias> resourceAliases,
+    //     Set<MethodExitKind> whenToEnforce) {
+    //   super(resourceAliases, whenToEnforce);
+    // }
 
     /**
      * Create an IteratorObligation.
      *
      * @param resourceAliases a set of resource aliases
      * @param whenToEnforce when this Obligation should be enforced
-     * @param isMcoeUnknown whether the collection associated with this iterator is read-only and
-     *     thus must not call {@code Iterator.remove()}
      * @param mcStore the cached mcStore
      * @param mcStore the cached cmStore
      * @param iterNextObligation the tracked {@link IteratorNextObligation}.
@@ -752,12 +717,10 @@ public class MustCallConsistencyAnalyzer {
     private IteratorObligation(
         Set<ResourceAlias> resourceAliases,
         Set<MethodExitKind> whenToEnforce,
-        boolean isMcoeUnknown,
         CFStore mcStore,
         AccumulationStore cmStore,
         IteratorNextObligation iterNextObligation) {
       super(resourceAliases, whenToEnforce);
-      this.isMcoeUnknown = isMcoeUnknown;
       this.mcStore = mcStore;
       this.cmStore = cmStore;
       this.iterNextObligation = iterNextObligation;
@@ -767,12 +730,9 @@ public class MustCallConsistencyAnalyzer {
      * Create an IteratorObligation from an Obligation.
      *
      * @param obligation the obligation to create a IteratorObligation from
-     * @param isMcoeUnknown whether the collection associated with this iterator is read-only and
-     *     thus must not call {@code Iterator.remove()}.
      */
-    public IteratorObligation(Obligation obligation, boolean isMcoeUnknown) {
+    public IteratorObligation(Obligation obligation) {
       super(obligation.resourceAliases, obligation.whenToEnforce);
-      this.isMcoeUnknown = isMcoeUnknown;
     }
 
     /**
@@ -789,13 +749,13 @@ public class MustCallConsistencyAnalyzer {
     @Override
     public IteratorObligation getReplacement(
         Set<ResourceAlias> resourceAliases, Set<MethodExitKind> whenToEnforce) {
-      return new IteratorObligation(
-          resourceAliases,
-          whenToEnforce,
-          this.isMcoeUnknown,
-          this.mcStore,
-          this.cmStore,
-          this.iterNextObligation);
+      IteratorObligation replacement =
+          new IteratorObligation(
+              resourceAliases, whenToEnforce, this.mcStore, this.cmStore, this.iterNextObligation);
+      if (this.iterNextObligation != null) {
+        this.iterNextObligation.parentIteratorObligation = replacement;
+      }
+      return replacement;
     }
   }
 
@@ -813,6 +773,13 @@ public class MustCallConsistencyAnalyzer {
     IteratorObligation parentIteratorObligation;
 
     /**
+     * Whether to check the obligation when it goes out of scope. Initialized to false and set to
+     * true if there is a call to {@code Iterator.remove()} on the parent iterator directly
+     * succeeding the call tracked by {@code this}.
+     */
+    boolean checkObligation;
+
+    /**
      * When the value returned by the {@code Iterator.next()} call tracked by {@code this} goes out
      * of scope, inform the parent iterator obligation.
      */
@@ -826,13 +793,16 @@ public class MustCallConsistencyAnalyzer {
      * @param resourceAliases a set of resource aliases
      * @param whenToEnforce when this Obligation should be enforced
      * @param parentIteratorObligation the obligation of the iterator
+     * @param checkObligation whether to check this obligation when exiting
      */
     public IteratorNextObligation(
         Set<ResourceAlias> resourceAliases,
         Set<MethodExitKind> whenToEnforce,
-        IteratorObligation parentIteratorObligation) {
+        IteratorObligation parentIteratorObligation,
+        boolean checkObligation) {
       super(resourceAliases, whenToEnforce);
       this.parentIteratorObligation = parentIteratorObligation;
+      this.checkObligation = checkObligation;
     }
 
     /**
@@ -857,7 +827,8 @@ public class MustCallConsistencyAnalyzer {
       return new IteratorNextObligation(
           ImmutableSet.of(new ResourceAlias(jx, elem, tree)),
           Collections.singleton(MethodExitKind.NORMAL_RETURN),
-          parentIteratorObligation);
+          parentIteratorObligation,
+          false);
     }
 
     /**
@@ -874,7 +845,13 @@ public class MustCallConsistencyAnalyzer {
     @Override
     public IteratorNextObligation getReplacement(
         Set<ResourceAlias> resourceAliases, Set<MethodExitKind> whenToEnforce) {
-      return new IteratorNextObligation(resourceAliases, whenToEnforce, parentIteratorObligation);
+      IteratorNextObligation replacement =
+          new IteratorNextObligation(
+              resourceAliases, whenToEnforce, parentIteratorObligation, checkObligation);
+      if (this.parentIteratorObligation != null) {
+        this.parentIteratorObligation.iterNextObligation = replacement;
+      }
+      return replacement;
     }
   }
 
@@ -1068,7 +1045,7 @@ public class MustCallConsistencyAnalyzer {
 
     // Add any owning parameters to the initial set of variables to track.
     BlockWithObligations entry =
-        new BlockWithObligations(cfg.getEntryBlock(), computeOwningParameters(cfg));
+        new BlockWithObligations(cfg.getEntryBlock(), initialTrackedObligations(cfg));
     worklist.add(entry);
     visited.add(entry);
 
@@ -1180,7 +1157,7 @@ public class MustCallConsistencyAnalyzer {
         new BlockWithObligations(
             loopBodyEntryBlock, Collections.singleton(collectionElementObligation));
 
-    System.out.println("loopbodyentry: " + loopBodyEntry);
+    // System.out.println("loopbodyentry: " + loopBodyEntry);
     worklist.add(loopBodyEntry);
     visited.add(loopBodyEntry);
     Set<String> calledMethodsInLoop = null;
@@ -1615,11 +1592,12 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Checks whether node corresponds to a MethodInvocationNode of a method call on a Collection. In
-   * this case, it updates the obligations based on the method called on the Collection.
+   * Checks whether node corresponds to a MethodInvocationNode of a method call on a resource
+   * holding Collection or an Iterator over a resource holding Collection. In this case, it updates
+   * the obligations based on the method called on the Collection.
    *
-   * <p>Usually, this means to remove the obligation of {@code LocalVariableNode}s that were
-   * assigned into the Collection.
+   * <p>If the method invocation return type is a Collection, add an {@link IteratorObligation} for
+   * it.
    *
    * @param obligations set of currently tracked obligations
    * @param node the node corresponding to a method call
@@ -1630,6 +1608,7 @@ public class MustCallConsistencyAnalyzer {
       MethodInvocationNode min = (MethodInvocationNode) node;
       MethodAccessNode man = min.getTarget();
       Node receiver = man.getReceiver();
+      Node receiverTmpVar = removeCastsAndGetTmpVarIfPresent(receiver);
       Node methodCallTmpVar = removeCastsAndGetTmpVarIfPresent(node);
 
       CFStore mcoeStore = mcoeTypeFactory == null ? null : mcoeTypeFactory.getStoreBefore(node);
@@ -1637,8 +1616,7 @@ public class MustCallConsistencyAnalyzer {
 
       boolean isCollection =
           receiver.getTree() != null && RLCUtils.isCollection(receiver.getTree(), cmoeTypeFactory);
-      boolean isIterator =
-          receiver.getTree() != null && RLCUtils.isIterator(receiver.getTree(), cmoeTypeFactory);
+      boolean isIterator = RLCUtils.isIterator(receiver, cmoeTypeFactory);
       boolean isOwningCollection =
           receiver.getTree() != null
               && TreeUtils.elementFromTree(receiver.getTree()) != null
@@ -1648,6 +1626,8 @@ public class MustCallConsistencyAnalyzer {
               && mcoeStore != null // ensure store exists
               && mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, receiver.getTree());
       boolean isResourceCollection = isCollection && (isOwningCollection || isRoAlias);
+      TypeMirror methodCallReturnType = man.getMethod().getReturnType();
+      boolean returnTypeIsIterator = RLCUtils.isIterator(methodCallReturnType);
 
       BooleanSupplier checkNoOpenMcoeObligations =
           () -> {
@@ -1741,12 +1721,12 @@ public class MustCallConsistencyAnalyzer {
             // is called.
             if (isRoAlias) {
               IteratorObligation iterObligation =
-                  new IteratorObligation(Obligation.fromTree(methodCallTmpVar.getTree()), true);
+                  new IteratorObligation(Obligation.fromTree(methodCallTmpVar.getTree()));
               obligations.add(iterObligation);
             } else {
               if (!checkNoOpenMcoeObligations.getAsBoolean()) {
                 IteratorObligation iterObligation =
-                    new IteratorObligation(Obligation.fromTree(methodCallTmpVar.getTree()), false);
+                    new IteratorObligation(Obligation.fromTree(methodCallTmpVar.getTree()));
                 obligations.add(iterObligation);
               }
             }
@@ -1761,7 +1741,12 @@ public class MustCallConsistencyAnalyzer {
             return;
         }
       } else if (isIterator) {
-        Obligation o = getObligationForVar(obligations, receiver.getTree());
+        Obligation o;
+        if (receiverTmpVar instanceof LocalVariableNode) {
+          o = getObligationForVar(obligations, (LocalVariableNode) receiverTmpVar);
+        } else {
+          o = getObligationForVar(obligations, receiver.getTree());
+        }
         if (o == null || !(o instanceof IteratorObligation)) {
           return;
         }
@@ -1775,10 +1760,7 @@ public class MustCallConsistencyAnalyzer {
             checker.reportError(node.getTree(), "unsafe.method", man);
             return;
           case ITER_REMOVE:
-            IteratorNextObligation obligationToRemove = iterObligation.handleIterRemoveCall(node);
-            if (obligationToRemove != null) {
-              obligations.remove(obligationToRemove);
-            }
+            iterObligation.handleIterRemoveCall(min);
             return;
           case ITER_NEXT:
             IteratorNextObligation iterNextObligation =
@@ -1797,6 +1779,16 @@ public class MustCallConsistencyAnalyzer {
           case SET:
           case ITERATOR:
             return;
+        }
+      } else if (returnTypeIsIterator) {
+        // if this is a method invocation with Iterator return type, create an obligation for it.
+        // The logic is placed here since the return type of Collection.iterator() is also an
+        // iterator, but its special handling above has priority over the following logic, which
+        // is meant for user-defined methods that return an Iterator
+
+        if (shouldTrackIterator(methodCallReturnType)) {
+          System.out.println("adding ob for: " + node);
+          obligations.add(new IteratorObligation(Obligation.fromTree(methodCallTmpVar.getTree())));
         }
       }
     }
@@ -2941,8 +2933,7 @@ public class MustCallConsistencyAnalyzer {
             obligation,
             cmAtf.getStoreBefore(node),
             mcAtf.getStoreBefore(node),
-            "variable overwritten by assignment " + node.getTree(),
-            false);
+            "variable overwritten by assignment " + node.getTree());
         replacements.put(obligation, null);
       } else {
         replacements.put(
@@ -3590,7 +3581,8 @@ public class MustCallConsistencyAnalyzer {
       // the successor.
       boolean obligationGoesOutOfScopeBeforeSuccessor = true;
       for (ResourceAlias resourceAlias : obligation.resourceAliases) {
-        if (aliasInScopeInSuccessor(regularStoreOfSuccessor, mcoeStore, mcCFStore, resourceAlias)) {
+        if (aliasInScopeInSuccessor(
+            regularStoreOfSuccessor, mcoeStore, mcCFStore, resourceAlias, obligation)) {
           obligationGoesOutOfScopeBeforeSuccessor = false;
           break;
         }
@@ -3746,7 +3738,7 @@ public class MustCallConsistencyAnalyzer {
                 null,
                 exitReasonForErrorMessage);
           } else {
-            checkMustCall(obligation, cmStore, mcStore, exitReasonForErrorMessage, false);
+            checkMustCall(obligation, cmStore, mcStore, exitReasonForErrorMessage);
           }
         }
       } else {
@@ -3758,7 +3750,8 @@ public class MustCallConsistencyAnalyzer {
         Set<ResourceAlias> copyOfResourceAliases = new LinkedHashSet<>(obligation.resourceAliases);
         copyOfResourceAliases.removeIf(
             alias ->
-                !aliasInScopeInSuccessor(regularStoreOfSuccessor, mcoeStore, mcCFStore, alias)
+                !aliasInScopeInSuccessor(
+                        regularStoreOfSuccessor, mcoeStore, mcCFStore, alias, obligation)
                     && !isLoopBodyAnalysis);
         successorObligations.add(
             obligation.getReplacement(copyOfResourceAliases, obligation.whenToEnforce));
@@ -3807,7 +3800,14 @@ public class MustCallConsistencyAnalyzer {
    *     checking algorithm in the successor block from which the store came
    */
   private boolean aliasInScopeInSuccessor(
-      AccumulationStore successorStore, CFStore mcoeStore, CFStore mcStore, ResourceAlias alias) {
+      AccumulationStore successorStore,
+      CFStore mcoeStore,
+      CFStore mcStore,
+      ResourceAlias alias,
+      Obligation o) {
+    if (alias.element.getKind() == ElementKind.FIELD && o instanceof IteratorObligation) {
+      return true;
+    }
     return (successorStore.getValue(alias.reference) != null)
         || (mcoeStore != null && mcoeStore.getValue(alias.reference) != null)
         || (mcStore != null && mcStore.getValue(alias.reference) != null);
@@ -3829,13 +3829,15 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Finds {@link Owning} formal parameters for the method corresponding to a CFG.
+   * Finds {@link Owning} formal parameters for the method corresponding to a CFG and iterator
+   * fields and parameters whose type variable has non-empty must call type.
    *
    * @param cfg the CFG
-   * @return the owning formal parameters of the method that corresponds to the given cfg, or an
-   *     empty set if the given CFG doesn't correspond to a method body
+   * @return the owning formal parameters of the method that corresponds to the given cfg, iterator
+   *     fields and parameters with potential must call obligaitons, or an empty set if the given
+   *     CFG doesn't correspond to a method body
    */
-  private Set<Obligation> computeOwningParameters(ControlFlowGraph cfg) {
+  private Set<Obligation> initialTrackedObligations(ControlFlowGraph cfg) {
     // TODO what about lambdas?
     if (cfg.getUnderlyingAST().getKind() == Kind.METHOD) {
       MethodTree method = ((UnderlyingAST.CFGMethod) cfg.getUnderlyingAST()).getMethod();
@@ -3864,14 +3866,74 @@ public class MustCallConsistencyAnalyzer {
                       new ResourceAlias(
                           JavaExpression.fromVariableTree(param), paramElement, param)),
                   Collections.singleton(MethodExitKind.NORMAL_RETURN)));
-          // Increment numMustCall for each @Owning parameter tracked by the enclosing
-          // method.
-          // incrementNumMustCall(paramElement);
+        }
+        boolean paramIsIterator = RLCUtils.isIterator(paramElement, cmAtf);
+        if (paramIsIterator) {
+          if (shouldTrackIterator(paramElement.asType())) {
+            result.add(new IteratorObligation(Obligation.fromTree(param)));
+          }
+        }
+      }
+
+      TreePath path = cmAtf.getPath(method);
+      ClassTree enclosingClass = TreePathUtil.enclosingClass(path);
+      for (Tree member : enclosingClass.getMembers()) {
+        if (member instanceof VariableTree) {
+          VariableTree declaration = (VariableTree) member;
+          Element memberElm = TreeUtils.elementFromDeclaration(declaration);
+          boolean isIterator = RLCUtils.isIterator(declaration, cmoeTypeFactory);
+          boolean isField = memberElm != null && memberElm.getKind().isField();
+
+          if (isField && isIterator) {
+            if (shouldTrackIterator(memberElm.asType())) {
+              result.add(new IteratorObligation(Obligation.fromTree(declaration)));
+            }
+          }
         }
       }
       return result;
     }
     return Collections.emptySet();
+  }
+
+  /**
+   * Returns whether the given iterator type should be tracked by an {@link IteratorObligation}. If
+   * the type variable upper bound (either the type variable itself if it is concrete or the upper
+   * bound if its a wildcard or generic) has MustCall values, the method returns true.
+   *
+   * <p>If the type variable has no upper bound, for instance if it is a wildcard with no extends
+   * clause, the method returns false. The type variable upper bound rules ensure that such an
+   * Iterator can never hold values with MustCall obligations.
+   *
+   * @param iteratorType the declared type of the iterator
+   * @return whether the iterator should be tracked by an {@link IteratorObligation}
+   * @throws BugInCF if the iterator is not a DeclaredType or does not have exactly one type
+   *     argument.
+   */
+  private boolean shouldTrackIterator(TypeMirror iteratorType) {
+    if (!(iteratorType instanceof DeclaredType)) {
+      throw new BugInCF(
+          "Type of iterator expecteced to be DeclaredType, but is "
+              + iteratorType.getClass().getSimpleName());
+    }
+    List<? extends TypeMirror> typeArgs = ((DeclaredType) iteratorType).getTypeArguments();
+    if (typeArgs.size() != 1) {
+      throw new BugInCF(
+          "Iterator expecteced to have only one type argument, but has "
+              + typeArgs.size()
+              + " "
+              + typeArgs);
+    }
+    MustCallAnnotatedTypeFactory mcAtf = cmAtf.getMustCallAnnotatedTypeFactory();
+    TypeMirror typeArg = typeArgs.get(0);
+    List<String> mcValuesOfTypeArgUpperBound = RLCUtils.getMcValues(typeArg, mcAtf);
+    if (mcValuesOfTypeArgUpperBound == null) {
+      // wildcard or generic with Object or non-existing upper bound. Tracking makes no sense,
+      // since the elements statically have no obligation anyways.
+      return false;
+    } else {
+      return mcValuesOfTypeArgUpperBound.size() > 0;
+    }
   }
 
   /**
@@ -4068,22 +4130,20 @@ public class MustCallConsistencyAnalyzer {
    * @param mcStore the must-call store
    * @param outOfScopeReason if the {@code @MustCall} obligation is not satisfied, a useful
    *     explanation to include in the error message
-   * @param checkIteratorNextObligation whether to check {@code IteratorNextObligation}s.
    */
   private void checkMustCall(
-      Obligation obligation,
-      AccumulationStore cmStore,
-      CFStore mcStore,
-      String outOfScopeReason,
-      boolean checkIteratorNextObligation) {
+      Obligation obligation, AccumulationStore cmStore, CFStore mcStore, String outOfScopeReason) {
 
-    if ((obligation instanceof IteratorNextObligation) && !checkIteratorNextObligation) {
+    if (obligation instanceof IteratorNextObligation) {
       // cache the cmStore and mcStore for the obligation corresponding to the value returned by
       // an Iterator.next() in case it went out of scope before a call to Iterator.remove(),
       // where we have to check whether the MustCall values of the preceding
       // Iterator.next() call have been fulfilled.
-      ((IteratorNextObligation) obligation).leaveScope(cmStore, mcStore);
-      return;
+      IteratorNextObligation iterNextOb = (IteratorNextObligation) obligation;
+      if (!iterNextOb.checkObligation) {
+        ((IteratorNextObligation) obligation).leaveScope(cmStore, mcStore);
+        return;
+      }
     }
 
     Map<ResourceAlias, List<String>> mustCallValues = obligation.getMustCallMethods(cmAtf, mcStore);

@@ -180,7 +180,7 @@ public class CalledMethodsOnElementsTransfer extends CollectionTransfer {
       PotentiallyFulfillingLoop loop, TransferResult<CFValue, CFStore> res) {
     ExpressionTree arrayTree = loop.collectionTree;
     Set<String> calledMethods = loop.getMethods();
-    System.out.println("calledmethods: (cmoe transfer) " + calledMethods);
+    // System.out.println("calledmethods: (cmoe transfer) " + calledMethods);
     if (calledMethods != null && calledMethods.size() > 0) {
       CFStore elseStore = res.getElseStore();
       JavaExpression target = JavaExpression.fromTree(arrayTree);

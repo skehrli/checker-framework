@@ -23,7 +23,6 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
-import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import org.checkerframework.checker.mustcall.qual.CreatesMustCallFor;
@@ -161,57 +160,57 @@ public class MustCallAnnotatedTypeFactory extends BaseAnnotatedTypeFactory
   }
 
   /**
-   * Called in addComputedTypeAnnotations. Changes the type parameter of collection from
-   * {@code @MustCallUnknown} to {@code @MustCall} for method return types and variables.
+   * Called in addComputedTypeAnnotations. Changes the type parameters referring to collections and
+   * iterators to {@code @MustCall} if they are currently {@code @MustCallUnknown}.
    *
-   * <p>This is necessary as the type variable upper bounds for collections is
-   * {@code @MustCallUnknown}. When the type variable is a generic or wildcard, the type parameter
-   * does default to {@code @MustCallUnknown}, which causes problems, since these usually don't have
-   * anything to do with resources at all.
+   * <p>This is necessary, as the type variable upper bounds for collections is
+   * {@code @MustCallUnknown}. When the type variable is a generic or wildcard with no upper bound,
+   * the type parameter does default to {@code @MustCallUnknown}, which is both unsound and
+   * imprecise.
    *
    * @param elt the element
    * @param type the type of the element
    */
   private void changeCollectionTypeParameters(Element elt, AnnotatedTypeMirror type) {
-    if (elt instanceof VariableElement) {
-      // change it for variables
+    if (elt.getKind() != ElementKind.CLASS && elt.getKind() != ElementKind.INTERFACE)
       if (type.getKind() == TypeKind.DECLARED) {
-        AnnotatedDeclaredType adt = (AnnotatedDeclaredType) type;
-        if (RLCUtils.isCollection(adt.getUnderlyingType())) {
-          for (AnnotatedTypeMirror typeArg : adt.getTypeArguments()) {
-            if (typeArg == null) continue;
-            AnnotationMirror mcAnno = typeArg.getEffectiveAnnotation();
-            boolean typeArgIsMcoeUnknown =
-                mcAnno != null
-                    && processingEnv
-                        .getTypeUtils()
-                        .isSameType(mcAnno.getAnnotationType(), TOP.getAnnotationType());
-            if (typeArgIsMcoeUnknown) {
-              typeArg.replaceAnnotation(BOTTOM);
-            }
-          }
-        }
-      }
-    } else if (elt instanceof ExecutableElement) {
-      // change it for method return types
-      if (type.getKind() == TypeKind.EXECUTABLE) {
+        replaceResourceHoldingTypeVarsWithBottomIfTop(type);
+      } else if (type.getKind() == TypeKind.EXECUTABLE) {
         AnnotatedExecutableType methodType = (AnnotatedExecutableType) type;
         AnnotatedTypeMirror returnType = methodType.getReturnType();
-        if (RLCUtils.isCollection(returnType.getUnderlyingType())) {
-          if (returnType.getKind() == TypeKind.DECLARED) {
-            AnnotatedDeclaredType adt = (AnnotatedDeclaredType) returnType;
-            for (AnnotatedTypeMirror typeArg : adt.getTypeArguments()) {
-              if (typeArg == null) continue;
-              AnnotationMirror mcAnno = typeArg.getEffectiveAnnotation();
-              boolean typeArgIsMcoeUnknown =
-                  mcAnno != null
-                      && processingEnv
-                          .getTypeUtils()
-                          .isSameType(mcAnno.getAnnotationType(), TOP.getAnnotationType());
-              if (typeArgIsMcoeUnknown) {
-                typeArg.replaceAnnotation(BOTTOM);
-              }
-            }
+
+        replaceResourceHoldingTypeVarsWithBottomIfTop(returnType);
+
+        for (AnnotatedTypeMirror paramType : methodType.getParameterTypes()) {
+          replaceResourceHoldingTypeVarsWithBottomIfTop(paramType);
+        }
+      }
+  }
+
+  /**
+   * Replace all the type variables of the given AnnotatedTypeMirror that refer to Collections or
+   * Iterators with Bottom if they are Top. This is because having a Top type parameter is unsafe
+   * and occurs when the type variable is a generic or wildcard without upper bound. We want to
+   * prevent such a Collection/Iterator from holding elements with MustCall obligations.
+   *
+   * @param typeMirror the annotated type mirror for which all Collection/Iterator type variables
+   *     with Top type are to be replaced with Bottom.
+   */
+  private void replaceResourceHoldingTypeVarsWithBottomIfTop(AnnotatedTypeMirror typeMirror) {
+    if (RLCUtils.isCollection(typeMirror.getUnderlyingType())
+        || RLCUtils.isIterator(typeMirror.getUnderlyingType())) {
+      if (typeMirror.getKind() == TypeKind.DECLARED) {
+        AnnotatedDeclaredType adt = (AnnotatedDeclaredType) typeMirror;
+        for (AnnotatedTypeMirror typeArg : adt.getTypeArguments()) {
+          if (typeArg == null) continue;
+          AnnotationMirror mcAnno = typeArg.getEffectiveAnnotation();
+          boolean typeArgIsMcoeUnknown =
+              mcAnno != null
+                  && processingEnv
+                      .getTypeUtils()
+                      .isSameType(mcAnno.getAnnotationType(), TOP.getAnnotationType());
+          if (typeArgIsMcoeUnknown) {
+            typeArg.replaceAnnotation(BOTTOM);
           }
         }
       }
