@@ -2415,6 +2415,8 @@ public class MustCallConsistencyAnalyzer {
    *       allowed if the collection has no open calling obligations.
    *   <li>3. Any collection/array reference with type {@code MustCallOnElementsUnknown} cannot
    *       write to its elements.
+   *   <li>4. An {@code @OwningCollection} field cannot transfer its ownership. In particular can it
+   *       not be on the rhs of an assignment where the lhs is also {@code @OwningCollection}.
    * </ul>
    *
    * @param lhs node of the lhs of the assignment
@@ -2445,6 +2447,7 @@ public class MustCallConsistencyAnalyzer {
         mcoeStore != null && mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, lhs.getTree());
     MethodTree enclosingMethod = cfg.getEnclosingMethod(assignmentNode.getTree());
     boolean inConstructor = enclosingMethod != null && TreeUtils.isConstructor(enclosingMethod);
+    boolean rhsIsField = rhsElement != null && rhsElement.getKind() == ElementKind.FIELD;
 
     if (!lhsIsOwningCollection && rhsIsOwningCollection && !(rhsExpr instanceof ArrayAccessNode)) {
       // declaration of a read-only alias for the RHS @OwningCollection
@@ -2452,6 +2455,12 @@ public class MustCallConsistencyAnalyzer {
       // This is not an error.
     }
     if (lhsIsOwningCollection) {
+      if (rhsIsField
+          && rhsIsOwningCollection
+          && lhs.getTree().getKind() != Tree.Kind.ARRAY_ACCESS) {
+        checker.reportError(assignmentNode.getTree(), "illegal.ownership.transfer");
+        return;
+      }
       if (enclosingMethod == null) {
         // this is a declaration-site-assignment of an @OwningCollection field. nothing to check.
       } else if (inConstructor && lhsIsField) {
@@ -2482,6 +2491,7 @@ public class MustCallConsistencyAnalyzer {
               checker.reportError(
                   assignmentNode.getTree(),
                   "owningcollection.field.elements.assigned.multiple.times");
+              return;
             } else {
               this.alreadyAllocatedArrays.add(arrayName);
             }
@@ -2490,6 +2500,7 @@ public class MustCallConsistencyAnalyzer {
             // illegal assignment to elements of @OwningCollection field in constructor
             checker.reportError(
                 assignmentNode.getTree(), "illegal.owningcollection.field.elements.assignment");
+            return;
           }
         } else {
           // normal assignment to field. final keyword ensures it's the only one.
@@ -2503,6 +2514,7 @@ public class MustCallConsistencyAnalyzer {
           // constructor
           checker.reportError(
               assignmentNode.getTree(), "owningcollection.field.assigned.outside.constructor");
+          return;
         } else if (lhs.getTree() instanceof VariableTree) {
           // declaration of local @OwningCollection. Can't be field since we're in the else clause.
           // add obligation for the collection and remove for the initializer.

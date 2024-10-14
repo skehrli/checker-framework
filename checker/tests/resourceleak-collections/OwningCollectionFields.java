@@ -34,6 +34,43 @@ class OwningCollectionFields {
       collection.add(null);
     }
 
+    /*
+     * Cannot pass ownership of a field, since the field will still think its the owner.
+     * Would result in two owners of the same underlying collection.
+     */
+    public void illegalConstructorInvocation() {
+      // :: error: illegal.ownership.transfer
+      new OwnershipTaker(this.collection).destruct();
+    }
+
+    /*
+     * Cannot pass ownership of a field, since the field will still think its the owner.
+     * Would result in two owners of the same underlying collection.
+     */
+    public void illegalMethodInvocation() {
+      // :: error: illegal.ownership.transfer
+      takeOwnership(this.collection);
+    }
+
+    /*
+     * Cannot pass ownership of a field, since the field will still think its the owner.
+     * Would result in two owners of the same underlying collection.
+     */
+    public void illegalAssignment() {
+      // :: error: illegal.ownership.transfer
+      @OwningCollection List<Socket> local = this.collection;
+      for (Socket s : local) {
+        try {
+          s.close();
+        } catch (Exception e) {
+        }
+      }
+    }
+
+    public void takeOwnership(@OwningCollection List<Socket> list) {
+      new OwnershipTaker(list).destruct();
+    }
+
     @EnsuresCalledMethodsOnElements(
         value = "collection",
         methods = {"close"})

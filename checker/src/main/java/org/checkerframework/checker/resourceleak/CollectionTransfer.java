@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
+import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeKind;
@@ -384,6 +385,7 @@ public abstract class CollectionTransfer extends CFTransfer {
     // also, empty mcoe type of @OwningCollection args that are passed as @OwningCollection params
     List<? extends VariableElement> params = method.getParameters();
 
+    CFStore store = res.getRegularStore();
     for (int i = 0; i < Math.min(args.size(), params.size()); i++) {
       VariableElement param = params.get(i);
       Node arg = args.get(i);
@@ -398,26 +400,27 @@ public abstract class CollectionTransfer extends CFTransfer {
           ((MustCallOnElementsAnnotatedTypeFactory)
                   RLCUtils.getTypeFactory(MustCallOnElementsChecker.class, atypeFactory))
               .isMustCallOnElementsUnknown(res.getRegularStore(), arg.getTree());
+      boolean argIsField = argElt != null && argElt.getKind() == ElementKind.FIELD;
 
       if (argIsMcoeUnknown) {
         reportError(arg.getTree(), "argument.with.revoked.ownership", arg.getTree());
       }
 
-      if (paramIsOwningCollection) {
+      if (argIsOwningCollection && argIsField) {
+        reportError(arg.getTree(), "illegal.ownership.transfer");
+      } else if (paramIsOwningCollection) {
         if (!argIsOwningCollection) {
           reportError(arg.getTree(), "unexpected.argument.ownership");
         } else {
           JavaExpression argCollection = JavaExpression.fromNode(arg);
-          CFStore store = res.getRegularStore();
           transformOwningCollectionArg(store, argCollection);
-          return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
         }
       } else if (argIsOwningCollection) {
         // param non-@OwningCollection and arg @OwningCollection
         reportError(arg.getTree(), "unexpected.argument.ownership");
       }
     }
-    return res;
+    return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
   }
 
   /**
