@@ -1241,9 +1241,13 @@ public class MustCallConsistencyAnalyzer {
     Obligation collectionElementObligation =
         getObligationForVar(obligations, potentiallyFulfillingLoop.collectionElementTree);
     if (collectionElementObligation == null) {
-      throw new BugInCF(
-          "No obligation for collection element "
-              + potentiallyFulfillingLoop.collectionElementTree);
+      // the loop did something weird. Might have reassigned the collection element.
+      // The sound thing to do is return an empty list.
+      System.out.println("obligation gone for collection element");
+      return new HashSet<>();
+      // throw new BugInCF(
+      //     "No obligation for collection element "
+      //         + potentiallyFulfillingLoop.collectionElementTree);
     }
 
     Set<String> calledMethodsAfterThisBlock = new HashSet<>();
