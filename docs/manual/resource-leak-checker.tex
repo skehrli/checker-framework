@@ -631,18 +631,16 @@ feature that it is unable to reason about.
 If you encounter this error, usually you should write an explicit \<@MustCall> annotation
 on the indicated expression (e.g., as a cast).
 
+\pagebreak
 
 \sectionAndLabel{Collections of resources}{resource-leak-collections}
 
-The Resource Leak Checker handles homogeneous collections of resources,
-such as arrays, \<List>s, \<Set>s, etc.  In a homogeneous collection, every element
+The Resource Leak Checker handles homogeneous collections of resources. Arrays and implementing classes of \<Java.util.Collection> are supported. In a homogeneous collection, every element
 has exactly the same must-call and called-methods properties.
 
-In general,
-the only way to operate on a homogeneous collection while maintaining
+For many operations that are intended to change the type of the collection elements, for instance to fulfill calling obligations, the only way to do so while maintaining
 homogeneity is by using a loop.  The Resource Leak Checker permits
 specific types of loops, as explained below.
-
 
 \subsectionAndLabel{\<@MustCall> and \<@CalledMethods> for collections}{resource-leak-collections-mcoe-cmoe}
 \MustCallOnElements and \<@CalledMethodsOnElements> provide similar semantics for collections as \<@MustCall> and \<@CalledMethods> do for objects.
@@ -678,48 +676,98 @@ CalledMethodsOnElements({"b"})           CalledMethodsOnElements({"a"})
 \end{verbatim}
 The default type for any declaration is top, that is, \<@CalledMethodsOnElements(\{\})>.
 
+\subsectionAndLabel{Declaration of collections of resources}{resource-leak-collections-declaration}
 
-
-\subsectionAndLabel{Declaration and assignment of collections of resources}{resource-leak-collections-declaration}
-
-To indicate that each resource in a collection is owned by the collection, write the \<@OwningCollection> declaration annotation:
+To indicate that each resource in a collection is owned by the reference, write the \<@OwningCollection> declaration annotation:
 
 \begin{Verbatim}
 @OwningCollection Socket[] s = new Socket[n];
 // The type of `s` is now  @MustCallOnElements({}) @CalledMethodsOnElements({})
 \end{Verbatim}
 
-A reference to an owning collection may be re-assigned any number of times.
-The left-hand side must have an empty \MustCallOnElements type, and the
-right-hand side must create a new collection that has no
-\MustCallOnElements obligations.
+The same annotation can be used on implementing classes of \<Java.util.Collection>, for example a List:
+\begin{Verbatim}
+@OwningCollection List<Socket> s = new ArrayList<Socket>();
+// The type of `s` is now  @MustCallOnElements({}) @CalledMethodsOnElements({})
+\end{Verbatim}
+
+Initially, \<s> is \<@MustCallOnElements({})>, i.e. the collection has no calling obligations, since it does not yet hold any resources. Here, \<s> is a local variable. For method parameters and fields, the default type of \<@OwningCollection> references is \<@MustCallOnElements(S)>, where S is the set of \<@MustCall> obligations of the component type. If \<s> was a field or method parameter, its default type would be \<@MustCallOnElements({"close"})>, since Socket is \<MustCall("close")>.
+
+Since \<s> has no open calling obligations, we can simply assign a \<Socket> to its elements. Now, the type of \<s> is \<@MustCallOnElements({"close"})> and the obligation for the created \<Socket> is fulfilled by assigning it into the \<@OwningCollection>:
 
 \begin{verbatim}
-@OwningCollection Socket[] s1 = new Socket[n]; // OK
-@OwningCollection Socket[] s2 = new Socket[n]; // OK
-s2 = new Socket[n]; // OK
-s2 = s1; // prohibited, because the right-hand side does not create a new collection
+@OwningCollection Socket[] s = new Socket[n];
+// The type of `s` is now  @MustCallOnElements({}) @CalledMethodsOnElements({})
+try {
+  s[0] = new Socket(myHost, myPort); // illegal assignment
+} catch (Exception e) {
+}
+// The type of `s` is now  @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
 \end{verbatim}
 
-In general, intra-procedural aliasing of \<@OwningCollection> variables is not
-permitted.  This implies that, within a method, an \<@OwningCollection> variable is the
-only reference to the underlying collection.  Inter-procedural aliasing can
-occur when an \<@OwningCollection> reference is passed as an argument to a
-method call.  Section~\ref{resource-leak-collections-parameters} discusses
-method calls.
+Since an array assignment potentially makes the element that previously lived there unreachable, it is not safe to assign to an array with open calling obligations. That means that a subsequent write to the array reports an error, even if it is to an index that was not previously inhabited:
 
-A non-\<@OwningCollection> reference may not be assigned to an \<@OwningCollection> reference either.
+\begin{verbatim}
+// Assume the type of `s` is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+try {
+  s[1] = new Socket(myHost, myPort); // illegal assignment
+} catch (Exception e) {
+}
+\end{verbatim}
 
+\begin{verbatim}
+error: [illegal.owningcollection.overwrite] Elements of @OwningCollection s overwritten
+ with possibly open obligations: method close.
+      s[1] = new Socket(myHost, myPort);
+      ^
+\end{verbatim}
+
+If multiple elements are to be assigned to an \<@OwningCollection> array, a special syntax-matched assigning loop should be used (Section~\ref{resource-leak-collections-assign-elements}).
+
+For collections on the other hand, many commonly used methods for assigning elements to the collection are not overwriting. This means that the operation has no precondition regarding the \<@MustCallOnElements> type of the \<@OwningCollection> and may always be executed. For example, consider the local variable \<socketList>:
+
+\begin{verbatim}
+@OwningCollection List<Socket> socketList = new List<Socket>();
+// The type of `s` is @MustCallOnElements({}) @CalledMethodsOnElements({})
+try {
+  s.add(new Socket(myHost, myPort));
+}
+// Now, the type of `s` is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+try {
+  s.add(new Socket(myHost, myPort));
+}
+// The type of `s` is still @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+\end{verbatim}
+
+Calling \<add(Socket)> on the \<@OwningCollection> \textit{socketList} removes the obligation for the Socket object and instead unites its \<@MustCall> type values with the \MustCallOnElements type values of \textit{socketList}, meaning in this case that \textit{socketList} now has type  \<@MustCallOnElements({"close"})>. In general, a writing method on a collection unites the \<@MustCall> type values of the argument to the \<@MustCallOnElements> type values of the collection and removes the obligation of the argument.
+
+If \<socketList> was a field, the rules are slightly more constrained and discussed in detail in Section~\ref{resource-leak-collections-fields}.
+
+Using any non-overwriting method, such as \<Collection.add(E)>, the discussed lack of precondition for the operation means that it can be used arbitrarily, also in loops without any additional constraints by the checker. The following loop is perfectly legal for example:
+
+\begin{verbatim}
+@OwningCollection List<Socket> socketList = new List<Socket>();
+// The type of `s` is @MustCallOnElements({}) @CalledMethodsOnElements({})
+int i = 0;
+while (++i < n) {
+  try {
+    s.add(new Socket(myHost, myPort));
+  }
+  // Now, the type of `s` is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+}
+// After this loop, the type of `s` is still @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+\end{verbatim}
+
+For overwriting methods on collections, such as \<List.set(int, E)>, the precondition is also that the \<@OwningCollection> has no open calling obligations.
+
+Since for arrays, the only way to assign elements is by using the overwriting assignment operator, a syntax-matched loop construct with special handling is provided. It is discussed in the following section (Section~\ref{resource-leak-collections-assign-elements}). There is no such equivalent construct for overwriting methods on collections (implementing classes of \<Java.util.Collection>).
 
 \subsectionAndLabel{Using loops to operate on collections of resources}{resource-leak-collections-loops}
 
-In order to maintain homogeneity, code must use a loop to operate on a
-collection of resources.  Any operation (assignment, method calls, etc.)\
-on the elements of an \<@OwningCollection>, outside of a loop, is
-prohibited.  Furthermore, the loop must not terminate early --- it must
+In order to maintain homogeneity, code that wants to change the CalledMethodsOnElements of a collection/array or MustCallOnElements type of an array must operate using a loop. There are some constraints such that these loops are appropriately handled. Furthermore, the loop must not terminate early --- it must
 operate upon every element of the collection.
 
-More concretely, the basic loop constraints are:
+Generally, the basic loop constraints are:
 \begin{itemize}
 \item Loop iteration bounds:
   \begin{itemize}
@@ -731,9 +779,10 @@ More concretely, the basic loop constraints are:
     \item The lower bound of iteration is 0, and
     \item The upper bound of iteration is \<c.length> or \<c.size()> or \<n>,
       where \<n> is the effectively final variable used for the initialization of
-      the collection size.
+      the array size.
     \item The loop's increment expression is a pre- or post-increment of the
-      loop variable.
+            loop variable.
+    \item The collection element is accessed using arr[i] (in the case of an array) or collection.get(i) (in the case of a collection).
     \item The loop body contains no assignments to the loop variable.
     \end{itemize}
   \end{itemize}
@@ -746,11 +795,11 @@ More concretely, the basic loop constraints are:
 \noindent There are additional constraints for specific types of loops, as
 explained below.
 
+The number of constraints may seem daunting, but most constraints only apply to indexed \<for> loops. If an enhanced \<for> loop is used, to fulfill the calling obligations of a List or array for example, the only constraint potentially introducing imprecision is that the loop body may not contain any break or return statements.
 
+\subsectionAndLabel{Assigning elements in an array of resources}{resource-leak-collections-assign-elements}
 
-\subsectionAndLabel{Assigning elements in a collection of resources}{resource-leak-collections-assign-elements}
-
-Here is an example of how to assign the elements of a collection of resources:
+Here is an example of how to assign the elements of an array of resources:
 
 \begin{Verbatim}
 // Suppose the type of `s` is  @MustCallOnElements({}) @CalledMethodsOnElements({})
@@ -768,14 +817,9 @@ The checker accepts an assignment loop if the following requirements are
 satisfied (in addition to the basic loop constraints of Section~\ref{resource-leak-collections-loops}):
 
 \begin{itemize}
-  \item The collection is not annotated with \<@OwningCollection> (see
-    Sections~\ref{resource-leak-collections-parameters} and~\ref{resource-leak-collections-fields}).
-  \item The collection elements have no unfulfilled must-call obligations.  That
-    is, the collection's \MustCallOnElements values are a subset of its
-  \<@CalledMethodsOnElements> values.
-  \item The loop is an indexed \<for> loop (not an enhanced \<for> loop). [[Can
-    it be an enhanced \<for> loop if it uses \<add()> to add to a \<Collection>?]]
-  \item There is exactly one statement in the body.  The statement is either the
+  \item The collection elements have no unfulfilled must-call-on-elements obligations.
+  \item The loop is an indexed \<for> loop (not an enhanced \<for> loop).
+  \item There is exactly one statement in the body. The statement is either the
     assignment or a try-catch construct that contains only the assignment.
   \item The right-hand side of the assignment creates a new resource.
     The right-hand side cannot be an expression that might evaluate to an existing resource.
@@ -784,28 +828,6 @@ satisfied (in addition to the basic loop constraints of Section~\ref{resource-le
     addition to the basic loop constraints of Section~\ref{resource-leak-collections-loops}).
 \end{itemize}
 
-When the collection is a Java \<Collection> rather than an array, it is
-permitted to use either \<Collection.add()> or \<Collection.put()> to assign
-elements.
-
-\subsubsectionAndLabel{Using \<add()> outside a loop}{resource-leak-collections-assign-elements-add}
-
-For a Java \<Collection>, it is permitted to use the \<add()> method outside a
-loop in order to add a new element that is homogeneous with the existing
-elements.  [[Is that necessary?  Or are types adjusted to find a type that is
-consistent with both the collection and the new element?]]
-
-The following simple example illustrates how a Socket can be added to a collection. Calling \<add(Socket)> on the \<@OwningCollection> \textit{socketList} removes the obligation for the Socket object and instead unites its \<@MustCall> type values with the \MustCallOnElements type values of \textit{socketList}, meaning in this case that \textit{socketList} now has type  \<@MustCallOnElements({"close"})>.
-
-\begin{verbatim}
-@OwningCollection List<Socket> socketList;
-socketList = new List<Socket>();
-// @MustCallOnElements({}) @CalledMethodsOnElements({})
-socketList.add(new Socket(myHost, myPort));
-// @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
-\end{verbatim}
-
-[[What if \<socketList> is a field?  Can there be a method \<void addToSocketList(@Owning Socket s) \{ socketList.add(s); \}>?  I think it should be allowed, but also the type of \<socketList> at method entry will be \<@MustCallOnElements("close")>.  --MS]]
 \subsectionAndLabel{Fulfilling \MustCallOnElements obligations}{resource-leak-collection-fulfilling-obligations}
 
 A \MustCallOnElements obligation can be fulfilled via operations on loop
@@ -860,7 +882,6 @@ void method(Socket s) {
 }
 \end{verbatim}
 
-
 Here is an example for a Java \<Collection> rather than an array:
 
 \begin{verbatim}
@@ -876,7 +897,7 @@ for (int i = 0; i < socketList.size(); i++) {
 The called methods are
 determined by checking the \<@CalledMethods> type of the collection element at
 the end of the loop body, without considering exceptional states, i.e.\ only
-exception-free executions of the loop body are considered.  [[Why are only exception-free executions considered?  --MS]]
+exception-free executions of the loop body are considered.
 
 For example, the following loop calls the methods \<close()> and \<shutdownOutput()> on the elements of \textit{socketList}.
 
@@ -896,22 +917,122 @@ The type of the collection is changed only after the loop, not within the
 loop. The loop is treated as a single instruction with regards to its effect on
 the type system for this checker.
 
+\subsectionAndLabel{Collection ownership and aliasing}{resource-leak-collections-ownership}
+For a collection of resources, there is always at most one owning reference and it has an \<@OwningCollection> declaration annotation. A \textit{collection of resources} is a collection that can (legally) hold objects with must-call obligations. This is only possible for collections with an \<@OwningCollection> reference, since adding elements with must-call obligations to a collection using a non-\<@OwningCollection> reference is not permitted.
 
-\subsectionAndLabel{\<@OwningCollection> method parameters}{resource-leak-collections-parameters}
+When this owning reference goes out of scope or is reassigned, the obligations of the collection must be fulfilled. That is, as long as the collection has obligations, there is \textit{exactly} one owning reference. If the owner goes out of scope or is reassigned and the collection still has obligations, an error is reported.
 
-Like \<@Owning> (Section~\ref{resource-leak-ownership}),
-\<@OwningCollection> expresses which reference is responsible for
-fulfilling obligations.
+The checker allows for transfer of collection ownership and also for non-owning references to the resource collection. A non-owning reference to a resource collection is greatly restricted in its ability to modify the collection. It may not be used to perform any writes to the collection, and has restrictions regarding parameter passing (Section~\ref{resource-leak-collections-parameters}) and returning (Section~\ref{resource-leak-collections-return}) due to its non-owning status. These restrictions are necessary for soundness, since a non-owning reference can outlive the owner and could be used to add obligations to the collection after the owner went out of scope (or was reassigned).
 
-When \<@OwningCollection> is written on a method parameter,
-the method promises to satisfy the \MustCallOnElements properties.
+This non-owning, write-disabled status is made visible by setting the \MustCallOnElements type of the reference to
+\<@MustCallOnElementsUnknown>.
 
-When \<@OwningCollection> is written on a method parameter, the default
-type of the parameter is \MustCallOnElements\<(\textit{obligations})>,
-where \textit{obligations} is the default \<@MustCall> obligations of the
-component type. This prevents the need for many manual annotations. However, the user is allowed to write a manual
-\MustCallOnElements annotation to override this default.
+\subsubsectionAndLabel{Ownership transfer and resource collection aliases}{resource-leak-collections-ownership-transfer}
+A reference with ownership over a resource collection holds the obligation for fulfilling the must-call obligations of the elements inside the collection. Transferring this ownership is possible, for example through assignments. When transferring ownership, the transferring reference loses its responsibility over the calling obligations, but also its write privileges.
 
+Consider this example with local variables:
+
+\begin{Verbatim}
+@OwningCollection Socket[] s = new Socket[n]; // allocation point A
+@OwningCollection Socket[] s2 = new Socket[n]; // allocation point B
+s2 = 2; // s2 now has ownership over the array allocated at A
+\end{Verbatim}
+
+For such an ownership transfer, the previous owner (right-hand side of the assignment) becomes a non-owning, write-disabled reference.
+
+The \<@MustCallOnElements> obligations of a resource collection can also be fulfilled by such a collection alias of the owner, similar to resource aliases for simple objects (Section~\ref{resource-leak-resource-alias}), as long as the fulfilment occurs before the owner leaves the scope.
+
+In the above example, the assignment also causes the array allocated at point B to go out of scope, since its owner got reassigned. Since it doesn't have open calling obligations, no error is reported however.
+
+As previously mentioned, when a write-disabled reference is used to write to the underlying collection, an error is reported:
+
+\begin{Verbatim}
+@OwningCollection Socket[] s = new Socket[n];
+@OwningCollection Socket[] s2 = new Socket[n];
+s2 = 2; // s2 now has ownership over the array of elements
+s[0] = null; // illegal assignment
+\end{Verbatim}
+
+\begin{Verbatim}
+  error: [modification.without.ownership] s does not have ownership over its elements.
+  It may not write to or remove elements from the underlying collection.
+    s[0] = null;
+         ^
+\end{Verbatim}
+
+Thus, if a collection reference is annotated \<@OwningCollection>, it means that it \textit{can} have ownership over its underlying collection, but it can also lose this ownership, as in the example above and become a write-disabled alias to the underlying collection.
+However, if the reference is reassigned, for example to a new collection, it will again have ownership:
+
+\begin{verbatim}
+@OwningCollection Socket[] s = new Socket[n];
+@OwningCollection Socket[] s2 = new Socket[n];
+s2 = 2; // s is a write-disabled reference
+s[0] = null; // illegal assignment
+
+s = new Socket[n]; // s now owns this new array
+try {
+  s[0] = new Socket(myHost, myPort); // s can assign elements
+} catch (Exception e) {
+}
+\end{verbatim}
+
+\subsubsectionAndLabel{Non-\<@OwningCollection> references}{resource-leak-collections-aliases}
+It's also possible to assign a reference without \<@OwningCollection> annotation to such a resource holding collection. In that case, the ownership will not be transferred and the left-hand side becomes a write-disabled reference:
+
+\begin{Verbatim}
+@OwningCollection Socket[] s = new Socket[n];
+Socket[] s2 = new Socket[n]; // s2 is not @OwningCollection
+s2 = 2; // s2 is now a write-disabled reference
+s2[0] = null; // illegal assignment
+\end{Verbatim}
+
+\begin{Verbatim}
+  error: [modification.without.ownership] s does not have ownership over its elements.
+  It may not write to or remove elements from the underlying collection.
+    s2[0] = null;
+         ^
+\end{Verbatim}
+
+\subsubsectionAndLabel{Types of references to resource collections}{resource-leak-collections-reference-types}
+To conclude, we have four different types of references regarding collection ownership:
+\begin{enumerate}
+  \item \<@OwningCollection> references that own their collection. They can transfer their ownership, for example by being the right-hand side of an assignment, a return value (Section~\ref{resource-leak-collections-return}) or a method argument (Section~\ref{resource-leak-collections-parameters}) to become a type 2 reference.
+  \item \<@OwningCollection> references that transferred their ownership and are now a write-disabled alias to a resource collection. They can become a type 1 reference again by being assigned to a type 1 reference, a new collection or an \<@OwningCollection> return value (Section~\ref{resource-leak-collections-return}).
+  \item Non-\<@OwningCollection> references that are a write-disabled alias to a resource collection. The aliasing status can be gained through assignment to a resource collection (type 1, 2 or 3) or being declared a \<@CollectionAlias> parameter (Section~\ref{resource-leak-collections-parameters}).
+  \item Non-\<@OwningCollection> references that do not refer to a resource collection. By getting assigned to a resource collection, such a reference would become a type 3 reference.
+\end{enumerate}
+
+\noindent References of types 1, 2 and 3 refer to resource collections, while those of type 4 do not.
+
+\noindent References of types 2 and 3 always have \<@MustCallOnElementsUnknown> type, which is how the write-disabling is implemented. References of type 4 always have \<@MustCallOnElements({})> type and references of type 3 always have a strict subtype of \<@MustCallOnElementsUnknown>.
+
+The following table shows the resulting reference type of the left-hand side and right-hand side when assigning a reference of the column to one of the row. The columns and rows contain the reference description rather than the number for a better overview. Reference types that change through the assignment are in bold.
+
+\begin{table}[ht]
+    \centering
+    \caption{Resulting references types for LHS/RHS of an assignment.}
+    \begin{tabular}{|c|c|c|c|c|}
+        \hline
+        \textbf{LHS / RHS} & \textbf{@OC Owner} & \textbf{@OC Write-Disabled} & \textbf{Write-Disabled} & \textbf{No Resource Collection} \\ \hline
+        \textbf{@OC Owner} & Type 1 / \textbf{Type 2} & \textbf{Type 2} / Type 2 & \textbf{Type 2} / Type 3 & Type 1 / Type 4 \\ \hline
+        \textbf{@OC Write-Disabled} & \textbf{Type 1} / \textbf{Type 2} & Type 2 / Type 2 & Type 2 / Type 3 & \textbf{Type 1} / Type 4 \\ \hline
+        \textbf{Write-Disabled} & Type 3 / Type 1 & Type 3 / Type 2 & Type 3 / Type 3 & \textbf{Type 4} / Type 4 \\ \hline
+        \textbf{No Resource Collection} & \textbf{Type 3} / Type 1 & \textbf{Type 3} / Type 2 & \textbf{Type 3} / Type 3  & Type 4 / Type 4 \\ \hline
+    \end{tabular}
+    \label{tab:abstract_domain_results_with_errors}
+\end{table}
+
+Note that references can only switch between types 1/2 and 3/4, since types 1/2 have an \<@OwningCollection> declaration annotation, while types 3/4 do not.
+
+\subsectionAndLabel{Collection ownership transfer for argument passing}{resource-leak-collections-parameters}
+There are three options for a resource collection parameter. The rules for methods and constructors are the same. In the following, we use the reference classification from Section~\ref{resource-leak-collections-reference-types}.
+\begin{enumerate}
+  \item \texttt{No annotation}: The parameter has no obligations to fulfill, but also cannot hold elements with must-call obligations. At call-site, only type-4-reference arguments may be passed to the parameter.
+  \item \texttt{\<@OwningCollection>}: The parameter owns the collection. The \<MustCallOnElements> type of the parameter defaults to the \<MustCall> values of its component (but this may be overwritten by a manual annotation). Only type-1-reference arguments may be passed to this parameters and they transfer their ownership to the parameter, i.e. the passed argument becomes a type-2-reference at call site.
+  \item \texttt{\<@CollectionAlias>}: The parameter is a write-disabled (i.e. type 2) reference to the underlying collection and thus restricted in its ability to modify the collection, but it does not have to fulfill any obligations. Arguments of reference types 1, 2 and 3 may be passed to such a parameter. If the argument is a type 1 reference, it keeps its ownership. Technically, type 4 references can also be passed as arguments to a \<@CollectionAlias> parameter, but this places unnecessary restrictions on the parameter.
+\end{enumerate}
+
+Here is an example of an \<@OwningCollection> parameter:
 \begin{verbatim}
 void m1(@OwningCollection Socket[] s) {
   // 's' is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
@@ -933,34 +1054,55 @@ void m1(@OwningCollection Socket@MustCallOnElements()[] s) {
 }
 \end{verbatim}
 
-To call a method with an \<@OwningCollection> parameter, the argument must
-also be \<@OwningCollection>.
-(If the parameter is non-\<@OwningCollection>, the argument must also be non-\<@OwningCollection>.)
+\subsectionAndLabel{Collection ownership transfer at method returns}{resource-leak-collections-return}
+Like for parameters, there are three options for returning a resource collection:
+We again use the collection reference classification from Section~\ref{resource-leak-collections-reference-types}.
+\begin{enumerate}
+  \item \texttt{No annotation}: At call site, the return value is a type 4 reference. Thus, only type 4 references may be returned.
+  \item \texttt{\<@OwningCollection>}: At call site, the return value is a type 1 reference. Only type 1 references may be returned. This means that the ownership of the return value is transferred to the call site and thus the return value reference does not have to fulfill the \<@MustCallOnElements> obligations before being returned.
+  \item \texttt{\<@CollectionAlias>}: At call site, the return value is a type 3 reference. Only type 2 and type 3 references may be returned. Since both type 2 and type 3 are non-owning, write-disabled aliases, there is no ownership transfer.
+\end{enumerate}
 
-Upon method return, the caller retains ownership of the passed argument,
-and its type is
-\<@MustCallOnElements(\{\}) @CalledMethodsOnElements($S$)>, where $S$ is the
-union of
-the \<CalledMethodsOnElements> value before the call and the methods guaranteed
-to have been called by the method. For example:
-
+Here is an example of an \<@OwningCollection> return type:
 \begin{verbatim}
-// Suppose `arr` has type @MustCallOnElements({"close"}) @CalledMethodsOnElements({"foo"})
-m1(arr);
-// Then `arr` now has type @MustCallOnElements({}) @CalledMethodsOnElements({"foo", "close"})
+@OwningCollection Socket[] owningReturn() {
+  @OwningCollection Socket[] s = new Socket[n];
+  // 's' is @MustCallOnElements({}) @CalledMethodsOnElements({})
+  for (int i = 0; i < s.length; i++) {
+    try {
+      s[i] = new Socket(myHost, myPort);
+    } catch {}
+  }
+  // 's' is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+}
 \end{verbatim}
 
-Due to the rules of [[add cross-reference]], after calling \<m1>, the elements of \<arr> may be reassigned.
-
+This method is perfectly fine, returning \<s> as an \<@OwningCollection> transfers the ownership to the call site and \<owningReturn()> does not have to fulfill the obligation itself.
 
 \subsectionAndLabel{\<@OwningCollection> fields}{resource-leak-collections-fields}
 
 An \<@OwningCollection> field must be final, private, and non-static. Thus, it
 can only be assigned in the constructor, in an instance initializer block, or at the declaration site.
-The default type of such a collection after declaration is \<@MustCallOnElements(obligation)>, where \textit{obligation} is the set of \<@MustCall> methods of the component type. The default \<@CalledMethodsOnElements> type is the empty \<@CalledMethodsOnElements({})>.
+The default type of such a collection after declaration is \<@MustCallOnElements(obligation)>, where \textit{obligation} is the set of \<@MustCall> methods of the component type. The default \<@CalledMethodsOnElements> type is the empty \<@CalledMethodsOnElements({})>. This default type can be changed with a manual \<@MustCallOnElements> annotation.
 
-Since the lifetime of a field coincides with the lifetime of the class instance, the obligations of the field must be fulfilled at the time the object itself is deallocated.
-Thus, a class with an \<@OwningCollection> field has to have a \<@MustCall("d")> annotation, where \<d()> is some destructor method that fulfills all obligations of the \<@OwningCollection> fields, indicated by an appropriate \<@EnsuresCalledMethodsOnElements> annotation:
+For example, the following field has an empty \<@MustCallOnElements> type:
+
+\begin{verbatim}
+@OwningCollection @MustCallOnElements() List<Socket> listField;
+\end{verbatim}
+
+The \<@MustCallOnElements> type of an \<@OwningCollection> field is invariant over the lifetime of the object. This is because the checker framework analysis does not track method invocations or their order on an object instance. For example, assume there is a method that adds an element to the field, growing the field's \<@MustCallOnElements> obligations. The checker framework does not track, whether this method was called on some instance of the class. Thus, the type of the field must be the same before and after any of the member methods.
+
+This imposes some restrictions on \<@OwningCollection> fields to ensure soundness:
+
+\begin{itemize}
+  \item An \@OwningCollection> field cannot transfer its ownership. This means that it cannot be passed as an argument to an \<@OwningCollection> parameter, be returned or be on the right-hand side of an assignment where the left-hand side is an \@OwningCollection> reference. The reason is that this would require tracking whether the method containing this assignment has been invoked on any instance of the class and change the behavior of the field after that (it's now write-disabled). Since the checker framework does not do this type of analysis, ownership transfers of an \<@OwningCollection> field are not permitted.
+  \item The elements of an \<@OwningCollection> array field can only be assigned in the constructor (and using only one assignment loop).
+  \item Any overwriting writes to the collection elements outside the constructor are not allowed. This is because the precondition of an overwriting write is that the collection has no open obligations, which is never the case for an \<@OwningCollection> field.
+\end{itemize}
+
+Since the lifetime of a field coincides with the lifetime of the class instance, the obligations of the field must be fulfilled by the time the object itself is deallocated.
+A class with an \<@OwningCollection> field has to have a \<@MustCall("d")> annotation, where \<d()> is some destructor method that fulfills all obligations of the \<@OwningCollection> fields, indicated by an appropriate \<@EnsuresCalledMethodsOnElements> annotation:
 
 \begin{verbatim}
 @MustCall("destruct")
@@ -969,152 +1111,119 @@ class A {
     ...
     @EnsuresCalledMethodsOnElements(value="arr", methods={"close"})
     public void destruct() {
-        for (int i = 0; i < arr.length; i++) {
-            arr[i].close();
+        for (Resource r : arr) {
+            r.close();
         }
     }
 }
 \end{verbatim}
 
-This ensures that any client that constructs an instance of A will have to call \<destruct()> on it, which in turn ensures that the obligations of the field are fulfilled.
+This ensures that any client that constructs an instance of \<A> will have to call \<destruct()> on it, which in turn ensures that the obligations of the field are fulfilled.
 
-The elements of an \<@OwningCollection> field may only be assigned in the
-constructor and only once. [[This is except for \<add()> calls right?  --MS]] Thus, the elements of an \<@OwningCollection> field behave like they are final references as well.
-The collection stored in the
-field does not necessarily have to be allocated in the constructor, but may also
-be passed as an argument to the constructor, see
-Section~\ref{resource-leak-collections-constructor}.
+\subsectionAndLabel{Iterators over resource collections}{resource-leak-collections-iterators}
+Iterators are frequently used to traverse collections (implementing classes of \<java.util.Collection>). It is always safe to create an iterator for any collection with no open calling obligations. Since an iterator takes a snapshot of the collection at the time it is created, it does not matter what happens with the collection after the iterator is created (else, a \<ConcurrentModificationException> is thrown for the next usage of the iterator).
+If a collection with open \<MustCallOnElements> obligations (even if it is a non-owning reference) creates an iterator, the resource leak checker tracks the created iterators and the values returned by calls to \<Iterator.next()>. The critical operation are calls to \<Iterator.remove()>. If a collection has open calling obligations, this may remove an element from the collection with open \<MustCall> obligations. This is only allowed if the value returned by the previous call to \<Iterator.next()> has its \<MustCall> obligations fulfilled.
 
-
-\subsectionAndLabel{\<@OwningCollection> constructor parameters}{resource-leak-collections-constructor}
-
-Constructors are special in the context of this checker, since they're the
-only methods where \<@OwningCollection> fields may be
-assigned (since \<@OwningCollection> fields are always final).
-
-When \<@OwningCollection> is written on a constructor parameter, the
-default type of the parameter is \MustCallOnElements\<(obligations)>, where
-\textit{obligations} is the set of \<@MustCall> obligations of the
-component type, just like for normal methods. The user may write a \MustCallOnElements annotation to override this default.
-
-An \<@OwningCollection> constructor argument may be assigned to an \<@OwningCollection> field, which removes the obligation of the parameter.
+Here is an example of unsafe iterator usage:
 
 \begin{verbatim}
-@MustCall({"destruct"})
-class A {
-  final @OwningCollection Socket[] s;
-
-  public A(@OwningCollection Socket[] arr) {
-    // the obligation of arr is closed by assigning into @OwningCollection field s
-    s = arr;
-  }
-
-  @EnsuresCalledMethodsOnElements(value="s", methods={"destruct"})
-  public void destruct() {
-    for (int i = 0; i < s.length; i++) {
-      try {
-        s[i].close();
-      } catch {}
-    }
-  }
-
+@OwningCollection List<Socket> foo(@OwningCollection List<Socket> list) {
+  // 'list' is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+  Iterator<Socket> iter = list.iterator();
+  iter.next();
+  iter.remove();
+  return list;
 }
 \end{verbatim}
 
-
-\subsectionAndLabel{\<@OwningCollection> constructor parameters: at the call site}{resource-leak-collections-constructor-call-site}
-
-At the call site, passing an \<@OwningCollection> argument as an
-\<@OwningCollection> parameter to a constructor, removes the obligation for
-the argument. However, its ownership is revoked, which makes it a read-only
-reference.[[Is this rule described elsewhere?  Or is this the description of the
-rule?]] Writes to the collection elements are forbidden. This read-only
-status is made visible by setting its \MustCallOnElements type to
-\<@MustCallOnElementsUnknown>. The elements of the collection may not be
-reassigned now and it may not be passed to an \<@OwningCollection>
-parameter. The reference may be reassigned to a new collection however, for
-which it will have write access again.
-
+Since \<list> is \<@MustCallOnElements("close")>, removing an element using the iterator is unsafe and an error is reported:
 \begin{verbatim}
-@OwningCollection Socket[] s;
-...
-// 1. s: @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
-A a = new A(s);
-// 2. s: @MustCallOnElementsUnknown @CalledMethodsOnElements({})
+ error: [required.method.not.called] @MustCall method close may not have been invoked on iter.next() or any of its aliases.
+    iter.next();
+             ^
 \end{verbatim}
 
-Now, the elements of \textit{s} may not be reassigned. The following is a type error:
+The removed element must have its must-call obligations fulfilled. Here is an example of safe usage:
 
 \begin{verbatim}
-// s: @MustCallOnElementsUnknown @CalledMethodsOnElements({})
-for (int i = 0; i < s.length; i++) {
+@OwningCollection List<Socket> foo(@OwningCollection List<Socket> list) {
+  // 'list' is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+  Iterator<Socket> iter = list.iterator();
   try {
-    s[i] = new Socket(myHost, myPort);  // error
-  } catch {}
+    iter.next().close();
+  } catch (Exception e) {
+  }
+  iter.remove();
+  return list;
 }
 \end{verbatim}
 
-To regain ownership, \<s> can be reassigned to a new collection:
+The returned element may also be stored in a variable first and the fulfillment of the obligation of the returned element may also occur after the call to \<remove()>:
 
 \begin{verbatim}
-// s: @MustCallOnElementsUnknown @CalledMethodsOnElements({})
-s = new Socket[n];
-// s: @MustCallOnElements({}) @CalledMethodsOnElements({})
+@OwningCollection List<Socket> foo(@OwningCollection List<Socket> list) {
+  // 'list' is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+  Iterator<Socket> iter = list.iterator();
+  Socket s = iter.next();
+  iter.remove();
+  try {
+    s.close();
+  } catch (Exception e) {
+  }
+  return list;
+}
 \end{verbatim}
 
-Now, the elements of \textit{s} may be assigned in a loop.
+The returned element by \<iter.next()> may have its must-call obligation fulfilled in any way described by the resource leak checker, even by transferring its ownership.
 
-% It is also allowed to have:
-% \begin{verbatim}
-% for (Resource r : arr) {
-%     someMethod(arr);
-% }
-% \end{verbatim}
-% If someMethod is annotated with \<@EnsuresCalledMethodsOnElements(value="#1", methods="x")>, this loop is considered to fulfill the obligation of calling "x" on elements of "arr".
-
-
-\sectionAndLabel{Collections of resources (old)}{resource-leak-collections-old}
-
-The Resource Leak Checker cannot verify code that stores a collection of
-resources in a generic collection (e.g., \<java.util.List>) and then
-resolves the obligations of each element of the collection at once (e.g.,
-by iterating over the \<List>).  In the future, the checker will support
-this.  The remainder of this section explains the implementation issues;
-most users can skip it.
-
-The first implementation issue is that \<@Owning> and \<@NotOwning> are
-declaration annotations rather than type qualifiers, so they cannot be
-written on type arguments. It is possible under the current design to have
-an \code{@Owning List<Socket>}, but not a \code{List<@Owning Socket>}.
-It would be better to make \<@Owning> a type annotation, but this is a
-challenging design problem.
-
-The second implementation issue is the defaulting rule for \<@MustCall> on
-type variable upper bounds.  Currently, this default is \<@MustCall(\{\})>,
-which prevents many false positives in code with type variables that makes
-no use of resources --- an important design principle.
-However, this defaulting rule does have an unfortunate consequence: it is
-an error to write \code{List<Socket>} or any other type with a concrete
-type argument where the type argument itself isn't \<@MustCall(\{\})>. A programmer who
-needs to write such a type while using the Resource Leak Checker has a few
-choices, all of which have some downsides:
-
+Iterators over collections with obligations may also be returned, passed as method or constructor arguments and even be stored in fields. This has some consequences for iterator fields, return types and method/constructor parameters:
 \begin{itemize}
-\item Write \code{List<? extends Socket>}. This rejects calls to \<add()>
-or other methods that require an instance of the type variable, but it
-preserves some of the behavior (e.g., calls to \<remove()> are permitted).
-This is the best choice most of the time if the \<List> is not intended to
-be owning.
-\item Write \code{List<@MustCall Socket>}. This makes it an error to
-add a Socket to the list, since the type of the Socket is
-\<@MustCall("close")> but the list requires \<@MustCall()>.
-\item Suppress one or more warnings.
+  \item If the iterator component type has non-empty \<MustCall> type, for any call to \<Iterator.remove()>, the value returned by the preceding call to \<Iterator.next()> must fulfill its must-call obligaitons.
+  \item If the iterator component type has non-empty \<MustCall> type, any call to \<Iterator.remove()> without preceding call to \<Iterator.remove()> in the same method is unsafe. If the iterator is for example a field, the corresponding \<Iterator.next()> call could have come from a member method.
 \end{itemize}
 
-The recommended way to use the Resource Leak Checker in this situation is
-to rewrite the code to avoid a \<List> of owning resources. If rewriting is
-not possible, the programmer will probably need to suppress a warning and
-then verify the code using a method other than the Resource Leak Checker.
+% \sectionAndLabel{Collections of resources (old)}{resource-leak-collections-old}
+
+% The Resource Leak Checker cannot verify code that stores a collection of
+% resources in a generic collection (e.g., \<java.util.List>) and then
+% resolves the obligations of each element of the collection at once (e.g.,
+% by iterating over the \<List>).  In the future, the checker will support
+% this.  The remainder of this section explains the implementation issues;
+% most users can skip it.
+
+% The first implementation issue is that \<@Owning> and \<@NotOwning> are
+% declaration annotations rather than type qualifiers, so they cannot be
+% written on type arguments. It is possible under the current design to have
+% an \code{@Owning List<Socket>}, but not a \code{List<@Owning Socket>}.
+% It would be better to make \<@Owning> a type annotation, but this is a
+% challenging design problem.
+
+% The second implementation issue is the defaulting rule for \<@MustCall> on
+% type variable upper bounds.  Currently, this default is \<@MustCall(\{\})>,
+% which prevents many false positives in code with type variables that makes
+% no use of resources --- an important design principle.
+% However, this defaulting rule does have an unfortunate consequence: it is
+% an error to write \code{List<Socket>} or any other type with a concrete
+% type argument where the type argument itself isn't \<@MustCall(\{\})>. A programmer who
+% needs to write such a type while using the Resource Leak Checker has a few
+% choices, all of which have some downsides:
+
+% \begin{itemize}
+% \item Write \code{List<? extends Socket>}. This rejects calls to \<add()>
+% or other methods that require an instance of the type variable, but it
+% preserves some of the behavior (e.g., calls to \<remove()> are permitted).
+% This is the best choice most of the time if the \<List> is not intended to
+% be owning.
+% \item Write \code{List<@MustCall Socket>}. This makes it an error to
+% add a Socket to the list, since the type of the Socket is
+% \<@MustCall("close")> but the list requires \<@MustCall()>.
+% \item Suppress one or more warnings.
+% \end{itemize}
+
+% The recommended way to use the Resource Leak Checker in this situation is
+% to rewrite the code to avoid a \<List> of owning resources. If rewriting is
+% not possible, the programmer will probably need to suppress a warning and
+% then verify the code using a method other than the Resource Leak Checker.
 
 
 \sectionAndLabel{Resource Leak Checker annotation inference algorithm}{resource-leak-checker-inference-algo}
