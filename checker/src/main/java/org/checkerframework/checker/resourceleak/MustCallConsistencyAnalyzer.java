@@ -63,6 +63,7 @@ import org.checkerframework.checker.mustcall.qual.NotOwning;
 import org.checkerframework.checker.mustcall.qual.Owning;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsChecker;
+import org.checkerframework.checker.mustcallonelements.qual.CollectionAlias;
 import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.CollectionTransfer.MethodSigType;
@@ -2445,6 +2446,8 @@ public class MustCallConsistencyAnalyzer {
     boolean lhsIsField = lhsElement.getKind() == ElementKind.FIELD;
     boolean lhsIsMcoeUnknown =
         mcoeStore != null && mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, lhs.getTree());
+    boolean rhsIsMcoeUnknown =
+        mcoeStore != null && mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, rhs.getTree());
     MethodTree enclosingMethod = cfg.getEnclosingMethod(assignmentNode.getTree());
     boolean inConstructor = enclosingMethod != null && TreeUtils.isConstructor(enclosingMethod);
     boolean rhsIsField = rhsElement != null && rhsElement.getKind() == ElementKind.FIELD;
@@ -2458,7 +2461,10 @@ public class MustCallConsistencyAnalyzer {
       if (rhsIsField
           && rhsIsOwningCollection
           && lhs.getTree().getKind() != Tree.Kind.ARRAY_ACCESS) {
-        checker.reportError(assignmentNode.getTree(), "illegal.ownership.transfer");
+        checker.reportError(
+            assignmentNode.getTree(),
+            "illegal.ownership.transfer",
+            "Cannot transfer ownership from an @OwningCollection field.");
         return;
       }
       if (enclosingMethod == null) {
@@ -2503,9 +2509,15 @@ public class MustCallConsistencyAnalyzer {
             return;
           }
         } else {
-          // normal assignment to field. final keyword ensures it's the only one.
-          // remove the obligation of the rhs.
-          removeObligationForVar(obligations, rhs);
+          if (rhsIsMcoeUnknown) {
+            // cannot assign OwningCollection field to a write-disabled alias.
+            checker.reportError(
+                assignmentNode.getTree(), "illegal.owningcollection.field.assignment");
+          } else {
+            // normal assignment to field. final keyword ensures it's the only one.
+            // remove the obligation of the rhs.
+            removeObligationForVar(obligations, rhs);
+          }
         }
       } else {
         if (lhsIsField) {
@@ -3445,6 +3457,7 @@ public class MustCallConsistencyAnalyzer {
             && mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, tree);
     if (isOwningCollection && isField) {
       checker.reportError(node.getTree(), "owningcollection.field.returned");
+      return;
     }
 
     MethodTree enclosingMethod = cfg.getEnclosingMethod(node.getTree());
@@ -3454,20 +3467,48 @@ public class MustCallConsistencyAnalyzer {
 
     ModifiersTree modifiers = enclosingMethod.getModifiers();
     boolean returnTypeIsOwningCollection = false;
+    boolean returnTypeIsCollectionAlias = false;
     for (AnnotationTree annoTree : modifiers.getAnnotations()) {
       AnnotationMirror anno = TreeUtils.annotationFromAnnotationTree(annoTree);
       if (AnnotationUtils.areSameByName(anno, OwningCollection.class.getCanonicalName())) {
         returnTypeIsOwningCollection = true;
-        break;
+      } else if (AnnotationUtils.areSameByName(anno, CollectionAlias.class.getCanonicalName())) {
+        returnTypeIsCollectionAlias = true;
       }
     }
 
-    if (isOwningCollection && !returnTypeIsOwningCollection) {
-      checker.reportError(node.getTree(), "owningcollection.return.value", tree);
-    } else if (!isOwningCollection && returnTypeIsOwningCollection) {
-      checker.reportError(node.getTree(), "non.owningcollection.return.value", tree);
-    } else if (isMcoeUnknown) {
-      checker.reportError(node.getTree(), "return.without.ownership", tree);
+    if (returnTypeIsOwningCollection) {
+      if (isMcoeUnknown) {
+        checker.reportError(node.getTree(), "return.without.ownership", tree);
+      } else if (!isOwningCollection) {
+        checker.reportError(node.getTree(), "non.owningcollection.return.value", tree);
+      } else {
+        // OwningCollection, non-write disabled reference. Exactly as intended.
+      }
+    } else if (returnTypeIsCollectionAlias) {
+      if (isMcoeUnknown) {
+        // intended - return an alias
+      } else if (isOwningCollection) {
+        // this is an owning reference. Although it would be safe to return an alias
+        // if the obligations are fulfilled, it would violate the invariant that there
+        // is always exactly one owning reference to a resource collection
+        checker.reportError(
+            node.getTree(),
+            "illegal.ownership.transfer",
+            "Cannot transfer ownership to a CollectionAlias return type. Did you mean to return @OwningCollection?");
+      } else {
+        // not a resource collection.
+        // report warning that the return type annotation is unnecessary.
+        checker.reportWarning(
+            node.getTree(), "unnecessary.collectionalias.return.type", node.getTree());
+      }
+    } else {
+      // no return type annotation
+      if (isMcoeUnknown) {
+        checker.reportError(node.getTree(), "returning.unannotated.owningcollection.alias", tree);
+      } else if (isOwningCollection) {
+        checker.reportError(node.getTree(), "owningcollection.return.value", tree);
+      }
     }
   }
 

@@ -15,6 +15,7 @@ import org.checkerframework.checker.mustcall.MustCallChecker;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsChecker;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsTransfer;
+import org.checkerframework.checker.mustcallonelements.qual.CollectionAlias;
 import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory;
@@ -396,28 +397,45 @@ public abstract class CollectionTransfer extends CFTransfer {
           argElt != null && argElt.getAnnotation(OwningCollection.class) != null;
       boolean paramIsOwningCollection =
           param != null && param.getAnnotation(OwningCollection.class) != null;
+      boolean paramIsCollectionAlias =
+          param != null && param.getAnnotation(CollectionAlias.class) != null;
       boolean argIsMcoeUnknown =
           ((MustCallOnElementsAnnotatedTypeFactory)
                   RLCUtils.getTypeFactory(MustCallOnElementsChecker.class, atypeFactory))
               .isMustCallOnElementsUnknown(res.getRegularStore(), arg.getTree());
       boolean argIsField = argElt != null && argElt.getKind() == ElementKind.FIELD;
 
-      if (argIsMcoeUnknown) {
-        reportError(arg.getTree(), "argument.with.revoked.ownership", arg.getTree());
-      }
-
       if (argIsOwningCollection && argIsField) {
-        reportError(arg.getTree(), "illegal.ownership.transfer");
-      } else if (paramIsOwningCollection) {
-        if (!argIsOwningCollection) {
-          reportError(arg.getTree(), "unexpected.argument.ownership");
+        reportError(
+            arg.getTree(),
+            "illegal.ownership.transfer",
+            "Cannot transfer ownership from an @OwningCollection field.");
+      } else {
+        if (paramIsOwningCollection) {
+          if (argIsMcoeUnknown) {
+            reportError(arg.getTree(), "missing.argument.ownership", param, arg.getTree());
+          } else if (argIsOwningCollection) {
+            JavaExpression argCollection = JavaExpression.fromNode(arg);
+            transformOwningCollectionArg(store, argCollection);
+          } else {
+            reportError(arg.getTree(), "missing.argument.ownership", param, arg.getTree());
+          }
+        } else if (paramIsCollectionAlias) {
+          if (argIsMcoeUnknown) {
+            // write-disabled alias is able to be passed to CollectionAlias
+          } else if (argIsOwningCollection) {
+            // ownership stays at call-site, no transfer
+          } else {
+            reportWarning(
+                arg.getTree(), "unnecessary.collectionalias.annotation", param, arg.getTree());
+          }
         } else {
-          JavaExpression argCollection = JavaExpression.fromNode(arg);
-          transformOwningCollectionArg(store, argCollection);
+          // param cannot hold a resource collection
+          if (argIsMcoeUnknown || argIsOwningCollection) {
+            reportError(
+                arg.getTree(), "missing.collection.ownership.annotation", arg.getTree(), param);
+          }
         }
-      } else if (argIsOwningCollection) {
-        // param non-@OwningCollection and arg @OwningCollection
-        reportError(arg.getTree(), "unexpected.argument.ownership");
       }
     }
     return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
@@ -430,6 +448,16 @@ public abstract class CollectionTransfer extends CFTransfer {
   private void reportError(Tree location, String code, Object... args) {
     if (this instanceof MustCallOnElementsTransfer) {
       atypeFactory.getChecker().reportError(location, code, args);
+    }
+  }
+
+  /**
+   * Wrapper for reporting warnings, such that only one of both subclasses
+   * (MustCallOnElementsTransfer and CalledMethodsOnElementsTransfer) reports a warning.
+   */
+  private void reportWarning(Tree location, String code, Object... args) {
+    if (this instanceof MustCallOnElementsTransfer) {
+      atypeFactory.getChecker().reportWarning(location, code, args);
     }
   }
 

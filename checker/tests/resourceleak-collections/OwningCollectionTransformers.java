@@ -41,7 +41,7 @@ class OwningCollectionTransformers {
     list.set(0, null);
 
     // verify that the ownership remains revoked after the call to set
-    // :: error: argument.with.revoked.ownership
+    // :: error: missing.argument.ownership
     // :: error: argument
     close(list);
   }

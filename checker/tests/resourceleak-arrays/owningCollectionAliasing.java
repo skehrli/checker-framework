@@ -21,7 +21,7 @@ class OwningCollectionAliasingTest {
     // :: error: modification.without.ownership
     nonOwningCollectionAlias[0] = null;
     // method calls should also not work
-    // :: error: argument.with.revoked.ownership
+    // :: error: missing.collection.ownership.annotation
     // :: error: argument
     doSomethingWeirdNonOwning(nonOwningCollectionAlias);
     // however, I can call methods on the array
@@ -42,7 +42,7 @@ class OwningCollectionAliasingTest {
     // :: error: modification.without.ownership
     nonOwningCollectionAlias2[0] = null;
     // method calls should also not work
-    // :: error: argument.with.revoked.ownership
+    // :: error: missing.collection.ownership.annotation
     // :: error: argument
     doSomethingWeirdNonOwning(nonOwningCollectionAlias2);
     // however, I can call methods on the array
@@ -61,7 +61,7 @@ class OwningCollectionAliasingTest {
     // :: error: modification.without.ownership
     sockets[0] = createSocket();
     // method calls should also not work
-    // :: error: argument.with.revoked.ownership
+    // :: error: missing.argument.ownership
     // :: error: argument
     doSomethingWeird(sockets);
 
@@ -77,7 +77,7 @@ class OwningCollectionAliasingTest {
     // :: error: modification.without.ownership
     newOwner2[0] = createSocket();
     // method calls should also not work
-    // :: error: argument.with.revoked.ownership
+    // :: error: missing.argument.ownership
     // :: error: argument
     doSomethingWeird(newOwner2);
     // however, I can call methods on the array
