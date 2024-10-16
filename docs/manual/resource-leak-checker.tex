@@ -1091,12 +1091,12 @@ For example, the following field has an empty \<@MustCallOnElements> type:
 @OwningCollection @MustCallOnElements() List<Socket> listField;
 \end{verbatim}
 
-The \<@MustCallOnElements> type of an \<@OwningCollection> field is invariant over the lifetime of the object. This is because the checker framework analysis does not track method invocations or their order on an object instance. For example, assume there is a method that adds an element to the field, growing the field's \<@MustCallOnElements> obligations. The checker framework does not track, whether this method was called on some instance of the class. Thus, the type of the field must be the same before and after any of the member methods.
+The \<@MustCallOnElements> type of an \<@OwningCollection> field is invariant over the lifetime of the object. That is, the declared \<@MustCallOnElements> type of the field is an upper bound and is not allowed to increase.
 
 This imposes some restrictions on \<@OwningCollection> fields to ensure soundness:
 
 \begin{itemize}
-  \item An \@OwningCollection> field cannot transfer its ownership. This means that it cannot be passed as an argument to an \<@OwningCollection> parameter, be returned or be on the right-hand side of an assignment where the left-hand side is an \@OwningCollection> reference. The reason is that this would require tracking whether the method containing this assignment has been invoked on any instance of the class and change the behavior of the field after that (it's now write-disabled). Since the checker framework does not do this type of analysis, ownership transfers of an \<@OwningCollection> field are not permitted.
+  \item An \@OwningCollection> field cannot transfer its ownership. This means that it cannot be passed as an argument to an \<@OwningCollection> parameter, be returned or be on the right-hand side of an assignment where the left-hand side is an \<@OwningCollection> reference. The reason is that this would require tracking whether the method containing this assignment has been invoked on any instance of the class and change the behavior of the field after that (it would now be write-disabled). Since the checker framework does not do this type of analysis, ownership transfers of an \<@OwningCollection> field are not permitted.
   \item The elements of an \<@OwningCollection> array field can only be assigned in the constructor (and using only one assignment loop).
   \item Any overwriting writes to the collection elements outside the constructor are not allowed. This is because the precondition of an overwriting write is that the collection has no open obligations, which is never the case for an \<@OwningCollection> field.
 \end{itemize}
