@@ -78,6 +78,7 @@ public abstract class CollectionTransfer extends CFTransfer {
     UNSAFE, /* Methods that are either not handled or handled and cosidered unsafe. */
 
     /* method signatures that require special handling. */
+    CLEAR,
     ADD_E,
     ADD_INT_E,
     SET,
@@ -109,6 +110,8 @@ public abstract class CollectionTransfer extends CFTransfer {
                 .map(param -> param.asType().toString())
                 .collect(Collectors.joining(",", "(", ")"));
     switch (methodSignature) {
+      case "clear()":
+        return MethodSigType.CLEAR;
       case "add(E)":
         return MethodSigType.ADD_E;
       case "add(int,E)":
@@ -120,6 +123,14 @@ public abstract class CollectionTransfer extends CFTransfer {
       case "isEmpty()":
       case "size()":
       case "get(int)":
+      case "contains(Object)":
+      case "containsAll(Collection<?>)":
+      case "equals(Object)":
+      case "hashCode()":
+      case "indexOf(Object)":
+      case "lastIndexOf(Object)":
+      case "remove(int)":
+      case "sort(Comparator<? super E>)":
         return MethodSigType.SAFE;
       default:
         System.out.println("unhandled method " + methodSignature);
@@ -181,6 +192,17 @@ public abstract class CollectionTransfer extends CFTransfer {
    */
   protected abstract TransferResult<CFValue, CFStore> transformFulfillingLoop(
       PotentiallyFulfillingLoop loop, TransferResult<CFValue, CFStore> res);
+
+  /**
+   * The abstract transformer for {@code Collection.clear()}
+   *
+   * @param node the {@code MethodInvocationNode}
+   * @param res the {@code TransferResult} containing the store to be edited
+   * @param receiver JavaExpression of the collection, whose type should be changed
+   * @return updated {@code TransferResult}
+   */
+  protected abstract TransferResult<CFValue, CFStore> transformCollectionClear(
+      MethodInvocationNode node, TransferResult<CFValue, CFStore> res, JavaExpression receiver);
 
   /**
    * The abstract transformer for {@code Collection.add(E)}
@@ -295,6 +317,9 @@ public abstract class CollectionTransfer extends CFTransfer {
         case SET:
           res = transformListSet(node, res, receiverJx);
           break;
+        case CLEAR:
+          res = transformCollectionClear(node, res, receiverJx);
+          break;
         case ITERATOR:
 
           /*
@@ -333,6 +358,7 @@ public abstract class CollectionTransfer extends CFTransfer {
            * case.
            */
         case ADD_E:
+        case CLEAR:
         case ADD_INT_E:
         case SET:
         case ITERATOR:

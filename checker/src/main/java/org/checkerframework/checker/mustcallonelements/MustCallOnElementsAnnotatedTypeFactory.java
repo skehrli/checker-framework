@@ -399,9 +399,10 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
     } else {
       AnnotationValue av =
           mcoeAnno.getElementValues().get(this.getMustCallOnElementsValueElement());
-      return av == null
-          ? Collections.emptyList()
-          : AnnotationUtils.annotationValueToList(av, String.class);
+      if (av == null) {
+        throw new BugInCF("No MustCallOnElements annotation for " + collectionJx);
+      }
+      return AnnotationUtils.annotationValueToList(av, String.class);
     }
   }
 
@@ -446,6 +447,8 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
    * addComputedTypeAnnotations(Element, AnnotatedTypeMirror).
    * Here, we change the return type of methods annotated CollectionAlias to MustCallOnElementsUnknown,
    * such that at call-site, the returned alias will be guarded by the proper restrictions.
+   *
+   * Also the type of fields when they are accessed.
    */
   @Override
   public void addComputedTypeAnnotations(Tree tree, AnnotatedTypeMirror type, boolean useFlow) {
@@ -459,6 +462,19 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
       Element elt = TreeUtils.elementFromTree(tree);
       if (getDeclAnnotation(elt, CollectionAlias.class) != null) {
         returnType.replaceAnnotation(TOP);
+      }
+    } else if (type.getKind() == TypeKind.DECLARED) {
+      Element elt = TreeUtils.elementFromTree(tree);
+      if (elt != null) {
+        boolean isOwningCollection = getDeclAnnotation(elt, OwningCollection.class) != null;
+        boolean isField = elt.getKind() == ElementKind.FIELD;
+
+        if (isOwningCollection && isField) {
+          boolean noManualMcoeAnno = RLCUtils.getMcoeValuesInManualAnno(elt.asType()) == null;
+          if (noManualMcoeAnno) { // don't override an existing manual annotation
+            changeMcoeTypeToDefault(elt, type);
+          }
+        }
       }
     }
   }

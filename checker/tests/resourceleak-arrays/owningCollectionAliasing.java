@@ -130,7 +130,7 @@ class OwningCollectionAliasingTest {
     // since the default Mcoe type for @OwningCollection parameters is the Mc values of the
     // component type, sockets has Mcoe("close") here. Thus, it is not safe to write to its
     // elements, as there might be a resource there that has not been closed.
-    // :: error: illegal.owningcollection.overwrite
+    // :: error: unsafe.owningcollection.modification
     sockets[0] = createSocket();
   }
 

@@ -1670,18 +1670,10 @@ public class MustCallConsistencyAnalyzer {
               // mcoeValues would be null if receiver was McoeUnknown, but then, the isRoAlias
               // branch
               // would've been taken and the method had returned, so mcoeValues is not null here.
-              // If there are no McoeValues in the store, use the default Mcoe values.
-              if (mcoeValues.isEmpty()) {
-                MustCallAnnotatedTypeFactory mcAtf = cmAtf.getMustCallAnnotatedTypeFactory();
-                mcoeValues.addAll(
-                    RLCUtils.getMcoeValuesOfOwningCollection(
-                        TreeUtils.elementFromTree(receiver.getTree()), mcAtf));
-              }
               if (!mcoeValues.isEmpty()) {
                 checker.reportError(
                     min.getTree(),
-                    "illegal.owningcollection.overwrite",
-                    receiver.getTree(),
+                    "unsafe.owningcollection.modification",
                     formatMissingMustCallMethods(new ArrayList<>(mcoeValues)));
               }
             } else {
@@ -1714,6 +1706,9 @@ public class MustCallConsistencyAnalyzer {
             argExpr = NodeUtils.removeCasts(args.get(1));
             argVar = getTempVarOrNode(argExpr);
             removeObligationForVar(obligations, argVar);
+            checkOverwritingMethodOnOwningCollection.run();
+            return;
+          case CLEAR:
             checkOverwritingMethodOnOwningCollection.run();
             return;
           case ITERATOR:
@@ -1780,6 +1775,7 @@ public class MustCallConsistencyAnalyzer {
              * They are handled in the above switch-case statement.
              */
           case ADD_E:
+          case CLEAR:
           case ADD_INT_E:
           case SET:
           case ITERATOR:
@@ -1792,7 +1788,6 @@ public class MustCallConsistencyAnalyzer {
         // is meant for user-defined methods that return an Iterator
 
         if (shouldTrackIterator(methodCallReturnType)) {
-          System.out.println("adding ob for: " + node);
           obligations.add(new IteratorObligation(Obligation.fromTree(methodCallTmpVar.getTree())));
         }
       }
@@ -4142,7 +4137,7 @@ public class MustCallConsistencyAnalyzer {
       //         + cmoeValues);
     } else {
       // System.out.println(
-      //     "verifying assignmentloop "
+      //     "verifying modification "
       //         + obligation.hashCode()
       //         + ": "
       //         + obligation
@@ -4167,8 +4162,7 @@ public class MustCallConsistencyAnalyzer {
         if (reportErrors) {
           checker.reportError(
               occurence,
-              "illegal.owningcollection.overwrite",
-              occurence.toString(),
+              "unsafe.owningcollection.modification",
               formatMissingMustCallMethods(new ArrayList<>(mcoeValues)));
         }
         return false;

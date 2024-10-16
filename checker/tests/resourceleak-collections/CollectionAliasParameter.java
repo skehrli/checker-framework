@@ -41,7 +41,7 @@ class CollectionAliasParameterTest {
     acceptOwningCollectionAlias(alias);
     // test that alias is still not write-enabled
     try {
-      // :: error: illegal.owningcollection.overwrite
+      // :: error: unsafe.owningcollection.modification
       list.set(0, new Socket(myHost, myPort));
     } catch (Exception e) {
     }

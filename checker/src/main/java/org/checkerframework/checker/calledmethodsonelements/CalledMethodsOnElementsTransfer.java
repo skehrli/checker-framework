@@ -109,6 +109,25 @@ public class CalledMethodsOnElementsTransfer extends CollectionTransfer {
   }
 
   /**
+   * The abstract transformer for {@code Collection.clear()}
+   *
+   * <p>The method does not remove the called methods values, since disposing method often clear the
+   * collection after closing the obligations, which would cause the postcondition assertion that
+   * the method was called on elements fail. If some elements are added after a clear, these will
+   * reset the cmoe value, so this transformer is sound.
+   *
+   * @param node the {@code MethodInvocationNode}
+   * @param res the {@code TransferResult} containing the store to be edited
+   * @param receiver JavaExpression of the collection, whose type should be changed
+   * @return updated {@code TransferResult}
+   */
+  @Override
+  protected TransferResult<CFValue, CFStore> transformCollectionClear(
+      MethodInvocationNode node, TransferResult<CFValue, CFStore> res, JavaExpression receiver) {
+    return res;
+  }
+
+  /**
    * The abstract transformer for {@code Collection.add(int, E)}. Resets the {@code
    * CalledMethodsOnElements} type of the recipient {@code Collection} to {@code
    * CalledMethodsOnElementsBottom}.

@@ -201,8 +201,6 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
    */
   private CFStore transformWriteToOwningCollection(
       JavaExpression receiverCollection, Node rhs, CFStore store) {
-    // check precondition - to reassign a collection element, the type of the collection
-    // must be @MustCallOnElements({})
     List<String> previousMcoeMethods =
         atypeFactory.getMustCallOnElementsObligations(store, receiverCollection);
     if (previousMcoeMethods == null) {
@@ -298,6 +296,34 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
     assert args.size() == 2
         : "calling abstract transformer for Collection.add(int,E), but params are: " + args;
     CFStore store = transformWriteToOwningCollection(receiver, args.get(1), res.getRegularStore());
+    return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
+  }
+
+  /**
+   * The abstract transformer for {@code Collection.clear()}
+   *
+   * @param node the {@code MethodInvocationNode}
+   * @param res the {@code TransferResult} containing the store to be edited
+   * @param receiver JavaExpression of the collection, whose type should be changed
+   * @return updated {@code TransferResult}
+   */
+  @Override
+  protected TransferResult<CFValue, CFStore> transformCollectionClear(
+      MethodInvocationNode node, TransferResult<CFValue, CFStore> res, JavaExpression receiver) {
+    List<Node> args = node.getArguments();
+    assert args.size() == 0
+        : "calling abstract transformer for Collection.clear(), but params are: " + args;
+    CFStore store = res.getRegularStore();
+    List<String> previousMcoeMethods =
+        atypeFactory.getMustCallOnElementsObligations(store, receiver);
+    if (previousMcoeMethods == null) {
+      // previous value is @MustCallOnElementsUnknown - i.e. clearing illegal. Consistency
+      // analyzer throws error. Don't perform transformation.
+    } else {
+      AnnotationMirror newType = getMustCallOnElementsType(new HashSet<>());
+      CFValue newCFVal = analysis.createSingleAnnotationValue(newType, receiver.getType());
+      store.replaceValue(receiver, newCFVal);
+    }
     return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
   }
 

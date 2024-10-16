@@ -39,7 +39,7 @@ class OwningCollectionFields {
 
     public void illegalOverwrite() {
       // field has possibly open obligation "close", cannot overwrite elements
-      // :: error: illegal.owningcollection.overwrite
+      // :: error: unsafe.owningcollection.modification
       collection.set(0, null);
     }
 
