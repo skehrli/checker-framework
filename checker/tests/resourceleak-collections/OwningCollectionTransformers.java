@@ -25,13 +25,13 @@ class OwningCollectionTransformers {
       list.add(new Socket(myHost, myPort));
 
       // try to override an element while the list has open calling obligations
-      // :: error: illegal.owningcollection.overwrite
+      // :: error: unsafe.owningcollection.modification
       list.set(0, new Socket(myHost, myPort));
     } catch (Exception e) {
     }
 
     // try to override an element while the list has open calling obligations
-    // :: error: illegal.owningcollection.overwrite
+    // :: error: unsafe.owningcollection.modification
     list.set(0, null);
 
     // lose ownership and then try to set an element, to verify that the write is rejected
@@ -41,7 +41,7 @@ class OwningCollectionTransformers {
     list.set(0, null);
 
     // verify that the ownership remains revoked after the call to set
-    // :: error: argument.with.revoked.ownership
+    // :: error: missing.argument.ownership
     // :: error: argument
     close(list);
   }
@@ -247,7 +247,7 @@ class OwningCollectionTransformers {
     }
     for (int i = 0; i < n; i++) {
       try {
-        // :: error: illegal.owningcollection.overwrite
+        // :: error: unsafe.owningcollection.modification
         list.set(i, new Socket(myHost, myPort));
       } catch (Exception e) {
       }

@@ -74,11 +74,11 @@ class PatternMatchOwningCollectionLoops {
     try {
       // since arr now has open calling obligations, this write is not allowed,
       // since it could overwrite previous elements
-      // :: error: illegal.owningcollection.overwrite
+      // :: error: unsafe.owningcollection.modification
       arr[1] = new Socket(myHost, myPort);
     } catch (Exception e) {
     }
-    // :: error: illegal.owningcollection.overwrite
+    // :: error: unsafe.owningcollection.modification
     arr[0] = null;
   }
 
@@ -285,7 +285,7 @@ class PatternMatchOwningCollectionLoops {
     }
     for (int i = 0; i < n; i++) {
       try {
-        // :: error: illegal.owningcollection.overwrite
+        // :: error: unsafe.owningcollection.modification
         arr[i] = new Socket(myHost, myPort);
       } catch (Exception e) {
       }

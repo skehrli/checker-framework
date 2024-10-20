@@ -3,6 +3,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.checkerframework.checker.calledmethodsonelements.qual.EnsuresCalledMethodsOnElements;
 import org.checkerframework.checker.mustcall.qual.InheritableMustCall;
+import org.checkerframework.checker.mustcallonelements.qual.CollectionAlias;
 import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 
 class OwningCollectionFields {
@@ -22,9 +23,23 @@ class OwningCollectionFields {
       this.collection = collection;
     }
 
+    /*
+     * This constructor tries to assign the field to a collection alias.
+     * This would make the field also a write-disabled alias. This is illegal,
+     * since we are not able to enforce the field respecting this.
+     * A field has to be assigned to something it can get ownership over.
+     *
+     * Ignore int i, it is only there so that this constructor has a different signature
+     * to the first one.
+     */
+    public OwnershipTaker(@CollectionAlias List<Socket> collection, int i) {
+      // :: error: illegal.owningcollection.field.assignment
+      this.collection = collection;
+    }
+
     public void illegalOverwrite() {
       // field has possibly open obligation "close", cannot overwrite elements
-      // :: error: illegal.owningcollection.overwrite
+      // :: error: unsafe.owningcollection.modification
       collection.set(0, null);
     }
 

@@ -25,7 +25,7 @@ class OwningarrayParameterPassing {
   public void passNonOwningToOwning() {
     Resource[] nonOwningArr = new Resource[n];
     // non-owning to owning is illegal
-    // :: error: unexpected.argument.ownership
+    // :: error: missing.argument.ownership
     owningParameter(nonOwningArr);
   }
 
@@ -43,7 +43,7 @@ class OwningarrayParameterPassing {
     }
     // owning to non-owning is illegal, since the non-owning parameter would be an alias
     // :: error: argument
-    // :: error: unexpected.argument.ownership
+    // :: error: missing.collection.ownership.annotation
     nonOwningParameter(owningArr);
   }
 
@@ -88,14 +88,13 @@ class OwningarrayParameterPassing {
     // none of the methods should be able to be called after that.
     OwningCollectionWrapper wrapper = new OwningCollectionWrapper(owningArr);
     // :: error: argument
-    // :: error: argument.with.revoked.ownership
-    // :: error: unexpected.argument.ownership
+    // :: error: missing.collection.ownership.annotation
     nonOwningParameter(owningArr);
     // :: error: argument
-    // :: error: argument.with.revoked.ownership
+    // :: error: missing.argument.ownership
     owningParameter(owningArr);
     // :: error: argument
-    // :: error: argument.with.revoked.ownership
+    // :: error: missing.argument.ownership
     owningParameterWithPartialObligations(owningArr);
     // reallocate owningArr, giving it back ownership over the new array
     owningArr = new Resource[n];
@@ -104,7 +103,7 @@ class OwningarrayParameterPassing {
     }
     // this method call now fails due to the different ownership annotations
     // :: error: argument
-    // :: error: unexpected.argument.ownership
+    // :: error: missing.collection.ownership.annotation
     nonOwningParameter(owningArr);
     // this method call now succeeds and clears the obligations of the new array
     owningParameter(owningArr);

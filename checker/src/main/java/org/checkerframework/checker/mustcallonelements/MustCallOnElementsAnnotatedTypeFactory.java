@@ -24,9 +24,11 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.VariableElement;
+import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcall.MustCallChecker;
+import org.checkerframework.checker.mustcallonelements.qual.CollectionAlias;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElements;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElementsUnknown;
 import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
@@ -397,9 +399,10 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
     } else {
       AnnotationValue av =
           mcoeAnno.getElementValues().get(this.getMustCallOnElementsValueElement());
-      return av == null
-          ? Collections.emptyList()
-          : AnnotationUtils.annotationValueToList(av, String.class);
+      if (av == null) {
+        throw new BugInCF("No MustCallOnElements annotation for " + collectionJx);
+      }
+      return AnnotationUtils.annotationValueToList(av, String.class);
     }
   }
 
@@ -440,36 +443,41 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   }
 
   /*
-   * Change the default @MustCallOnElements type value of @OwningCollection fields to contain the @MustCall
-   * methods of the component, if no manual annotation is present.
-   * For example the type of: final @OwningCollection Socket[] s is changed to @MustCallOnElements("close").
+   * The bulk of adding computed type annotations happens in the other overload
+   * addComputedTypeAnnotations(Element, AnnotatedTypeMirror).
+   * Here, we change the return type of methods annotated CollectionAlias to MustCallOnElementsUnknown,
+   * such that at call-site, the returned alias will be guarded by the proper restrictions.
+   *
+   * Also the type of fields when they are accessed.
    */
-  // @Override
-  // public void addComputedTypeAnnotations(Tree tree, AnnotatedTypeMirror type, boolean useFlow) {
-  //   super.addComputedTypeAnnotations(tree, type, useFlow);
-  //   if (tree instanceof VariableTree) {
-  //     VariableTree varTree = (VariableTree) tree;
-  //     Element elt = TreeUtils.elementFromDeclaration(varTree);
-  //     boolean noMcoeAnno = true;
-  //     for (AnnotationMirror paramAnno : elt.asType().getAnnotationMirrors()) {
-  //       if (AnnotationUtils.areSameByName(paramAnno,
-  // MustCallOnElements.class.getCanonicalName())) {
-  //         // is @MustCallOnElements annotation
-  //         noMcoeAnno = false;
-  //         break;
-  //       }
-  //     }
-  //     if (noMcoeAnno) { // don't override an existing manual annotation
-  //       if ((elt.getKind() == ElementKind.FIELD || elt.getKind() == ElementKind.PARAMETER)
-  //           && getDeclAnnotation(elt, OwningCollection.class) != null) {
-  //         TypeMirror componentType = ((ArrayType) elt.asType()).getComponentType();
-  //         List<String> mcoeObligationsOfOwningField = getMustCallValuesForType(componentType);
-  //         AnnotationMirror newType = getMustCallOnElementsType(mcoeObligationsOfOwningField);
-  //         type.replaceAnnotation(newType);
-  //       }
-  //     }
-  //   }
-  // }
+  @Override
+  public void addComputedTypeAnnotations(Tree tree, AnnotatedTypeMirror type, boolean useFlow) {
+    super.addComputedTypeAnnotations(tree, type, useFlow);
+    if (type.getKind() == TypeKind.EXECUTABLE) {
+      AnnotatedExecutableType methodType = (AnnotatedExecutableType) type;
+
+      // set type of CollectionAlias return type to MustCallOnElementsUnknown to make them
+      // a read-only alias, irrespective of manual annotations
+      AnnotatedTypeMirror returnType = methodType.getReturnType();
+      Element elt = TreeUtils.elementFromTree(tree);
+      if (getDeclAnnotation(elt, CollectionAlias.class) != null) {
+        returnType.replaceAnnotation(TOP);
+      }
+    } else if (type.getKind() == TypeKind.DECLARED) {
+      Element elt = TreeUtils.elementFromTree(tree);
+      if (elt != null) {
+        boolean isOwningCollection = getDeclAnnotation(elt, OwningCollection.class) != null;
+        boolean isField = elt.getKind() == ElementKind.FIELD;
+
+        if (isOwningCollection && isField) {
+          boolean noManualMcoeAnno = RLCUtils.getMcoeValuesInManualAnno(elt.asType()) == null;
+          if (noManualMcoeAnno) { // don't override an existing manual annotation
+            changeMcoeTypeToDefault(elt, type);
+          }
+        }
+      }
+    }
+  }
 
   /*
    * Change the default @MustCallOnElements type value of @OwningCollection fields and @OwningCollection
@@ -490,6 +498,14 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
       // change the type of that param in the method invocation
       ExecutableElement method = (ExecutableElement) elt;
       AnnotatedExecutableType methodType = (AnnotatedExecutableType) type;
+
+      // set type of CollectionAlias return type to MustCallOnElementsUnknown to make them
+      // a read-only alias, irrespective of manual annotations
+      AnnotatedTypeMirror returnType = methodType.getReturnType();
+      if (getDeclAnnotation(method, CollectionAlias.class) != null) {
+        returnType.replaceAnnotation(TOP);
+      }
+
       Iterator<? extends VariableElement> paramIterator = method.getParameters().iterator();
       Iterator<AnnotatedTypeMirror> paramTypeIterator = methodType.getParameterTypes().iterator();
 
@@ -505,10 +521,15 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
           if (noManualMcoeAnno) {
             changeMcoeTypeToDefault(param, paramType);
           }
+        } else if (getDeclAnnotation(param, CollectionAlias.class) != null) {
+          // set type of CollectionAlias params to MustCallOnElementsUnknown to make them
+          // a read-only alias, irrespective of manual annotations
+          paramType.replaceAnnotation(TOP);
         }
       }
     } else if (elt instanceof VariableElement) {
       boolean isOwningCollection = getDeclAnnotation(elt, OwningCollection.class) != null;
+      boolean isCollectionAlias = getDeclAnnotation(elt, CollectionAlias.class) != null;
       boolean isMethodParameter = elt.getKind() == ElementKind.PARAMETER;
       boolean isField = elt.getKind() == ElementKind.FIELD;
 
@@ -517,6 +538,10 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
         if (noManualMcoeAnno) { // don't override an existing manual annotation
           changeMcoeTypeToDefault(elt, type);
         }
+      } else if (isCollectionAlias && isMethodParameter) {
+        // set type of CollectionAlias params to MustCallOnElementsUnknown to make them
+        // a read-only alias, irrespective of manual annotations
+        type.replaceAnnotation(TOP);
       }
     }
   }

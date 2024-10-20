@@ -22,7 +22,7 @@ class OwningCollectionAliasingForCollectionsTest {
     // :: error: modification.without.ownership
     nonOwningCollectionAlias.set(0, null);
     // method calls should also not work
-    // :: error: argument.with.revoked.ownership
+    // :: error: missing.collection.ownership.annotation
     // :: error: argument
     doSomethingWeird(nonOwningCollectionAlias);
     // however, I can call methods on the array
@@ -42,7 +42,7 @@ class OwningCollectionAliasingForCollectionsTest {
     // :: error: modification.without.ownership
     nonOwningCollectionAlias2.set(0, null);
     // method calls should also not work
-    // :: error: argument.with.revoked.ownership
+    // :: error: missing.collection.ownership.annotation
     // :: error: argument
     doSomethingWeird(nonOwningCollectionAlias2);
     // however, I can call methods on the array
