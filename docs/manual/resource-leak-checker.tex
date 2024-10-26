@@ -635,12 +635,113 @@ on the indicated expression (e.g., as a cast).
 
 \sectionAndLabel{Collections of resources}{resource-leak-collections}
 
-The Resource Leak Checker handles homogeneous collections of resources. Arrays and implementing classes of \<Java.util.Collection> are supported. In a homogeneous collection, every element
-has exactly the same must-call and called-methods properties.
+The Resource Leak Checker handles homogeneous collections of resources. In a homogeneous collection, every element
+has exactly the same must-call and called-methods properties. Arrays and classes that implement \<Java.util.Collection> are supported.
 
-For many operations that are intended to change the type of the collection elements, for instance to fulfill calling obligations, the only way to do so while maintaining
-homogeneity is by using a loop.  The Resource Leak Checker permits
-specific types of loops, as explained below.
+% To fulfill the must-call obligations of the elements of a collection, it must be fulfilled for all elements at the same time to maintain homogeneity, which can only be achieved in a loop. To ensure a loop operates on all elements of a collection, the Resource Leak Checker puts some constraints on such a loop, as explained in Section~\ref{resource-leak-collections-loops}.
+
+\subsectionAndLabel{Declaration of collections of resources}{resource-leak-collections-declaration}
+By default, collections cannot take on calling obligations of resources. Assigning a resource with open calling obligations to a collection in general does not satisfy the obligations of the element:
+
+\begin{verbatim}
+Socket[] s = new Socket[n];
+s[0] = new Socket(myHost, myPort);
+\end{verbatim}
+
+\begin{verbatim}
+error: [required.method.not.called] @MustCall method close may not have been invoked on new
+Socket(myHost, myPort) or any of its aliases.
+  s[0] = new Socket(myHost, myPort);
+         ^
+The type of object is: java.net.Socket.
+Reason for going out of scope: regular method exit
+\end{verbatim}
+
+For a collection to be able to take on calling obligations over its elements, it must be annotated \<@OwningCollection>. The annotation indicates that each resource in the collection is owned by the reference.
+
+\begin{Verbatim}
+@OwningCollection Socket[] s = new Socket[n];
+// The type of `s` is now  @MustCallOnElements({}) @CalledMethodsOnElements({})
+\end{Verbatim}
+
+The values that must be called on the collection elements are tracked in the \<@MustCallOnElements> type of the collection and the already called methods are tracked in the \<@CalledMethodsOnElements> type. The type system is explained in more detail in Section~\ref{resource-leak-collections-mcoe-cmoe}.
+
+The \<@OwningCollection> annotation can also be used on a \<Java.util.Collection>, for example a List:
+\begin{Verbatim}
+@OwningCollection List<Socket> s = new ArrayList<Socket>();
+// The type of `s` is now  @MustCallOnElements({}) @CalledMethodsOnElements({})
+\end{Verbatim}
+
+Initially, \<s> is \<@MustCallOnElements({})>, i.e. the collection has no calling obligations, since it does not yet hold any resources. Here, \<s> is a local variable. For method parameters and fields, the default type of \<@OwningCollection> references is \<@MustCallOnElements(S)>, where S is the set of \<@MustCall> obligations of the component type. This is to reduce the need for many manual annotations. If \<s> was a field or method parameter, its default type would be \<@MustCallOnElements({"close"})>, since Socket is \<MustCall("close")>.
+
+Since \<s> has no open calling obligations, we can simply assign a \<Socket> to its elements. Now, the type of \<s> is \<@MustCallOnElements({"close"})> and the obligation for the created \<Socket> is fulfilled by assigning it into the \<@OwningCollection>:
+
+\begin{verbatim}
+@OwningCollection Socket[] s = new Socket[n];
+// The type of `s` is @MustCallOnElements({}) @CalledMethodsOnElements({})
+try {
+  s[0] = new Socket(myHost, myPort); // legal assignment
+} catch (Exception e) {
+}
+// The type of `s` is now  @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+\end{verbatim}
+
+Since an array assignment potentially makes the element that previously lived there unreachable, it is not safe to assign to an array with open calling obligations. That means that a subsequent write to the array reports an error, even if it is to an index that was not previously inhabited:
+
+\begin{verbatim}
+// Assume the type of `s` is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+try {
+  s[1] = new Socket(myHost, myPort); // illegal assignment
+} catch (Exception e) {
+}
+\end{verbatim}
+
+\begin{verbatim}
+error: [illegal.owningcollection.overwrite] Elements of @OwningCollection s overwritten
+ with possibly open obligations: method close.
+      s[1] = new Socket(myHost, myPort);
+      ^
+\end{verbatim}
+
+If multiple elements are to be assigned to an \<@OwningCollection> array, a special syntax-matched assigning loop should be used (Section~\ref{resource-leak-collections-assign-elements}).
+
+For collections, on the other hand, many commonly used methods for assigning elements to the collection are not overwriting. This means that the operation has no precondition regarding the \<@MustCallOnElements> type of the \<@OwningCollection> and may always be executed. For example, consider the local variable \<socketList>:
+
+\begin{verbatim}
+@OwningCollection List<Socket> socketList = new List<Socket>();
+// The type of `s` is @MustCallOnElements({}) @CalledMethodsOnElements({})
+try {
+  s.add(new Socket(myHost, myPort));
+}
+// Now, the type of `s` is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+try {
+  s.add(new Socket(myHost, myPort));
+}
+// The type of `s` is still @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+\end{verbatim}
+
+Calling \<add(Socket)> on the \<@OwningCollection> \textit{socketList} removes the obligation for the Socket object and instead sets the \<MustCallOnElements> type of \textit{socketList} to the union of its previous \<MustCallOnElements> values and the \<MustCall> values of the socket object. In this case, this means that \textit{socketList} now has type  \<@MustCallOnElements({"close"})>. In general, any writing method on a collection has this behavior of setting the \<@MustCallOnElements> type of the collection to the union of its previous \<@MustCallOnElements> values and the \<@MustCall> type values of the argument and removing the obligation of the argument.
+
+If \<socketList> was a field, the rules are slightly more constrained and discussed in detail in Section~\ref{resource-leak-collections-fields}.
+
+Using any non-overwriting method, such as \<Collection.add(E)>, the discussed lack of precondition for the operation means that it can be used arbitrarily, also in loops without any additional constraints by the checker. The following loop is perfectly legal for example:
+
+\begin{verbatim}
+@OwningCollection List<Socket> socketList = new List<Socket>();
+// The type of `s` is @MustCallOnElements({}) @CalledMethodsOnElements({})
+int i = 0;
+while (++i < n) {
+  try {
+    s.add(new Socket(myHost, myPort));
+  }
+  // Now, the type of `s` is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+}
+// After this loop, the type of `s` is still @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
+\end{verbatim}
+
+For overwriting methods on collections, such as \<List.set(int, E)>, the precondition is also that the \<@OwningCollection> has no open calling obligations.
+
+Since for arrays, the only way to assign elements is by using the overwriting assignment operator, a syntax-matched loop construct with special handling is provided. It is discussed in the following section (Section~\ref{resource-leak-collections-assign-elements}). There is no such equivalent construct for overwriting methods on collections (classes implementing \<Java.util.Collection>).
 
 \subsectionAndLabel{\<@MustCall> and \<@CalledMethods> for collections}{resource-leak-collections-mcoe-cmoe}
 \MustCallOnElements and \<@CalledMethodsOnElements> provide similar semantics for collections as \<@MustCall> and \<@CalledMethods> do for objects.
@@ -676,96 +777,10 @@ CalledMethodsOnElements({"b"})           CalledMethodsOnElements({"a"})
 \end{verbatim}
 The default type for any declaration is top, that is, \<@CalledMethodsOnElements(\{\})>.
 
-\subsectionAndLabel{Declaration of collections of resources}{resource-leak-collections-declaration}
-
-To indicate that each resource in a collection is owned by the reference, write the \<@OwningCollection> declaration annotation:
-
-\begin{Verbatim}
-@OwningCollection Socket[] s = new Socket[n];
-// The type of `s` is now  @MustCallOnElements({}) @CalledMethodsOnElements({})
-\end{Verbatim}
-
-The same annotation can be used on implementing classes of \<Java.util.Collection>, for example a List:
-\begin{Verbatim}
-@OwningCollection List<Socket> s = new ArrayList<Socket>();
-// The type of `s` is now  @MustCallOnElements({}) @CalledMethodsOnElements({})
-\end{Verbatim}
-
-Initially, \<s> is \<@MustCallOnElements({})>, i.e. the collection has no calling obligations, since it does not yet hold any resources. Here, \<s> is a local variable. For method parameters and fields, the default type of \<@OwningCollection> references is \<@MustCallOnElements(S)>, where S is the set of \<@MustCall> obligations of the component type. If \<s> was a field or method parameter, its default type would be \<@MustCallOnElements({"close"})>, since Socket is \<MustCall("close")>.
-
-Since \<s> has no open calling obligations, we can simply assign a \<Socket> to its elements. Now, the type of \<s> is \<@MustCallOnElements({"close"})> and the obligation for the created \<Socket> is fulfilled by assigning it into the \<@OwningCollection>:
-
-\begin{verbatim}
-@OwningCollection Socket[] s = new Socket[n];
-// The type of `s` is now  @MustCallOnElements({}) @CalledMethodsOnElements({})
-try {
-  s[0] = new Socket(myHost, myPort); // illegal assignment
-} catch (Exception e) {
-}
-// The type of `s` is now  @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
-\end{verbatim}
-
-Since an array assignment potentially makes the element that previously lived there unreachable, it is not safe to assign to an array with open calling obligations. That means that a subsequent write to the array reports an error, even if it is to an index that was not previously inhabited:
-
-\begin{verbatim}
-// Assume the type of `s` is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
-try {
-  s[1] = new Socket(myHost, myPort); // illegal assignment
-} catch (Exception e) {
-}
-\end{verbatim}
-
-\begin{verbatim}
-error: [illegal.owningcollection.overwrite] Elements of @OwningCollection s overwritten
- with possibly open obligations: method close.
-      s[1] = new Socket(myHost, myPort);
-      ^
-\end{verbatim}
-
-If multiple elements are to be assigned to an \<@OwningCollection> array, a special syntax-matched assigning loop should be used (Section~\ref{resource-leak-collections-assign-elements}).
-
-For collections on the other hand, many commonly used methods for assigning elements to the collection are not overwriting. This means that the operation has no precondition regarding the \<@MustCallOnElements> type of the \<@OwningCollection> and may always be executed. For example, consider the local variable \<socketList>:
-
-\begin{verbatim}
-@OwningCollection List<Socket> socketList = new List<Socket>();
-// The type of `s` is @MustCallOnElements({}) @CalledMethodsOnElements({})
-try {
-  s.add(new Socket(myHost, myPort));
-}
-// Now, the type of `s` is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
-try {
-  s.add(new Socket(myHost, myPort));
-}
-// The type of `s` is still @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
-\end{verbatim}
-
-Calling \<add(Socket)> on the \<@OwningCollection> \textit{socketList} removes the obligation for the Socket object and instead unites its \<@MustCall> type values with the \MustCallOnElements type values of \textit{socketList}, meaning in this case that \textit{socketList} now has type  \<@MustCallOnElements({"close"})>. In general, a writing method on a collection unites the \<@MustCall> type values of the argument to the \<@MustCallOnElements> type values of the collection and removes the obligation of the argument.
-
-If \<socketList> was a field, the rules are slightly more constrained and discussed in detail in Section~\ref{resource-leak-collections-fields}.
-
-Using any non-overwriting method, such as \<Collection.add(E)>, the discussed lack of precondition for the operation means that it can be used arbitrarily, also in loops without any additional constraints by the checker. The following loop is perfectly legal for example:
-
-\begin{verbatim}
-@OwningCollection List<Socket> socketList = new List<Socket>();
-// The type of `s` is @MustCallOnElements({}) @CalledMethodsOnElements({})
-int i = 0;
-while (++i < n) {
-  try {
-    s.add(new Socket(myHost, myPort));
-  }
-  // Now, the type of `s` is @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
-}
-// After this loop, the type of `s` is still @MustCallOnElements({"close"}) @CalledMethodsOnElements({})
-\end{verbatim}
-
-For overwriting methods on collections, such as \<List.set(int, E)>, the precondition is also that the \<@OwningCollection> has no open calling obligations.
-
-Since for arrays, the only way to assign elements is by using the overwriting assignment operator, a syntax-matched loop construct with special handling is provided. It is discussed in the following section (Section~\ref{resource-leak-collections-assign-elements}). There is no such equivalent construct for overwriting methods on collections (implementing classes of \<Java.util.Collection>).
 
 \subsectionAndLabel{Using loops to operate on collections of resources}{resource-leak-collections-loops}
 
-In order to maintain homogeneity, code that wants to change the CalledMethodsOnElements of a collection/array or MustCallOnElements type of an array must operate using a loop. There are some constraints such that these loops are appropriately handled. Furthermore, the loop must not terminate early --- it must
-operate upon every element of the collection.
+In order to maintain homogeneity, code that wants to change the CalledMethodsOnElements type of a collection/array or assign the elements of an \<@OwningCollection> array must operate using a loop. There are some constraints for such loops, which mainly ensure that the loop does not terminate early and operates upon every element of the collection. If a loop adheres to these constraints, the \<@MustCallOnElements> and \<@CalledMethodsOnElements> type of the collection is changed after the loop, i.e. the loop is treated as an atomic operation with respect to this type system.
 
 Generally, the basic loop constraints are:
 \begin{itemize}
@@ -821,8 +836,7 @@ satisfied (in addition to the basic loop constraints of Section~\ref{resource-le
   \item The loop is an indexed \<for> loop (not an enhanced \<for> loop).
   \item There is exactly one statement in the body. The statement is either the
     assignment or a try-catch construct that contains only the assignment.
-  \item The right-hand side of the assignment creates a new resource.
-    The right-hand side cannot be an expression that might evaluate to an existing resource.
+  \item The right-hand side of the assignment must be a constructor call to create a new resource.
   \item If there is a try-catch construct, the catch and finally blocks may
     not throw any exceptions, call any methods, or have any writes (in
     addition to the basic loop constraints of Section~\ref{resource-leak-collections-loops}).
@@ -896,8 +910,7 @@ for (int i = 0; i < socketList.size(); i++) {
 
 The called methods are
 determined by checking the \<@CalledMethods> type of the collection element at
-the end of the loop body, without considering exceptional states, i.e.\ only
-exception-free executions of the loop body are considered.
+the end of the loop body.
 
 For example, the following loop calls the methods \<close()> and \<shutdownOutput()> on the elements of \textit{socketList}.
 
@@ -913,7 +926,7 @@ for (Socket s: socketList) {
 // socketList: @MustCallOnElements({}) @CalledMethodsOnElements({"close", "shutdownOutput"})
 \end{verbatim}
 
-The type of the collection is changed only after the loop, not within the
+Again, the type of the collection is changed only after the loop, not within the
 loop. The loop is treated as a single instruction with regards to its effect on
 the type system for this checker.
 
@@ -1080,7 +1093,7 @@ Here is an example of an \<@OwningCollection> return type:
 This method is perfectly fine, returning \<s> as an \<@OwningCollection> transfers the ownership to the call site and \<owningReturn()> does not have to fulfill the obligation itself.
 
 \subsectionAndLabel{\<@OwningCollection> fields}{resource-leak-collections-fields}
-
+\<@OwningCollection> fields are handled in a very similar manner to final \<@Owning> fields (see Section~\ref{resource-leak-owning-fields}).
 An \<@OwningCollection> field must be final, private, and non-static. Thus, it
 can only be assigned in the constructor, in an instance initializer block, or at the declaration site.
 The default type of such a collection after declaration is \<@MustCallOnElements(obligation)>, where \textit{obligation} is the set of \<@MustCall> methods of the component type. The default \<@CalledMethodsOnElements> type is the empty \<@CalledMethodsOnElements({})>. This default type can be changed with a manual \<@MustCallOnElements> annotation.
@@ -1121,7 +1134,7 @@ class A {
 This ensures that any client that constructs an instance of \<A> will have to call \<destruct()> on it, which in turn ensures that the obligations of the field are fulfilled.
 
 \subsectionAndLabel{Iterators over resource collections}{resource-leak-collections-iterators}
-Iterators are frequently used to traverse collections (implementing classes of \<java.util.Collection>). It is always safe to create an iterator for any collection with no open calling obligations. Since an iterator takes a snapshot of the collection at the time it is created, it does not matter what happens with the collection after the iterator is created (else, a \<ConcurrentModificationException> is thrown for the next usage of the iterator).
+Iterators are frequently used to traverse collections (classes implementing \<java.util.Collection>). It is always safe to create an iterator for any collection with no open calling obligations. Since an iterator takes a snapshot of the collection at the time it is created, it does not matter what happens with the collection after the iterator is created (else, a \<ConcurrentModificationException> is thrown for the next usage of the iterator).
 If a collection with open \<MustCallOnElements> obligations (even if it is a non-owning reference) creates an iterator, the resource leak checker tracks the created iterators and the values returned by calls to \<Iterator.next()>. The critical operation are calls to \<Iterator.remove()>. If a collection has open calling obligations, this may remove an element from the collection with open \<MustCall> obligations. This is only allowed if the value returned by the previous call to \<Iterator.next()> has its \<MustCall> obligations fulfilled.
 
 Here is an example of unsafe iterator usage:
@@ -1174,7 +1187,7 @@ The returned element may also be stored in a variable first and the fulfillment 
 }
 \end{verbatim}
 
-The returned element by \<iter.next()> may have its must-call obligation fulfilled in any way described by the resource leak checker, even by transferring its ownership.
+The returned element by \<iter.next()> may have its must-call obligation fulfilled in any way described by the resource leak checker, even by transferring its ownership (for example by storing it in a field or passing it as an \<@OwningCollection> method argument).
 
 Iterators over collections with obligations may also be returned, passed as method or constructor arguments and even be stored in fields. This has some consequences for iterator fields, return types and method/constructor parameters:
 \begin{itemize}
