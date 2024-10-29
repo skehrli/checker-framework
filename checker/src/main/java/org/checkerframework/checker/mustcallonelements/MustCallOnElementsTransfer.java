@@ -126,10 +126,6 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
   //   return res;
   // }
 
-  /*
-   * Sets type of LHS to @MustCallOnElementsUnknown if rhs is @OwningCollection.
-   * The semantics is that LHS is then a read-only copy
-   */
   @Override
   public TransferResult<CFValue, CFStore> visitAssignment(
       AssignmentNode node, TransferInput<CFValue, CFStore> input) {
@@ -166,7 +162,8 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
       // transformation of assigning loop is handled at the loop condition node,
       // not the assignment node. So, only transform if not in an assigning loop.
       if (!inAssigningLoop) {
-        store = transformWriteToOwningCollection(arrayJx, node.getExpression(), store);
+        store =
+            transformWriteToOwningCollection(arrayJx, arrayExpression, node.getExpression(), store);
       }
     } else if (lhsIsOwningCollection && rhsIsOwningCollection) {
       // this transfers ownership from rhs to lhs. If the rhs has mcoeunknown (i.e. revoked
@@ -195,14 +192,16 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
    * example {@code @MustCallOnElements("close")} if the RHS is a {@code Socket}.
    *
    * @param receiverCollection the {@code OwningCollection} written to
+   * @param receiverTree tree of the {@code OwningCollection} written to
    * @param rhs the rhs of the assignment/write
    * @param store the store to modify
    * @return the modified store
    */
   private CFStore transformWriteToOwningCollection(
-      JavaExpression receiverCollection, Node rhs, CFStore store) {
+      JavaExpression receiverCollection, Tree receiverTree, Node rhs, CFStore store) {
     List<String> previousMcoeMethods =
-        atypeFactory.getMustCallOnElementsObligations(store, receiverCollection);
+        atypeFactory.getMustCallOnElementsObligations(
+            store, receiverCollection, TreeUtils.elementFromTree(receiverTree));
     if (previousMcoeMethods == null) {
       // previous value is @MustCallOnElementsUnknown - i.e. no write permission. Consistency
       // analyzer throws error. Don't perform transformation.
@@ -277,7 +276,9 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
     List<Node> args = node.getArguments();
     assert args.size() == 2
         : "calling abstract transformer for List.Set(int,E), but params are: " + args;
-    CFStore store = transformWriteToOwningCollection(receiver, args.get(1), res.getRegularStore());
+    CFStore store =
+        transformWriteToOwningCollection(
+            receiver, node.getTarget().getReceiver().getTree(), args.get(1), res.getRegularStore());
     return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
   }
 
@@ -295,7 +296,9 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
     List<Node> args = node.getArguments();
     assert args.size() == 2
         : "calling abstract transformer for Collection.add(int,E), but params are: " + args;
-    CFStore store = transformWriteToOwningCollection(receiver, args.get(1), res.getRegularStore());
+    CFStore store =
+        transformWriteToOwningCollection(
+            receiver, node.getTarget().getReceiver().getTree(), args.get(1), res.getRegularStore());
     return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
   }
 
@@ -315,7 +318,8 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
         : "calling abstract transformer for Collection.clear(), but params are: " + args;
     CFStore store = res.getRegularStore();
     List<String> previousMcoeMethods =
-        atypeFactory.getMustCallOnElementsObligations(store, receiver);
+        atypeFactory.getMustCallOnElementsObligations(
+            store, receiver, TreeUtils.elementFromTree(node.getTarget().getReceiver().getTree()));
     if (previousMcoeMethods == null) {
       // previous value is @MustCallOnElementsUnknown - i.e. clearing illegal. Consistency
       // analyzer throws error. Don't perform transformation.
@@ -341,7 +345,9 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
     List<Node> args = node.getArguments();
     assert args.size() == 1
         : "calling abstract transformer for Collection.add(E), but params are: " + args;
-    CFStore store = transformWriteToOwningCollection(receiver, args.get(0), res.getRegularStore());
+    CFStore store =
+        transformWriteToOwningCollection(
+            receiver, node.getTarget().getReceiver().getTree(), args.get(0), res.getRegularStore());
     return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
   }
 

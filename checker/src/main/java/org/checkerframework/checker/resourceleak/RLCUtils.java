@@ -18,6 +18,7 @@ import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.type.TypeVariable;
 import javax.lang.model.type.WildcardType;
@@ -271,26 +272,31 @@ public class RLCUtils {
     } else {
       // if no mcoe anno, the mcoe type defaults to all obligations of the component
       List<String> mcoeValues = Collections.emptyList();
-      boolean isArray = typeMirror instanceof ArrayType;
-      boolean isCollection = isCollection(typeMirror);
-      if (isArray) {
-        TypeMirror componentType = ((ArrayType) typeMirror).getComponentType();
-        mcoeValues = getMcValues(componentType, mcAtf);
-        return mcoeValues != null ? mcoeValues : new ArrayList<String>();
-      } else if (isCollection) {
-        assert typeMirror instanceof DeclaredType
-            : "Collection TypeMirror assumed to be DeclaredType, but is: "
-                + typeMirror.getClass().getCanonicalName();
-        DeclaredType declType = (DeclaredType) typeMirror;
-        List<? extends TypeMirror> typeArgs = declType.getTypeArguments();
-        assert typeArgs.size() == 1 : "Collections are expected to have only one type variable.";
-        TypeMirror typeArg = typeArgs.get(0);
-        mcoeValues = getMcValues(typeArg, mcAtf);
-        return mcoeValues != null ? mcoeValues : new ArrayList<String>();
-      } else {
-        throw new BugInCF(
-            "Argument for @OwningCollection parameter is neither ArrayType, nor Collection but "
-                + typeMirror.getClass().getCanonicalName());
+      if (typeMirror.getKind() == TypeKind.TYPEVAR) {
+        typeMirror = ((TypeVariable) typeMirror).getUpperBound();
+      }
+      switch (typeMirror.getKind()) {
+        case ARRAY:
+          TypeMirror componentType = ((ArrayType) typeMirror).getComponentType();
+          mcoeValues = getMcValues(componentType, mcAtf);
+          return mcoeValues != null ? mcoeValues : new ArrayList<String>();
+        case DECLARED:
+          boolean isCollection = isCollection(typeMirror);
+          if (isCollection) {
+            DeclaredType declType = (DeclaredType) typeMirror;
+            List<? extends TypeMirror> typeArgs = declType.getTypeArguments();
+            assert typeArgs.size() == 1
+                : "Collections are expected to have only one type variable.";
+            TypeMirror typeArg = typeArgs.get(0);
+            mcoeValues = getMcValues(typeArg, mcAtf);
+            return mcoeValues != null ? mcoeValues : new ArrayList<String>();
+          } else {
+            return new ArrayList<String>();
+          }
+        default:
+          throw new BugInCF(
+              "Unexpected type for @OwningCollection parameter: "
+                  + typeMirror.getClass().getCanonicalName());
       }
     }
   }
@@ -366,7 +372,7 @@ public class RLCUtils {
    */
   public static boolean isCollection(Element element, AnnotatedTypeFactory atf) {
     if (element == null) return false;
-    AnnotatedTypeMirror elementTypeMirror = atf.getAnnotatedType(element);
+    AnnotatedTypeMirror elementTypeMirror = atf.getAnnotatedType(element).getErased();
     if (elementTypeMirror == null || elementTypeMirror.getUnderlyingType() == null) return false;
     return isCollection(elementTypeMirror.getUnderlyingType());
   }
@@ -412,7 +418,7 @@ public class RLCUtils {
    */
   public static boolean isIterator(Element element, AnnotatedTypeFactory atf) {
     if (element == null) return false;
-    AnnotatedTypeMirror elementTypeMirror = atf.getAnnotatedType(element);
+    AnnotatedTypeMirror elementTypeMirror = atf.getAnnotatedType(element).getErased();
     if (elementTypeMirror == null || elementTypeMirror.getUnderlyingType() == null) return false;
     return isIterator(elementTypeMirror.getUnderlyingType());
   }

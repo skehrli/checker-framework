@@ -38,7 +38,6 @@ import java.util.StringJoiner;
 import java.util.function.BooleanSupplier;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.AnnotationMirror;
-import javax.lang.model.element.AnnotationValue;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
@@ -52,8 +51,6 @@ import javax.lang.model.type.TypeMirror;
 import org.checkerframework.checker.calledmethods.qual.CalledMethods;
 import org.checkerframework.checker.calledmethodsonelements.CalledMethodsOnElementsAnnotatedTypeFactory;
 import org.checkerframework.checker.calledmethodsonelements.CalledMethodsOnElementsChecker;
-import org.checkerframework.checker.calledmethodsonelements.qual.CalledMethodsOnElements;
-import org.checkerframework.checker.calledmethodsonelements.qual.CalledMethodsOnElementsBottom;
 import org.checkerframework.checker.mustcall.CreatesMustCallForToJavaExpression;
 import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
 import org.checkerframework.checker.mustcall.MustCallChecker;
@@ -1518,9 +1515,13 @@ public class MustCallConsistencyAnalyzer {
             block = predBlocks.iterator().next();
             nodeIterator = block.getNodes().iterator();
           } else {
+            System.out.println("predecessor: " + predBlocks);
             throw new BugInCF(
                 "Encountered more than one CFG Block predeccessor trying to find the"
-                    + " enhanced-for-loop update block.");
+                    + " enhanced-for-loop update block. Block: ");
+            // + block
+            // + "\nPredecessors: "
+            // + predBlocks);
           }
         }
         node = nodeIterator.next();
@@ -1720,11 +1721,13 @@ public class MustCallConsistencyAnalyzer {
             // IteratorObligation that reports an error if iter.remove()
             // is called.
             if (isRoAlias) {
+              System.out.println("Adding iterator for mcoeu: " + methodCallTmpVar);
               IteratorObligation iterObligation =
                   new IteratorObligation(Obligation.fromTree(methodCallTmpVar.getTree()));
               obligations.add(iterObligation);
             } else {
               if (!checkNoOpenMcoeObligations.getAsBoolean()) {
+                System.out.println("Adding iterator for: " + methodCallTmpVar);
                 IteratorObligation iterObligation =
                     new IteratorObligation(Obligation.fromTree(methodCallTmpVar.getTree()));
                 obligations.add(iterObligation);
@@ -1788,6 +1791,7 @@ public class MustCallConsistencyAnalyzer {
         // is meant for user-defined methods that return an Iterator
 
         if (shouldTrackIterator(methodCallReturnType)) {
+          System.out.println("Adding iterator for ret type: " + methodCallTmpVar);
           obligations.add(new IteratorObligation(Obligation.fromTree(methodCallTmpVar.getTree())));
         }
       }
@@ -2307,49 +2311,6 @@ public class MustCallConsistencyAnalyzer {
       return !cmAtf.hasNotOwning(executableElement);
     }
     return false;
-  }
-
-  /**
-   * Returns a list of methods considered "called on elements" of the given tree (expected to be an
-   * array identifier) The list is extracted from the store passed as an argument.
-   *
-   * @param cmoeStore the store holding cmoe type annotation information
-   * @param tree the expression tree
-   * @return list of the CalledMethodsOnElements values of the given expression in the given store
-   */
-  private List<String> getCalledMethodsOnElements(CFStore cmoeStore, JavaExpression jx, Tree tree) {
-    CFValue cfval = cmoeStore.getValue(jx);
-    Element collectionElm = TreeUtils.elementFromTree(tree);
-    if (collectionElm.getKind() == ElementKind.FIELD
-        && collectionElm.getAnnotation(OwningCollection.class) != null) {
-      if (ElementUtils.isFinal(collectionElm)) {
-        if (cfval == null) {
-          // entry block doesn't have final field in store yet
-          return Collections.emptyList();
-        }
-      } else {
-        // nonfinal OwningCollection field is illegal. An error was already issued.
-        // Prevent program crash and return here.
-        return Collections.emptyList();
-      }
-    }
-    assert cfval != null : "No cmoe annotation for " + jx + " in store.";
-    AnnotationMirror cmoeAnno =
-        AnnotationUtils.getAnnotationByClass(cfval.getAnnotations(), CalledMethodsOnElements.class);
-    AnnotationMirror cmoeAnnoBottom =
-        AnnotationUtils.getAnnotationByClass(
-            cfval.getAnnotations(), CalledMethodsOnElementsBottom.class);
-    assert cmoeAnno != null || cmoeAnnoBottom != null
-        : "No cmoe annotation for " + jx + " in store.";
-    if (cmoeAnnoBottom != null) {
-      return Collections.emptyList();
-    } else {
-      AnnotationValue av =
-          cmoeAnno.getElementValues().get(cmoeTypeFactory.getCalledMethodsOnElementsValueElement());
-      return av == null
-          ? Collections.emptyList()
-          : AnnotationUtils.annotationValueToList(av, String.class);
-    }
   }
 
   /**
@@ -3626,6 +3587,9 @@ public class MustCallConsistencyAnalyzer {
       // immediately.
       throw new InvalidLoopBodyAnalysisException("Block with no incoming store.");
     }
+    if (cmAtf.getInput(successor) == null) {
+      throw new BugInCF("block with no outgoing incoming store: " + successor);
+    }
     AccumulationStore regularStoreOfSuccessor = cmAtf.getInput(successor).getRegularStore();
     for (Obligation obligation : obligations) {
       // This boolean is true if there is no evidence that the Obligation does not go out
@@ -3922,6 +3886,7 @@ public class MustCallConsistencyAnalyzer {
         boolean paramIsIterator = RLCUtils.isIterator(paramElement, cmAtf);
         if (paramIsIterator) {
           if (shouldTrackIterator(paramElement.asType())) {
+            System.out.println("Adding iterator for param: " + param);
             result.add(new IteratorObligation(Obligation.fromTree(param)));
           }
         }
@@ -3938,6 +3903,7 @@ public class MustCallConsistencyAnalyzer {
 
           if (isField && isIterator) {
             if (shouldTrackIterator(memberElm.asType())) {
+              System.out.println("Adding iterator for field: " + declaration);
               result.add(new IteratorObligation(Obligation.fromTree(declaration)));
             }
           }
@@ -4088,8 +4054,15 @@ public class MustCallConsistencyAnalyzer {
     Set<String> mcoeValues = new HashSet<>();
     Set<String> cmoeValues = new HashSet<>();
     for (ResourceAlias alias : obligation.resourceAliases) {
-      List<String> mcoeValuesOfAlias =
-          mcoeTypeFactory.getMustCallOnElementsObligations(mcoeStore, alias.reference);
+      List<String> mcoeValuesOfAlias; // = new ArrayList<String>();
+      // try {
+      mcoeValuesOfAlias =
+          mcoeTypeFactory.getMustCallOnElementsObligations(
+              mcoeStore, alias.reference, alias.element);
+      // } catch (BugInCF e) {
+      //   // no mcoe annotation for the checked element
+
+      // }
       boolean isOwningCollection =
           alias.element != null && cmAtf.hasOwningCollection(alias.element);
       boolean hasRevokedOwnership = mcoeValuesOfAlias == null && isOwningCollection;
@@ -4121,7 +4094,8 @@ public class MustCallConsistencyAnalyzer {
       // mcoeValuesOfAlias is null for read-only aliases
       if (!isReadOnlyAlias) {
         mcoeValues.addAll(mcoeValuesOfAlias);
-        cmoeValues.addAll(getCalledMethodsOnElements(cmoeStore, alias.reference, alias.tree));
+        cmoeValues.addAll(
+            cmoeTypeFactory.getCalledMethodsOnElements(cmoeStore, alias.reference, alias.tree));
       }
     }
     ResourceAlias firstAlias = obligation.resourceAliases.iterator().next();

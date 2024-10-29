@@ -8,6 +8,7 @@ import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import java.lang.annotation.Annotation;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -23,6 +24,7 @@ import javax.lang.model.element.AnnotationValue;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
@@ -53,6 +55,7 @@ import org.checkerframework.framework.flow.CFStore;
 import org.checkerframework.framework.flow.CFValue;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedExecutableType;
+import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedTypeVariable;
 import org.checkerframework.framework.type.GenericAnnotatedTypeFactory;
 import org.checkerframework.framework.type.QualifierHierarchy;
 import org.checkerframework.framework.type.SubtypeIsSubsetQualifierHierarchy;
@@ -380,29 +383,57 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
    * an argument.
    *
    * @param mcoeStore store containing MustCallOnElements type annotation information
-   * @param collectionJx the array/collection JavaExpression
+   * @param reference the JavaExpression
+   * @param referenceElt the element of the reference
    * @return list of the MustCallOnElements obligations of the given array/collection
    */
   public List<String> getMustCallOnElementsObligations(
-      CFStore mcoeStore, JavaExpression collectionJx) {
-    CFValue cfval = mcoeStore.getValue(collectionJx);
-    assert cfval != null : "No mcoe annotation for " + collectionJx + " in store.";
+      CFStore mcoeStore, JavaExpression reference, Element referenceElt) {
+    CFValue cfval = mcoeStore.getValue(reference);
+    assert cfval != null : "No mcoe annotation for " + reference + " in store.";
+
     AnnotationMirror mcoeAnno =
         AnnotationUtils.getAnnotationByClass(cfval.getAnnotations(), MustCallOnElements.class);
     AnnotationMirror mcoeAnnoUnknown =
         AnnotationUtils.getAnnotationByClass(
             cfval.getAnnotations(), MustCallOnElementsUnknown.class);
-    assert mcoeAnno != null || mcoeAnnoUnknown != null
-        : "No mcoe annotation for " + collectionJx + " in store.";
-    if (mcoeAnnoUnknown != null) {
-      return null;
-    } else {
+    if (mcoeAnno != null) {
       AnnotationValue av =
           mcoeAnno.getElementValues().get(this.getMustCallOnElementsValueElement());
       if (av == null) {
-        throw new BugInCF("No MustCallOnElements annotation for " + collectionJx);
+        return new ArrayList<String>();
+      } else {
+        return AnnotationUtils.annotationValueToList(av, String.class);
       }
-      return AnnotationUtils.annotationValueToList(av, String.class);
+    } else if (mcoeAnnoUnknown != null) {
+      return null;
+    } else {
+      AnnotationMirror result =
+          getAnnotatedType(referenceElt).getEffectiveAnnotationInHierarchy(BOTTOM);
+      if (result != null && !AnnotationUtils.areSame(result, TOP)) {
+        AnnotationValue av =
+            result.getElementValues().get(this.getMustCallOnElementsValueElement());
+        if (av == null) {
+          return new ArrayList<String>();
+        } else {
+          return AnnotationUtils.annotationValueToList(av, String.class);
+        }
+      }
+      // There wasn't a @MustCallOnElements annotation for it in the store and the type factory
+      // has no information, so fall back to the default must-call type for the class.
+      TypeElement typeElt = TypesUtils.getTypeElement(reference.getType());
+      if (typeElt == null) {
+        // typeElt is null if reference.getType() was not a class, interface, annotation
+        // type, or enum -- that is, was not an annotatable type.
+        // That happens rarely, such as when it is a wildcard type.
+        // The default type here is bottom.
+        return new ArrayList<>();
+      }
+      if (typeElt.asType().getKind() == TypeKind.VOID) {
+        // Void types can't have methods called on them, so returning bottom is safe.
+        return new ArrayList<>();
+      }
+      throw new BugInCF("Cannot find any Mcoe type for " + reference);
     }
   }
 
@@ -439,7 +470,8 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
         return Collections.emptyList();
       }
     }
-    return getMustCallOnElementsObligations(mcoeStore, collectionJx);
+    return getMustCallOnElementsObligations(
+        mcoeStore, collectionJx, TreeUtils.elementFromTree(tree));
   }
 
   /*
@@ -476,6 +508,10 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
           }
         }
       }
+    } else if (type.getKind() == TypeKind.TYPEVAR) {
+      AnnotationMirror upperBound =
+          ((AnnotatedTypeVariable) type).getUpperBound().getPrimaryAnnotationInHierarchy(BOTTOM);
+      type.replaceAnnotation(upperBound);
     }
   }
 
@@ -492,6 +528,12 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   @Override
   public void addComputedTypeAnnotations(Element elt, AnnotatedTypeMirror type) {
     super.addComputedTypeAnnotations(elt, type);
+
+    if (type.getKind() == TypeKind.TYPEVAR) {
+      AnnotationMirror upperBound =
+          ((AnnotatedTypeVariable) type).getUpperBound().getPrimaryAnnotationInHierarchy(BOTTOM);
+      type.replaceAnnotation(upperBound);
+    }
 
     if (elt.getKind() == ElementKind.METHOD || elt.getKind() == ElementKind.CONSTRUCTOR) {
       // is a param @OwningCollection?
@@ -690,10 +732,6 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
    * declared type, when they appear in the body of the method. Doing so is safe because being
    * non-owning means, by definition, that their must-call obligations are only relevant in the
    * callee. (This behavior is disabled if the {@code -AnoLightweightOwnership} option is passed to
-   *
-   * <p>The tree annotator also changes the type of resource variables to remove "close" from their
-   * must-call types, because the try-with-resources statement guarantees that close() is called on
-   * all such variables.
    */
   private class MustCallOnElementsTreeAnnotator extends TreeAnnotator {
     /**

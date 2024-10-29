@@ -181,8 +181,13 @@ public class MustCallAnnotatedTypeFactory extends BaseAnnotatedTypeFactory
 
         replaceResourceHoldingTypeVarsWithBottomIfTop(returnType);
 
-        for (AnnotatedTypeMirror paramType : methodType.getParameterTypes()) {
-          replaceResourceHoldingTypeVarsWithBottomIfTop(paramType);
+        String enclosingClass = ElementUtils.getEnclosingClassName((ExecutableElement) elt);
+        if (enclosingClass.startsWith("java.")) {
+          // this is a jdk method - do not change the upper bound
+        } else {
+          for (AnnotatedTypeMirror paramType : methodType.getParameterTypes()) {
+            replaceResourceHoldingTypeVarsWithBottomIfTop(paramType);
+          }
         }
       }
   }

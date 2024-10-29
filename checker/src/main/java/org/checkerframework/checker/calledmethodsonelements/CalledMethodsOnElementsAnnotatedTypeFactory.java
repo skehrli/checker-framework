@@ -2,25 +2,37 @@ package org.checkerframework.checker.calledmethodsonelements;
 
 import com.sun.source.tree.Tree;
 import java.lang.annotation.Annotation;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.AnnotationMirror;
+import javax.lang.model.element.AnnotationValue;
+import javax.lang.model.element.Element;
+import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import org.checkerframework.checker.calledmethodsonelements.qual.CalledMethodsOnElements;
 import org.checkerframework.checker.calledmethodsonelements.qual.CalledMethodsOnElementsBottom;
+import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.common.basetype.BaseAnnotatedTypeFactory;
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.dataflow.cfg.block.Block;
+import org.checkerframework.dataflow.expression.JavaExpression;
 import org.checkerframework.framework.flow.CFStore;
+import org.checkerframework.framework.flow.CFValue;
 import org.checkerframework.framework.type.GenericAnnotatedTypeFactory;
 import org.checkerframework.framework.type.QualifierHierarchy;
 import org.checkerframework.framework.type.SubtypeIsSupersetQualifierHierarchy;
 import org.checkerframework.javacutil.AnnotationBuilder;
+import org.checkerframework.javacutil.AnnotationUtils;
+import org.checkerframework.javacutil.BugInCF;
+import org.checkerframework.javacutil.ElementUtils;
 import org.checkerframework.javacutil.TreeUtils;
 import org.checkerframework.javacutil.TypesUtils;
 
@@ -116,6 +128,81 @@ public class CalledMethodsOnElementsAnnotatedTypeFactory extends BaseAnnotatedTy
    */
   public ExecutableElement getCalledMethodsOnElementsValueElement() {
     return calledMethodsOnElementsValueElement;
+  }
+
+  /**
+   * Returns a list of methods considered "called on elements" of the given tree (expected to be an
+   * array identifier) The list is extracted from the store passed as an argument.
+   *
+   * @param cmoeStore the store holding cmoe type annotation information
+   * @param reference the java expression
+   * @param tree the expression tree
+   * @return list of the CalledMethodsOnElements values of the given expression in the given store
+   */
+  public List<String> getCalledMethodsOnElements(
+      CFStore cmoeStore, JavaExpression reference, Tree tree) {
+    CFValue cfval = cmoeStore.getValue(reference);
+    Element collectionElm = TreeUtils.elementFromTree(tree);
+    if (collectionElm.getKind() == ElementKind.FIELD
+        && collectionElm.getAnnotation(OwningCollection.class) != null) {
+      if (ElementUtils.isFinal(collectionElm)) {
+        if (cfval == null) {
+          // entry block doesn't have final field in store yet
+          return Collections.emptyList();
+        }
+      } else {
+        // nonfinal OwningCollection field is illegal. An error was already issued.
+        // Prevent program crash and return here.
+        return Collections.emptyList();
+      }
+    }
+    if (cfval == null) {
+      return Collections.emptyList();
+    }
+    // assert cfval != null : "No cmoe annotation for " + reference + " in store.";
+    AnnotationMirror cmoeAnno =
+        AnnotationUtils.getAnnotationByClass(cfval.getAnnotations(), CalledMethodsOnElements.class);
+    AnnotationMirror cmoeAnnoBottom =
+        AnnotationUtils.getAnnotationByClass(
+            cfval.getAnnotations(), CalledMethodsOnElementsBottom.class);
+    if (cmoeAnno != null) {
+      AnnotationValue av =
+          cmoeAnno.getElementValues().get(getCalledMethodsOnElementsValueElement());
+      if (av == null) {
+        return new ArrayList<String>();
+      } else {
+        return AnnotationUtils.annotationValueToList(av, String.class);
+      }
+    } else if (cmoeAnnoBottom != null) {
+      return Collections.emptyList();
+    } else {
+      AnnotationMirror result =
+          getAnnotatedType(collectionElm).getEffectiveAnnotationInHierarchy(BOTTOM);
+      if (result != null && !AnnotationUtils.areSame(result, BOTTOM)) {
+        AnnotationValue av =
+            result.getElementValues().get(getCalledMethodsOnElementsValueElement());
+        if (av == null) {
+          return new ArrayList<String>();
+        } else {
+          return AnnotationUtils.annotationValueToList(av, String.class);
+        }
+      }
+      // There wasn't a @CalledMethodsOnElements annotation for it in the store and the type
+      // factory has no information, so fall back to the default must-call type for the class.
+      TypeElement typeElt = TypesUtils.getTypeElement(reference.getType());
+      if (typeElt == null) {
+        // typeElt is null if reference.getType() was not a class, interface, annotation
+        // type, or enum -- that is, was not an annotatable type.
+        // That happens rarely, such as when it is a wildcard type.
+        // The safe default here is bottom.
+        return new ArrayList<>();
+      }
+      if (typeElt.asType().getKind() == TypeKind.VOID) {
+        // Void types can't have methods called on them, so returning bottom is safe.
+        return new ArrayList<>();
+      }
+      throw new BugInCF("Cannot find any Cmoe type for " + reference);
+    }
   }
 
   @Override

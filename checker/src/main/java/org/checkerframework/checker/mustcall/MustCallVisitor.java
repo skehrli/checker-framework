@@ -337,7 +337,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
    * arr[i]} or {@code collection.get(i)} where {@code i} is the iterator variable and {@code
    * collection/arr} is consistent with the loop header) and return the last encountered such tree.
    *
-   * @param block the loop body tree
+   * @param statements list of statements of the loop body
    * @param identifierInHeader collection name if loop condition is {@code i < collection.size()} or
    *     {@code i < arr.length} and {@code n} if loop condition is {@code i < n}
    * @param iterator the name of the loop iterator variable
@@ -346,7 +346,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
    *     heaer if it exists and else null.
    */
   private @Nullable ExpressionTree preMatchLoop(
-      BlockTree block, Name identifierInHeader, Name iterator) {
+      List<? extends StatementTree> statements, Name identifierInHeader, Name iterator) {
     AtomicBoolean blockIsIllegal = new AtomicBoolean(false);
     final ExpressionTree[] collectionElementTree = {null};
 
@@ -422,7 +422,8 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
             return super.visitArrayAccess(aat, p);
           }
         };
-    for (StatementTree stmt : block.getStatements()) {
+
+    for (StatementTree stmt : statements) {
       scanner.scan(stmt, null);
     }
     if (!blockIsIllegal.get() && collectionElementTree[0] != null) {
@@ -438,7 +439,13 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
    * @param tree forlooptree
    */
   private void patternMatchFulfillingLoop(ForLoopTree tree) {
-    BlockTree blockT = (BlockTree) tree.getStatement();
+    List<? extends StatementTree> loopBodyStatementList;
+    if (tree.getStatement() instanceof BlockTree) {
+      BlockTree blockT = (BlockTree) tree.getStatement();
+      loopBodyStatementList = blockT.getStatements();
+    } else {
+      loopBodyStatementList = Collections.singletonList(tree.getStatement());
+    }
     StatementTree init = tree.getInitializer().get(0);
     ExpressionTree condition = tree.getCondition();
     ExpressionStatementTree update = tree.getUpdate().get(0);
@@ -448,7 +455,8 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
     if (identifierInHeader == null || iterator == null) {
       return;
     }
-    ExpressionTree collectionElementTree = preMatchLoop(blockT, identifierInHeader, iterator);
+    ExpressionTree collectionElementTree =
+        preMatchLoop(loopBodyStatementList, identifierInHeader, iterator);
     if (collectionElementTree != null) {
       // pattern match succeeded, now mark the loop in the respective datastructures
       System.out.println("prematch succeeded");
@@ -523,16 +531,22 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
    * @param tree ForLoopTree
    */
   private void patternMatchAssigningLoop(ForLoopTree tree) {
-    BlockTree blockT = (BlockTree) tree.getStatement();
+    List<? extends StatementTree> statements;
+    if (tree.getStatement() instanceof BlockTree) {
+      BlockTree blockT = (BlockTree) tree.getStatement();
+      statements = blockT.getStatements();
+    } else {
+      statements = Collections.singletonList(tree.getStatement());
+    }
     // pattern match the initializer, condition and update
-    if (blockT.getStatements().size() != 1
+    if (statements.size() != 1
         || tree.getCondition().getKind()
             != Tree.Kind.LESS_THAN) { // ensure loop body has only one statement
       return;
     }
 
     ExpressionTree stmtTree = null;
-    StatementTree topLevelStmt = blockT.getStatements().get(0);
+    StatementTree topLevelStmt = statements.get(0);
     if (topLevelStmt instanceof TryTree) {
       stmtTree = getSingleStmtFromTryBlock((TryTree) topLevelStmt);
     } else if (topLevelStmt instanceof ExpressionStatementTree) {

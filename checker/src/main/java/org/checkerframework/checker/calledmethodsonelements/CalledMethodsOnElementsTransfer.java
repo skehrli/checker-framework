@@ -3,11 +3,11 @@ package org.checkerframework.checker.calledmethodsonelements;
 import com.sun.source.tree.ExpressionTree;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.AnnotationMirror;
-import javax.lang.model.element.ExecutableElement;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.CollectionTransfer;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
@@ -21,7 +21,6 @@ import org.checkerframework.dataflow.expression.JavaExpression;
 import org.checkerframework.framework.flow.CFStore;
 import org.checkerframework.framework.flow.CFValue;
 import org.checkerframework.javacutil.AnnotationBuilder;
-import org.checkerframework.javacutil.AnnotationUtils;
 import org.plumelib.util.CollectionsPlume;
 
 /** A transfer function that accumulates the names of methods called. */
@@ -30,7 +29,7 @@ public class CalledMethodsOnElementsTransfer extends CollectionTransfer {
    * The element for the CalledMethodsOnElements annotation's value element. Stored in a field in
    * this class to prevent the need to cast to CalledMethodsOnElements ATF every time it's used.
    */
-  private final ExecutableElement calledMethodsOnElementsValueElement;
+  // private final ExecutableElement calledMethodsOnElementsValueElement;
 
   /** The type factory. */
   private final CalledMethodsOnElementsAnnotatedTypeFactory atypeFactory;
@@ -57,7 +56,7 @@ public class CalledMethodsOnElementsTransfer extends CollectionTransfer {
       atypeFactory =
           new CalledMethodsOnElementsAnnotatedTypeFactory(analysis.getTypeFactory().getChecker());
     }
-    calledMethodsOnElementsValueElement = atypeFactory.calledMethodsOnElementsValueElement;
+    // calledMethodsOnElementsValueElement = atypeFactory.calledMethodsOnElementsValueElement;
     enableWpiForRlc = atypeFactory.getChecker().hasOption(ResourceLeakChecker.ENABLE_WPI_FOR_RLC);
     env = atypeFactory.getProcessingEnv();
   }
@@ -197,17 +196,16 @@ public class CalledMethodsOnElementsTransfer extends CollectionTransfer {
   @Override
   protected TransferResult<CFValue, CFStore> transformFulfillingLoop(
       PotentiallyFulfillingLoop loop, TransferResult<CFValue, CFStore> res) {
-    ExpressionTree arrayTree = loop.collectionTree;
+    ExpressionTree collectionTree = loop.collectionTree;
     Set<String> calledMethods = loop.getMethods();
     // System.out.println("calledmethods: (cmoe transfer) " + calledMethods);
     if (calledMethods != null && calledMethods.size() > 0) {
       CFStore elseStore = res.getElseStore();
-      JavaExpression target = JavaExpression.fromTree(arrayTree);
-      CFValue oldTypeValue = elseStore.getValue(target);
-      AnnotationMirror oldType =
-          oldTypeValue == null ? atypeFactory.TOP : oldTypeValue.getAnnotations().first();
+      JavaExpression target = JavaExpression.fromTree(collectionTree);
       AnnotationMirror newType =
-          getUpdatedCalledMethodsOnElementsType(oldType, new ArrayList<>(calledMethods));
+          getUpdatedCalledMethodsOnElementsType(
+              atypeFactory.getCalledMethodsOnElements(elseStore, target, collectionTree),
+              new ArrayList<>(calledMethods));
       elseStore.clearValue(target);
       elseStore.insertValue(target, newType);
       return new ConditionalTransferResult<>(res.getResultValue(), res.getThenStore(), elseStore);
@@ -216,23 +214,19 @@ public class CalledMethodsOnElementsTransfer extends CollectionTransfer {
   }
 
   /**
-   * Extract the current called-methods type from {@code currentType}, and then add {@code
-   * methodName} to it, and return the result. This method is similar to GLB, but should be used
-   * when the new methods come from a source other than an {@code CalledMethodsOnElements}
-   * annotation.
+   * Return a CalledMethodsOnElements annotation with values being the union of the two passed
+   * lists.
    *
-   * @param type the current type in the called-methods hierarchy
-   * @param methodNames list of names of the new methods to add to the type
-   * @return the new annotation to be added to the type, or null if the current type cannot be
-   *     converted to an accumulator annotation
+   * @param methods1 list of names of the new methods to add to the type
+   * @param methods2 list of names of the new methods to add to the type
+   * @return CalledMethodsOnElements type with type elements that are union of methods1 and methods2
    */
   private @Nullable AnnotationMirror getUpdatedCalledMethodsOnElementsType(
-      AnnotationMirror type, List<String> methodNames) {
-    List<String> currentMethods =
-        AnnotationUtils.getElementValueArray(
-            type, calledMethodsOnElementsValueElement, String.class);
-    List<String> newList = CollectionsPlume.concatenate(currentMethods, methodNames);
-    return createAccumulatorAnnotation(newList, type);
+      List<String> methods1, List<String> methods2) {
+    Set<String> unionSet = new HashSet<>(methods1);
+    unionSet.addAll(methods2);
+    List<String> newList = new ArrayList<>(unionSet);
+    return createAccumulatorAnnotation(newList, atypeFactory.TOP);
   }
 
   /**
