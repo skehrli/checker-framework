@@ -456,9 +456,9 @@ public abstract class CollectionTransfer extends CFTransfer {
                 arg.getTree(), "unnecessary.collectionalias.annotation", param, arg.getTree());
           }
         } else {
-          // param cannot hold a resource collection
+          // in this case, param is not allowed hold a resource collection,
+          // but arg is a resource collection
           if (argIsMcoeUnknown || argIsOwningCollection) {
-            System.out.println("arg: " + arg + " param: " + param);
             reportError(
                 arg.getTree(), "missing.collection.ownership.annotation", arg.getTree(), param);
           }

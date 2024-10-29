@@ -11,6 +11,98 @@ class OwningCollectionFields {
   private final String myHost = "";
   private final int myPort = 1;
 
+  void fieldWrapperClient() {
+    @OwningCollection List<Socket> list = new ArrayList<Socket>();
+    OwningCollectionFieldWrapper wrapper = new OwningCollectionFieldWrapper(list);
+
+    try {
+      // :: error: modification.without.ownership
+      wrapper.socketList.add(new Socket(myHost, myPort));
+    } catch (Exception e) {
+    }
+
+    // this is allowed
+    List<Socket> alias = wrapper.socketList;
+
+    // this is not allowed, since it would transfer ownership to lhs
+    // :: error: illegal.ownership.transfer
+    @OwningCollection List<Socket> illegalAlias = wrapper.socketList;
+
+    // :: error: unfulfilled.mustcallonelements.obligations
+    @OwningCollection List<Socket> owningAlias = wrapper.getField();
+    try {
+      // :: error: modification.without.ownership
+      owningAlias.add(new Socket(myHost, myPort));
+    } catch (Exception e) {
+    }
+
+    wrapper.destruct();
+    // wrapper.reassignField();
+  }
+
+  @InheritableMustCall("destruct")
+  class OwningCollectionFieldWrapper {
+    final @OwningCollection List<Socket> socketList;
+
+    public OwningCollectionFieldWrapper(@OwningCollection List<Socket> list) {
+      this.socketList = list;
+    }
+
+    // this method is illegal. Cannot return an owning reference to field.
+    @OwningCollection
+    List<Socket> getOwningField() {
+      // :: error: owningcollection.field.returned
+      // :: error: return
+      return this.socketList;
+    }
+
+    // this method is illegal. Cannot return an OwningCollection reference with an unannotated
+    // return type.
+    List<Socket> getUnannotatedField() {
+      // :: error: owningcollection.return.value
+      // :: error: return
+      return this.socketList;
+    }
+
+    // this method is legal. Can return a non-owning reference to field.
+    @CollectionAlias
+    List<Socket> getField() {
+      return this.socketList;
+    }
+
+    @EnsuresCalledMethodsOnElements(
+        value = "socketList",
+        methods = {"close"})
+    public void destruct() {
+      for (Socket s : socketList) {
+        try {
+          s.close();
+        } catch (Exception e) {
+        }
+      }
+    }
+
+    // public void reassignFieldIllegally() {
+    //   // maybe the call site knows that the obligations of field have been fulfilled.
+    //   // If we force this method to have a @CreatesMustCallOnElementsFor("this") annotation,
+    //   // at call-site,
+    //   try {
+    //     // :: error:
+    //     socketList.add(new Socket(myHost, myPort));
+    //   } catch (Exception e) {}
+    // }
+
+    // @CreatesMustCallOnElementsFor("this")
+    // public void reassignField() {
+    //   // maybe the call site knows that the obligations of field have been fulfilled.
+    //   // If we force this method to have a @CreatesMustCallOnElementsFor("this") annotation,
+    //   // at call-site,
+    //   try {
+    //     socketList.add(new Socket(myHost, myPort));
+    //   } catch (Exception e) {}
+    // }
+  }
+
   @InheritableMustCall("destruct")
   class OwnershipTaker {
     @OwningCollection private final List<Socket> collection;

@@ -390,7 +390,10 @@ public class MustCallOnElementsAnnotatedTypeFactory extends BaseAnnotatedTypeFac
   public List<String> getMustCallOnElementsObligations(
       CFStore mcoeStore, JavaExpression reference, Element referenceElt) {
     CFValue cfval = mcoeStore.getValue(reference);
-    assert cfval != null : "No mcoe annotation for " + reference + " in store.";
+    if (cfval == null) {
+      // no mcoe annotation. Return null to indicate @McoeUnknown
+      return null;
+    }
 
     AnnotationMirror mcoeAnno =
         AnnotationUtils.getAnnotationByClass(cfval.getAnnotations(), MustCallOnElements.class);

@@ -1580,9 +1580,10 @@ public class MustCallConsistencyAnalyzer {
               if (ElementUtils.isStatic(memberElm)) {
                 checker.reportError(member, "owningcollection.field.static", tree.getName());
               }
-              if (!ElementUtils.isPrivate(memberElm)) {
-                checker.reportError(member, "owningcollection.field.not.private", tree.getName());
-              }
+              // if (!ElementUtils.isPrivate(memberElm)) {
+              //   checker.reportError(member, "owningcollection.field.not.private",
+              // tree.getName());
+              // }
               if (!isArray && !isCollection) {
                 checker.reportError(member, "owningcollection.noncollection", tree.getName());
               }
@@ -1648,7 +1649,10 @@ public class MustCallConsistencyAnalyzer {
 
       Runnable checkWritingMethodOnOwningCollection =
           () -> {
-            if (isRoAlias) {
+            if (isRoAlias
+                || mcoeTypeFactory.getMustCallOnElementsObligations(
+                        mcoeStore, (ExpressionTree) receiver.getTree())
+                    == null) {
               checker.reportError(
                   min.getTree(), "modification.without.ownership", receiver.getTree());
             }
@@ -1668,6 +1672,10 @@ public class MustCallConsistencyAnalyzer {
               List<String> mcoeValues =
                   mcoeTypeFactory.getMustCallOnElementsObligations(
                       mcoeStore, (ExpressionTree) receiver.getTree());
+              if (mcoeValues == null) {
+                checker.reportError(
+                    min.getTree(), "modification.without.ownership", receiver.getTree());
+              }
               // mcoeValues would be null if receiver was McoeUnknown, but then, the isRoAlias
               // branch
               // would've been taken and the method had returned, so mcoeValues is not null here.
@@ -3415,10 +3423,6 @@ public class MustCallConsistencyAnalyzer {
             && elt != null
             && mcoeTypeFactory != null
             && mcoeTypeFactory.isMustCallOnElementsUnknown(mcoeStore, tree);
-    if (isOwningCollection && isField) {
-      checker.reportError(node.getTree(), "owningcollection.field.returned");
-      return;
-    }
 
     MethodTree enclosingMethod = cfg.getEnclosingMethod(node.getTree());
     if (enclosingMethod == null) {
@@ -3438,7 +3442,9 @@ public class MustCallConsistencyAnalyzer {
     }
 
     if (returnTypeIsOwningCollection) {
-      if (isMcoeUnknown) {
+      if (isField) {
+        checker.reportError(node.getTree(), "owningcollection.field.returned");
+      } else if (isMcoeUnknown) {
         checker.reportError(node.getTree(), "return.without.ownership", tree);
       } else if (!isOwningCollection) {
         checker.reportError(node.getTree(), "non.owningcollection.return.value", tree);
@@ -3449,13 +3455,17 @@ public class MustCallConsistencyAnalyzer {
       if (isMcoeUnknown) {
         // intended - return an alias
       } else if (isOwningCollection) {
-        // this is an owning reference. Although it would be safe to return an alias
-        // if the obligations are fulfilled, it would violate the invariant that there
-        // is always exactly one owning reference to a resource collection
-        checker.reportError(
-            node.getTree(),
-            "illegal.ownership.transfer",
-            "Cannot transfer ownership to a CollectionAlias return type. Did you mean to return @OwningCollection?");
+        // this is an owning reference. Returning a read-only alias is only safe if it is
+        // an @OwningCollection field (because the obligation certainly stays within the class).
+        // If it is not a field, the obligation is dismissed, because the collection does not leave
+        // the scope, but a new obligation is not created at call-site, since the call-site does not
+        // take ownership.
+        if (!isField) {
+          checker.reportError(
+              node.getTree(),
+              "illegal.ownership.transfer",
+              "Cannot transfer ownership to a CollectionAlias return type. Did you mean to return @OwningCollection?");
+        }
       } else {
         // not a resource collection.
         // report warning that the return type annotation is unnecessary.

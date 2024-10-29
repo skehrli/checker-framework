@@ -14,11 +14,9 @@ class Resource {
 class illegalOwningCollectionField {
   // non-final owningcollection field is illegal
   // :: error: owningcollection.field.not.final
-  // :: error: owningcollection.field.not.private
   @OwningCollection Resource[] arr;
   // static owningcollection field is illegal
   // :: error: owningcollection.field.static
-  // :: error: owningcollection.field.not.private
   // :: error: unfulfilled.mustcallonelements.obligations
   static final @OwningCollection Resource[] arr2 = new Resource[1];
 }

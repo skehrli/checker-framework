@@ -15,11 +15,10 @@ class CollectionAliasReturnTypeTest {
   private final int myPort = 42;
 
   /*
-   * Try to return an OwningCollection reference. Although it would be safe to
-   * return an alias if the obligations are fulfilled, it still violates the
-   * invariant that there is always exactly one owning reference to a resource
-   * collection.
-   * We do not allow it.
+   * Try to return an OwningCollection reference.
+   * This is unsafe, because the obligation tracking system sees that the return value
+   * stays in scope and thus assumes the call site must deal with the obligation.
+   * However, the call-site does not take ownership.
    */
   @CollectionAlias
   List<Socket> tryToReturnAliasToOwningCollection() {

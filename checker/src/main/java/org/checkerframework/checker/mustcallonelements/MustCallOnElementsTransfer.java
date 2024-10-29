@@ -25,6 +25,8 @@ import org.checkerframework.dataflow.analysis.RegularTransferResult;
 import org.checkerframework.dataflow.analysis.TransferInput;
 import org.checkerframework.dataflow.analysis.TransferResult;
 import org.checkerframework.dataflow.cfg.node.AssignmentNode;
+import org.checkerframework.dataflow.cfg.node.FieldAccessNode;
+import org.checkerframework.dataflow.cfg.node.ImplicitThisNode;
 import org.checkerframework.dataflow.cfg.node.MethodInvocationNode;
 import org.checkerframework.dataflow.cfg.node.Node;
 import org.checkerframework.dataflow.expression.JavaExpression;
@@ -106,25 +108,27 @@ public class MustCallOnElementsTransfer extends CollectionTransfer {
   //   return new ArrayList<>(mcValues);
   // }
 
-  // @Override
-  // public TransferResult<CFValue, CFStore> visitFieldAccess(
-  //     FieldAccessNode node, TransferInput<CFValue, CFStore> input) {
-  //   TransferResult<CFValue, CFStore> res = super.visitFieldAccess(node, input);
-  //   Element elmnt = TreeUtils.elementFromTree(node.getTree());
-  //   if (atypeFactory.getDeclAnnotation(elmnt, OwningCollection.class) != null
-  //       && elmnt.getKind() == ElementKind.FIELD) {
-  //     // since @OwningCollection is enforced to be array, the following cast is guaranteed to
-  // succeed
-  //     TypeMirror componentType = ((ArrayType) elmnt.asType()).getComponentType();
-  //     List<String> mcoeObligationsOfOwningField = getMustCallValuesForType(componentType);
-  //     AnnotationMirror newType = getMustCallOnElementsType(mcoeObligationsOfOwningField);
-  //     JavaExpression field = JavaExpression.fromTree((ExpressionTree) node.getTree());
-  //     res.getRegularStore().clearValue(field);
-  //     res.getRegularStore().insertValue(field, newType);
-  //     System.out.println("changed type of: " + node);
-  //   }
-  //   return res;
-  // }
+  /*
+   * Remove ownership from all field accesses where the receiver is not the this
+   * object.
+   */
+  @Override
+  public TransferResult<CFValue, CFStore> visitFieldAccess(
+      FieldAccessNode node, TransferInput<CFValue, CFStore> input) {
+    TransferResult<CFValue, CFStore> res = super.visitFieldAccess(node, input);
+    CFStore store = res.getRegularStore();
+    if (!(node.getReceiver() instanceof ImplicitThisNode)) {
+      boolean fieldIsOwningCollection =
+          node.getElement() != null
+              && node.getElement().getAnnotation(OwningCollection.class) != null;
+      if (fieldIsOwningCollection) {
+        JavaExpression field = JavaExpression.fromTree((ExpressionTree) node.getTree());
+        store.clearValue(field);
+        store.insertValue(field, getMustCallOnElementsUnknown());
+      }
+    }
+    return new RegularTransferResult<CFValue, CFStore>(res.getResultValue(), store);
+  }
 
   @Override
   public TransferResult<CFValue, CFStore> visitAssignment(
