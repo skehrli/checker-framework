@@ -36,6 +36,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
@@ -84,6 +86,7 @@ import org.checkerframework.dataflow.cfg.node.ArrayCreationNode;
 import org.checkerframework.dataflow.cfg.node.AssignmentNode;
 import org.checkerframework.dataflow.cfg.node.ClassNameNode;
 import org.checkerframework.dataflow.cfg.node.FieldAccessNode;
+import org.checkerframework.dataflow.cfg.node.ImplicitThisNode;
 import org.checkerframework.dataflow.cfg.node.LessThanNode;
 import org.checkerframework.dataflow.cfg.node.LocalVariableNode;
 import org.checkerframework.dataflow.cfg.node.MethodAccessNode;
@@ -103,6 +106,8 @@ import org.checkerframework.dataflow.expression.ThisReference;
 import org.checkerframework.dataflow.util.NodeUtils;
 import org.checkerframework.framework.flow.CFStore;
 import org.checkerframework.framework.flow.CFValue;
+import org.checkerframework.framework.type.AnnotatedTypeMirror;
+import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedExecutableType;
 import org.checkerframework.framework.util.JavaExpressionParseUtil.JavaExpressionParseException;
 import org.checkerframework.framework.util.StringToJavaExpression;
 import org.checkerframework.javacutil.AnnotationUtils;
@@ -663,7 +668,8 @@ public class MustCallConsistencyAnalyzer {
               iterNextObligation,
               this.cmStore,
               this.mcStore,
-              "Removed from Collection by Iterator.remove() call");
+              "Removed from Collection by Iterator.remove() call",
+              true);
         }
       }
       this.iterNextObligation = null;
@@ -1155,7 +1161,6 @@ public class MustCallConsistencyAnalyzer {
         new BlockWithObligations(
             loopBodyEntryBlock, Collections.singleton(collectionElementObligation));
 
-    // System.out.println("loopbodyentry: " + loopBodyEntry);
     worklist.add(loopBodyEntry);
     visited.add(loopBodyEntry);
     Set<String> calledMethodsInLoop = null;
@@ -1179,7 +1184,6 @@ public class MustCallConsistencyAnalyzer {
         if (isLastBlockOfBody) {
           Set<String> calledMethodsAfterBlock =
               analyzeTypeOfCollectionElement(currentBlock, potentiallyFulfillingLoop, obligations);
-          // System.out.println("called methods after block: " + calledMethodsAfterBlock);
           // intersect the called methods after this block with the accumulated ones so far.
           // This is required because there may be multiple "back edges" of the loop, in which
           // case we must intersect the called methods between those.
@@ -1342,7 +1346,7 @@ public class MustCallConsistencyAnalyzer {
           updateObligationsForOwningReturn(obligations, cfg, (ReturnNode) node);
           verifyReturnStatement((ReturnNode) node, cfg);
         } else if (node instanceof MethodInvocationNode || node instanceof ObjectCreationNode) {
-          updateObligationsForInvocation(obligations, node, successorAndExceptionType.second);
+          updateObligationsForInvocation(obligations, node, successorAndExceptionType.second, cfg);
         }
         // All other types of nodes are ignored. This is safe, because other kinds of
         // nodes cannot create or modify the resource-alias sets that the algorithm is
@@ -1610,13 +1614,14 @@ public class MustCallConsistencyAnalyzer {
    * @param node the node corresponding to a method call
    */
   private void updateObligationsForMethodInvocationOnCollection(
-      Set<Obligation> obligations, Node node) {
+      Set<Obligation> obligations, Node node, ControlFlowGraph cfg) {
     if (node instanceof MethodInvocationNode) {
       MethodInvocationNode min = (MethodInvocationNode) node;
       MethodAccessNode man = min.getTarget();
       Node receiver = man.getReceiver();
       Node receiverTmpVar = removeCastsAndGetTmpVarIfPresent(receiver);
       Node methodCallTmpVar = removeCastsAndGetTmpVarIfPresent(node);
+      MethodTree enclosingMethod = cfg.getEnclosingMethod(node.getTree());
 
       CFStore mcoeStore = mcoeTypeFactory == null ? null : mcoeTypeFactory.getStoreBefore(node);
       CFStore cmoeStore = cmoeTypeFactory == null ? null : cmoeTypeFactory.getStoreBefore(node);
@@ -1647,23 +1652,84 @@ public class MustCallConsistencyAnalyzer {
                 o, mcoeStore, cmoeStore, false, false, node.getTree(), "");
           };
 
-      Runnable checkWritingMethodOnOwningCollection =
-          () -> {
-            if (isRoAlias
-                || mcoeTypeFactory.getMustCallOnElementsObligations(
-                        mcoeStore, (ExpressionTree) receiver.getTree())
-                    == null) {
+      Function<Node, List<String>> checkOpenMcObligations =
+          (Node nodeToCheck) -> {
+            MustCallAnnotatedTypeFactory mcAtf = cmAtf.getMustCallAnnotatedTypeFactory();
+            if (nodeToCheck instanceof LocalVariableNode) {
+              Obligation o = getObligationForVar(obligations, (LocalVariableNode) nodeToCheck);
+              if (o != null) {
+                return checkMustCall(
+                    o,
+                    cmAtf.getStoreBefore(nodeToCheck),
+                    mcAtf.getStoreBefore(nodeToCheck),
+                    "",
+                    false);
+              }
+            }
+
+            Element elt = TreeUtils.elementFromTree(nodeToCheck.getTree());
+            if (elt == null) {
+              return Collections.emptyList();
+            }
+            AnnotatedTypeMirror anno = mcAtf.getAnnotatedType(elt);
+            if (anno instanceof AnnotatedExecutableType) {
+              // if method/constructor call, take the return type
+              anno = ((AnnotatedExecutableType) anno).getReturnType();
+            }
+            AnnotationMirror mcAnno = anno.getPrimaryAnnotation(MustCall.class);
+            if (mcAnno == null) {
+              return Collections.emptyList();
+            } else {
+              List<String> mcValues =
+                  AnnotationUtils.getElementValueArray(
+                      mcAnno, mcAtf.getMustCallValueElement(), String.class);
+              return mcValues;
+            }
+          };
+
+      Consumer<Node> checkWritingMethodOnOwningCollection =
+          (Node assignedExpr) -> {
+            List<String> mcoeValuesOfCollection =
+                mcoeTypeFactory.getMustCallOnElementsObligations(
+                    mcoeStore, (ExpressionTree) receiver.getTree());
+
+            if (isOwningCollection && (receiver instanceof FieldAccessNode)) {
+              Node fieldAccessReceiver = ((FieldAccessNode) receiver).getReceiver();
+              if (fieldAccessReceiver instanceof ImplicitThisNode) {
+                // an @OwningCollection field of the "this" object
+                if (assignedExpr != null) {
+                  List<String> mcObligations = checkOpenMcObligations.apply(assignedExpr);
+                  if (mcObligations != null && !mcObligations.isEmpty()) {
+                    checkEnclosingMethodIsCreatesMustCallFor(receiver, enclosingMethod);
+                    List<String> difference = new ArrayList<>(mcObligations);
+                    difference.removeAll(mcoeValuesOfCollection);
+                    if (!difference.isEmpty()) {
+                      // report error
+                      checker.reportError(
+                          min.getTree(),
+                          "unsafe.owningcollection.field.modification",
+                          receiver.getTree(),
+                          formatMissingMustCallMethods(mcoeValuesOfCollection),
+                          assignedExpr.getTree(),
+                          formatMissingMustCallMethods(mcObligations));
+                    }
+                  }
+                }
+              }
+            }
+
+            if (isRoAlias || mcoeValuesOfCollection == null) {
               checker.reportError(
                   min.getTree(), "modification.without.ownership", receiver.getTree());
             }
           };
 
-      Runnable checkOverwritingMethodOnOwningCollection =
-          () -> {
+      Consumer<Node> checkOverwritingMethodOnOwningCollection =
+          (Node assignedExpr) -> {
+            checkWritingMethodOnOwningCollection.accept(assignedExpr);
+
             // explicitly check for ro alias here, since it might not have an obligation
             if (isRoAlias) {
-              checker.reportError(
-                  min.getTree(), "modification.without.ownership", receiver.getTree());
               return;
             }
 
@@ -1703,22 +1769,22 @@ public class MustCallConsistencyAnalyzer {
             Node argExpr = NodeUtils.removeCasts(args.get(0));
             Node argVar = getTempVarOrNode(argExpr);
             removeObligationForVar(obligations, argVar);
-            checkWritingMethodOnOwningCollection.run();
+            checkWritingMethodOnOwningCollection.accept(argExpr);
             return;
           case ADD_INT_E:
             argExpr = NodeUtils.removeCasts(args.get(1));
             argVar = getTempVarOrNode(argExpr);
             removeObligationForVar(obligations, argVar);
-            checkWritingMethodOnOwningCollection.run();
+            checkWritingMethodOnOwningCollection.accept(argExpr);
             return;
           case SET:
             argExpr = NodeUtils.removeCasts(args.get(1));
             argVar = getTempVarOrNode(argExpr);
             removeObligationForVar(obligations, argVar);
-            checkOverwritingMethodOnOwningCollection.run();
+            checkOverwritingMethodOnOwningCollection.accept(argExpr);
             return;
           case CLEAR:
-            checkOverwritingMethodOnOwningCollection.run();
+            checkOverwritingMethodOnOwningCollection.accept(null);
             return;
           case ITERATOR:
             // if receiver collection has no open MustCallOnElements obligations,
@@ -1816,7 +1882,10 @@ public class MustCallConsistencyAnalyzer {
    *     throwable class was thrown
    */
   private void updateObligationsForInvocation(
-      Set<Obligation> obligations, Node node, @Nullable TypeMirror exceptionType) {
+      Set<Obligation> obligations,
+      Node node,
+      @Nullable TypeMirror exceptionType,
+      ControlFlowGraph cfg) {
     removeObligationsAtOwnershipTransferToParameters(obligations, node, exceptionType);
 
     if (node instanceof MethodInvocationNode
@@ -1830,7 +1899,7 @@ public class MustCallConsistencyAnalyzer {
     }
 
     if (!shouldTrackInvocationResult(obligations, node, false)) {
-      updateObligationsForMethodInvocationOnCollection(obligations, node);
+      updateObligationsForMethodInvocationOnCollection(obligations, node, cfg);
       return;
     }
 
@@ -1842,7 +1911,7 @@ public class MustCallConsistencyAnalyzer {
       incrementNumMustCall(node);
     }
     updateObligationsWithInvocationResult(obligations, node);
-    updateObligationsForMethodInvocationOnCollection(obligations, node);
+    updateObligationsForMethodInvocationOnCollection(obligations, node, cfg);
   }
 
   /**
@@ -2925,7 +2994,8 @@ public class MustCallConsistencyAnalyzer {
             obligation,
             cmAtf.getStoreBefore(node),
             mcAtf.getStoreBefore(node),
-            "variable overwritten by assignment " + node.getTree());
+            "variable overwritten by assignment " + node.getTree(),
+            true);
         replacements.put(obligation, null);
       } else {
         replacements.put(
@@ -3032,7 +3102,7 @@ public class MustCallConsistencyAnalyzer {
     if (!(receiver instanceof LocalVariableNode
             && varTrackedInObligations(obligations, (LocalVariableNode) receiver))
         && !(node.getExpression() instanceof NullLiteralNode)) {
-      checkEnclosingMethodIsCreatesMustCallFor(node, enclosingMethodTree);
+      checkEnclosingMethodIsCreatesMustCallFor(node.getTarget(), enclosingMethodTree);
     }
 
     // The following code handles a special case where the field being assigned is itself
@@ -3141,23 +3211,21 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Checks that the method that encloses an assignment is marked with @CreatesMustCallFor
-   * annotation whose target is the object whose field is being re-assigned.
+   * Checks that the method that encloses a write to a field is marked with @CreatesMustCallFor
+   * annotation whose target is the object whose field is being written to.
    *
-   * @param node an assignment node whose lhs is a non-final, owning field
-   * @param enclosingMethod the MethodTree in which the re-assignment takes place
+   * @param receiver the receiver node of the write, which is a field with calling obligations
+   * @param enclosingMethod the MethodTree in which the write takes place
    */
-  private void checkEnclosingMethodIsCreatesMustCallFor(
-      AssignmentNode node, MethodTree enclosingMethod) {
-    Node lhs = node.getTarget();
-    if (!(lhs instanceof FieldAccessNode)) {
+  private void checkEnclosingMethodIsCreatesMustCallFor(Node receiver, MethodTree enclosingMethod) {
+    if (!(receiver instanceof FieldAccessNode)) {
       return;
     }
-    if (permitStaticOwning && ((FieldAccessNode) lhs).getReceiver() instanceof ClassNameNode) {
+    if (permitStaticOwning && ((FieldAccessNode) receiver).getReceiver() instanceof ClassNameNode) {
       return;
     }
 
-    String receiverString = receiverAsString((FieldAccessNode) lhs);
+    String receiverString = receiverAsString((FieldAccessNode) receiver);
     if ("this".equals(receiverString) && TreeUtils.isConstructor(enclosingMethod)) {
       // Constructors always create must-call obligations, so there is no need for them to
       // be annotated.
@@ -3175,7 +3243,7 @@ public class MustCallConsistencyAnalyzer {
           "missing.creates.mustcall.for",
           enclosingMethodElt.getSimpleName().toString(),
           receiverString,
-          ((FieldAccessNode) lhs).getFieldName());
+          ((FieldAccessNode) receiver).getFieldName());
       return;
     }
 
@@ -3201,7 +3269,7 @@ public class MustCallConsistencyAnalyzer {
         "incompatible.creates.mustcall.for",
         enclosingMethodElt.getSimpleName().toString(),
         receiverString,
-        ((FieldAccessNode) lhs).getFieldName(),
+        ((FieldAccessNode) receiver).getFieldName(),
         String.join(", ", checked));
   }
 
@@ -3764,7 +3832,7 @@ public class MustCallConsistencyAnalyzer {
                 null,
                 exitReasonForErrorMessage);
           } else {
-            checkMustCall(obligation, cmStore, mcStore, exitReasonForErrorMessage);
+            checkMustCall(obligation, cmStore, mcStore, exitReasonForErrorMessage, true);
           }
         }
       } else {
@@ -4165,19 +4233,26 @@ public class MustCallConsistencyAnalyzer {
    * @param mcStore the must-call store
    * @param outOfScopeReason if the {@code @MustCall} obligation is not satisfied, a useful
    *     explanation to include in the error message
+   * @param reportErrors whether an error should be reported
+   * @return the list of unfulfilled must-call obligations
    */
-  private void checkMustCall(
-      Obligation obligation, AccumulationStore cmStore, CFStore mcStore, String outOfScopeReason) {
+  private List<String> checkMustCall(
+      Obligation obligation,
+      AccumulationStore cmStore,
+      CFStore mcStore,
+      String outOfScopeReason,
+      boolean reportErrors) {
 
     if (obligation instanceof IteratorNextObligation) {
       // cache the cmStore and mcStore for the obligation corresponding to the value returned by
       // an Iterator.next() in case it went out of scope before a call to Iterator.remove(),
       // where we have to check whether the MustCall values of the preceding
       // Iterator.next() call have been fulfilled.
+      // The return value is ignored.
       IteratorNextObligation iterNextOb = (IteratorNextObligation) obligation;
       if (!iterNextOb.checkObligation) {
         ((IteratorNextObligation) obligation).leaveScope(cmStore, mcStore);
-        return;
+        return Collections.emptyList();
       }
     }
 
@@ -4201,7 +4276,7 @@ public class MustCallConsistencyAnalyzer {
               outOfScopeReason);
         }
       }
-      return;
+      return null;
     }
     if (mustCallValues.isEmpty()) {
       throw new TypeSystemError("unexpected empty must-call values for obligation " + obligation);
@@ -4251,19 +4326,23 @@ public class MustCallConsistencyAnalyzer {
       // Report the error at the first alias' definition. This choice is arbitrary but
       // consistent.
       ResourceAlias firstAlias = obligation.resourceAliases.iterator().next();
-      if (!reportedErrorAliases.contains(firstAlias)) {
-        if (!checker.shouldSkipUses(TreeUtils.elementFromTree(firstAlias.tree))) {
-          reportedErrorAliases.add(firstAlias);
-          checker.reportError(
-              firstAlias.tree,
-              "required.method.not.called",
-              formatMissingMustCallMethods(mustCallValues.get(firstAlias)),
-              firstAlias.stringForErrorMessage(),
-              firstAlias.reference.getType().toString(),
-              outOfScopeReason);
+      if (reportErrors) {
+        if (!reportedErrorAliases.contains(firstAlias)) {
+          if (!checker.shouldSkipUses(TreeUtils.elementFromTree(firstAlias.tree))) {
+            reportedErrorAliases.add(firstAlias);
+            checker.reportError(
+                firstAlias.tree,
+                "required.method.not.called",
+                formatMissingMustCallMethods(mustCallValues.get(firstAlias)),
+                firstAlias.stringForErrorMessage(),
+                firstAlias.reference.getType().toString(),
+                outOfScopeReason);
+          }
         }
       }
+      return mustCallValues.get(firstAlias);
     }
+    return Collections.emptyList();
   }
 
   /**
@@ -4360,7 +4439,7 @@ public class MustCallConsistencyAnalyzer {
   public static String formatMissingMustCallMethods(List<String> mustCallVal) {
     int size = mustCallVal.size();
     if (size == 0) {
-      throw new TypeSystemError("empty mustCallVal " + mustCallVal);
+      return "None";
     } else if (size == 1) {
       return "method " + mustCallVal.get(0);
     } else {

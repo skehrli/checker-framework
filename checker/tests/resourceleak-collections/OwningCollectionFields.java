@@ -2,6 +2,7 @@ import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
 import org.checkerframework.checker.calledmethodsonelements.qual.EnsuresCalledMethodsOnElements;
+import org.checkerframework.checker.mustcall.qual.CreatesMustCallFor;
 import org.checkerframework.checker.mustcall.qual.InheritableMustCall;
 import org.checkerframework.checker.mustcallonelements.qual.CollectionAlias;
 import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
@@ -13,6 +14,8 @@ class OwningCollectionFields {
 
   void fieldWrapperClient() {
     @OwningCollection List<Socket> list = new ArrayList<Socket>();
+    // even though destructor is called, new obligation is created for reassigning field
+    // :: error: required.method.not.called
     OwningCollectionFieldWrapper wrapper = new OwningCollectionFieldWrapper(list);
 
     try {
@@ -37,7 +40,7 @@ class OwningCollectionFields {
     }
 
     wrapper.destruct();
-    // wrapper.reassignField();
+    wrapper.reassignField();
   }
 
   @InheritableMustCall("destruct")
@@ -82,25 +85,24 @@ class OwningCollectionFields {
       }
     }
 
-    // public void reassignFieldIllegally() {
-    //   // maybe the call site knows that the obligations of field have been fulfilled.
-    //   // If we force this method to have a @CreatesMustCallOnElementsFor("this") annotation,
-    //   // at call-site,
-    //   try {
-    //     // :: error:
-    //     socketList.add(new Socket(myHost, myPort));
-    //   } catch (Exception e) {}
-    // }
+    // :: error: missing.creates.mustcall.for
+    public void reassignFieldIllegally() {
+      try {
+        socketList.add(new Socket(myHost, myPort));
+      } catch (Exception e) {
+      }
+    }
 
-    // @CreatesMustCallOnElementsFor("this")
-    // public void reassignField() {
-    //   // maybe the call site knows that the obligations of field have been fulfilled.
-    //   // If we force this method to have a @CreatesMustCallOnElementsFor("this") annotation,
-    //   // at call-site,
-    //   try {
-    //     socketList.add(new Socket(myHost, myPort));
-    //   } catch (Exception e) {}
-    // }
+    @CreatesMustCallFor("this")
+    public void reassignField() {
+      // maybe the call site knows that the obligations of field have been fulfilled.
+      // If we force this method to have a @CreatesMustCallOnElementsFor("this") annotation,
+      // at call-site,
+      try {
+        socketList.add(new Socket(myHost, myPort));
+      } catch (Exception e) {
+      }
+    }
   }
 
   @InheritableMustCall("destruct")
@@ -131,8 +133,29 @@ class OwningCollectionFields {
 
     public void illegalOverwrite() {
       // field has possibly open obligation "close", cannot overwrite elements
+      // it does not require a CreatesMustCallFor annotation since null has no mustcall values
       // :: error: unsafe.owningcollection.modification
       collection.set(0, null);
+    }
+
+    public void illegalOverwrite2() {
+      Socket s = null;
+      try {
+        s = new Socket(myHost, myPort);
+      } catch (Exception e) {
+      }
+
+      Socket t = s;
+      try {
+        t.close();
+      } catch (Exception e) {
+      }
+
+      // field has possibly open obligation "close", cannot overwrite elements
+      // However, it does not require a CreatesMustCallFor annotation since s has no open
+      // mustcall obligations
+      // :: error: unsafe.owningcollection.modification
+      collection.set(0, s);
     }
 
     public void legalAdd() {
@@ -182,12 +205,19 @@ class OwningCollectionFields {
         value = "collection",
         methods = {"close"})
     public void destruct() {
+      // clear is unsafe when the field has open obligations
+      // :: error: unsafe.owningcollection.modification
+      collection.clear();
+
       for (Socket s : collection) {
         try {
           s.close();
         } catch (Exception e) {
         }
       }
+
+      // verify that clear works after the field obligations have been cleared
+      collection.clear();
     }
   }
 }
