@@ -637,7 +637,7 @@ on the indicated expression (e.g., as a cast).
 The Resource Leak Checker handles homogeneous collections of resources. In a homogeneous collection, every element
 has exactly the same must-call and called-methods properties. Arrays and
 classes that implement \<java.util.Collection> are supported; this section
-calls those ``collections''.
+calls those ``collections''. Also handled are \<java.util.Iterator>s over \<java.util.Collection>s.
 [[TODO: What about maps, iterators, etc?]]
 
 In general, to maintain homogeneity, your program must use loops to
