@@ -109,6 +109,7 @@ public class CalledMethodsVisitor extends AccumulationVisitor {
     }
 
     if (!checkContract(e, requiredAnno, inferredAnno, exitStore)) {
+      checker.reportError(tree, "owningcollection.error", 0);
       checker.reportError(
           tree,
           "contracts.exceptional.postcondition",

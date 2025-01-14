@@ -1450,6 +1450,7 @@ public class BaseTypeVisitor<Factory extends GenericAnnotatedTypeFactory<?, ?, ?
         inferredAnno = qualHierarchy.findAnnotationInSameHierarchy(annos, annotation);
       }
       if (!checkContract(expression, annotation, inferredAnno, exitStore)) {
+        checker.reportError(methodTree, "owningcollection.error", 0);
         checker.reportError(
             methodTree,
             "contracts.postcondition",

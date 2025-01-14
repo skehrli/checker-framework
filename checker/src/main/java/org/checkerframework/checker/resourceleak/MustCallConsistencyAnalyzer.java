@@ -182,6 +182,7 @@ public class MustCallConsistencyAnalyzer {
   private static long numOwningCollectionOccurences = 0;
   private static long numOwningCollectionErrors = 0;
   private static long numOwningFields = 0;
+  private static long numOwningIterators = 0;
   private static long numResourceCollectionOccurences = 0;
   private static Map<MethodTree, Set<Long>> resourceCollections = new HashMap<>();
 
@@ -1047,6 +1048,14 @@ public class MustCallConsistencyAnalyzer {
   // TODO: This analysis is currently implemented directly using a worklist; in the future, it
   // should be rewritten to use the dataflow framework of the Checker Framework.
   public void analyze(ControlFlowGraph cfg) {
+    long count =
+        numResourceCollections
+            + numOwningCollections
+            + numOwningCollectionOccurences
+            + numOwningCollectionErrors
+            + numOwningFields
+            + numResourceCollectionOccurences;
+
     // The `visited` set contains everything that has been added to the worklist, even if it has
     // not yet been removed and analyzed.
     Set<BlockWithObligations> visited = new HashSet<>();
@@ -1067,14 +1076,27 @@ public class MustCallConsistencyAnalyzer {
       propagateObligationsToSuccessorBlocks(
           cfg, current.obligations, current.block, visited, worklist);
     }
-    if (numResourceCollections > 0 || numOwningCollections > 0)
+    long count2 =
+        numResourceCollections
+            + numOwningCollections
+            + numOwningCollectionOccurences
+            + numOwningCollectionErrors
+            + numOwningFields
+            + numResourceCollectionOccurences;
+    if (count2 - count > 0)
       System.out.println(
           "report:\n"
               + "Resource Collections Remaining: "
               + numResourceCollections
               + "\n"
+              + "Resource Collection Occurences Remaining: "
+              + numResourceCollectionOccurences
+              + "\n"
               + "Owning Collections: "
               + numOwningCollections
+              + "\n"
+              + "Owning Collection Iterators Tracked: "
+              + numOwningIterators
               + "\n"
               + "Owning Collection Occurences: "
               + numOwningCollectionOccurences
@@ -1364,12 +1386,7 @@ public class MustCallConsistencyAnalyzer {
               elt != null && elt.asType() != null && elt.asType().getKind() == TypeKind.ARRAY;
           MustCallAnnotatedTypeFactory mcAtf = cmAtf.getMustCallAnnotatedTypeFactory();
           if (isCollection) {
-            DeclaredType declType = (DeclaredType) elt.asType();
-            List<? extends TypeMirror> typeArgs = declType.getTypeArguments();
-            assert typeArgs.size() == 1
-                : "Collections are expected to have only one type variable.";
-            TypeMirror typeArg = typeArgs.get(0);
-            List<String> mcValues = RLCUtils.getMcValues(typeArg, mcAtf);
+            List<String> mcValues = RLCUtils.getMcoeValuesOfOwningCollection(elt, mcAtf);
             if (mcValues != null && !mcValues.isEmpty()) {
               logResourceCollection(tree, cfg);
             }
@@ -1692,8 +1709,7 @@ public class MustCallConsistencyAnalyzer {
         if (isOwningCollection) {
           ++numOwningCollectionOccurences;
         } else {
-          checker.reportWarning(
-              tree, "resource.collection.occurence", ++numResourceCollectionOccurences);
+          ++numResourceCollectionOccurences;
         }
       }
       resourceCollections.computeIfAbsent(enclosingMethod, k -> new HashSet<>()).add(lineNumber);
@@ -1803,8 +1819,8 @@ public class MustCallConsistencyAnalyzer {
                     difference.removeAll(mcoeValuesOfCollection);
                     if (!difference.isEmpty()) {
                       // report error
-                      System.out.println(
-                          "Error about OwningCollection #" + ++numOwningCollectionErrors);
+                      checker.reportWarning(
+                          min.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
                       checker.reportError(
                           min.getTree(),
                           "unsafe.owningcollection.field.modification",
@@ -1819,7 +1835,8 @@ public class MustCallConsistencyAnalyzer {
             }
 
             if (isRoAlias || mcoeValuesOfCollection == null) {
-              System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+              checker.reportWarning(
+                  min.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
               checker.reportError(
                   min.getTree(), "modification.without.ownership", receiver.getTree());
             }
@@ -1840,15 +1857,18 @@ public class MustCallConsistencyAnalyzer {
                   mcoeTypeFactory.getMustCallOnElementsObligations(
                       mcoeStore, (ExpressionTree) receiver.getTree());
               if (mcoeValues == null) {
-                System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+                checker.reportWarning(
+                    min.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
                 checker.reportError(
                     min.getTree(), "modification.without.ownership", receiver.getTree());
+                return;
               }
               // mcoeValues would be null if receiver was McoeUnknown, but then, the isRoAlias
               // branch
               // would've been taken and the method had returned, so mcoeValues is not null here.
               if (!mcoeValues.isEmpty()) {
-                System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+                checker.reportWarning(
+                    min.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
                 checker.reportError(
                     min.getTree(),
                     "unsafe.owningcollection.modification",
@@ -1866,7 +1886,8 @@ public class MustCallConsistencyAnalyzer {
           case SAFE:
             return;
           case UNSAFE:
-            System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+            checker.reportWarning(
+                node.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
             checker.reportError(node.getTree(), "unsafe.method", man);
             return;
           case ADD_E:
@@ -1899,13 +1920,15 @@ public class MustCallConsistencyAnalyzer {
             // IteratorObligation that reports an error if iter.remove()
             // is called.
             if (isRoAlias) {
-              System.out.println("Adding iterator for mcoeu: " + methodCallTmpVar);
+              checker.reportWarning(
+                  node.getTree(), "owningcollection.iterator", ++numOwningIterators);
               IteratorObligation iterObligation =
                   new IteratorObligation(Obligation.fromTree(methodCallTmpVar.getTree()));
               obligations.add(iterObligation);
             } else {
               if (!checkNoOpenMcoeObligations.getAsBoolean()) {
-                System.out.println("Adding iterator for: " + methodCallTmpVar);
+                checker.reportWarning(
+                    node.getTree(), "owningcollection.iterator", ++numOwningIterators);
                 IteratorObligation iterObligation =
                     new IteratorObligation(Obligation.fromTree(methodCallTmpVar.getTree()));
                 obligations.add(iterObligation);
@@ -1938,7 +1961,8 @@ public class MustCallConsistencyAnalyzer {
           case SAFE:
             return;
           case UNSAFE:
-            System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+            checker.reportWarning(
+                node.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
             checker.reportError(node.getTree(), "unsafe.method", man);
             return;
           case ITER_REMOVE:
@@ -1970,6 +1994,7 @@ public class MustCallConsistencyAnalyzer {
         // is meant for user-defined methods that return an Iterator
 
         if (shouldTrackIterator(methodCallReturnType)) {
+          checker.reportWarning(node.getTree(), "owningcollection.iterator", ++numOwningIterators);
           System.out.println("Adding iterator for ret type: " + methodCallTmpVar);
           obligations.add(new IteratorObligation(Obligation.fromTree(methodCallTmpVar.getTree())));
         }
@@ -2603,7 +2628,8 @@ public class MustCallConsistencyAnalyzer {
       if (rhsIsField
           && rhsIsOwningCollection
           && lhs.getTree().getKind() != Tree.Kind.ARRAY_ACCESS) {
-        System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+        checker.reportWarning(
+            assignmentNode.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
         checker.reportError(
             assignmentNode.getTree(),
             "illegal.ownership.transfer",
@@ -2637,7 +2663,8 @@ public class MustCallConsistencyAnalyzer {
             // enforces 1. assignment rule:
             // elements of @OwningCollection field may only be assigned once in constructor
             if (this.alreadyAllocatedArrays.contains(arrayName)) {
-              System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+              checker.reportWarning(
+                  assignmentNode.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
               checker.reportError(
                   assignmentNode.getTree(),
                   "owningcollection.field.elements.assigned.multiple.times");
@@ -2648,7 +2675,8 @@ public class MustCallConsistencyAnalyzer {
           } else {
             // enforces 1. assignment rule:
             // illegal assignment to elements of @OwningCollection field in constructor
-            System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+            checker.reportWarning(
+                assignmentNode.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
             checker.reportError(
                 assignmentNode.getTree(), "illegal.owningcollection.field.elements.assignment");
             return;
@@ -2656,7 +2684,8 @@ public class MustCallConsistencyAnalyzer {
         } else {
           if (rhsIsMcoeUnknown) {
             // cannot assign OwningCollection field to a write-disabled alias.
-            System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+            checker.reportWarning(
+                assignmentNode.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
             checker.reportError(
                 assignmentNode.getTree(), "illegal.owningcollection.field.assignment");
           } else {
@@ -2670,7 +2699,8 @@ public class MustCallConsistencyAnalyzer {
           // enforce 1. assignment rule:
           // @OwningCollection field may not be assigned (neither its elements) outside of
           // constructor
-          System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+          checker.reportWarning(
+              assignmentNode.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
           checker.reportError(
               assignmentNode.getTree(), "owningcollection.field.assigned.outside.constructor");
           return;
@@ -2712,7 +2742,8 @@ public class MustCallConsistencyAnalyzer {
           ExpressionTree receiverArray = ((ArrayAccessTree) lhs.getTree()).getExpression();
           if (lhsIsMcoeUnknown) {
             // enforces 3. assignment rule: no assignment without ownership
-            System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+            checker.reportWarning(
+                assignmentNode.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
             checker.reportError(
                 assignmentNode.getTree(), "modification.without.ownership", receiverArray);
           } else {
@@ -2732,7 +2763,9 @@ public class MustCallConsistencyAnalyzer {
     } else if (lhsIsMcoeUnknown && (lhs.getTree().getKind() == Tree.Kind.ARRAY_ACCESS)) {
       // enforces 3. assignment rule: no assignment without ownership
       // lhs is non-@OwningCollection read-only reference and tries to assign its elements.
-      System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+
+      checker.reportWarning(
+          assignmentNode.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
       checker.reportError(
           assignmentNode.getTree(), "modification.without.ownership", lhs.getTree());
     }
@@ -3649,13 +3682,17 @@ public class MustCallConsistencyAnalyzer {
 
     if (returnTypeIsOwningCollection) {
       if (isField) {
-        System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+        checker.reportWarning(
+            node.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
         checker.reportError(node.getTree(), "owningcollection.field.returned");
       } else if (isMcoeUnknown) {
-        System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+        checker.reportWarning(
+            node.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
         checker.reportError(node.getTree(), "return.without.ownership", tree);
       } else if (!isOwningCollection) {
-        System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+
+        checker.reportWarning(
+            node.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
         checker.reportError(node.getTree(), "non.owningcollection.return.value", tree);
       } else {
         // OwningCollection, non-write disabled reference. Exactly as intended.
@@ -3670,7 +3707,9 @@ public class MustCallConsistencyAnalyzer {
         // the scope, but a new obligation is not created at call-site, since the call-site does not
         // take ownership.
         if (!isField) {
-          System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+
+          checker.reportWarning(
+              node.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
           checker.reportError(
               node.getTree(),
               "illegal.ownership.transfer",
@@ -3685,10 +3724,12 @@ public class MustCallConsistencyAnalyzer {
     } else {
       // no return type annotation
       if (isMcoeUnknown) {
-        System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+        checker.reportWarning(
+            node.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
         checker.reportError(node.getTree(), "returning.unannotated.owningcollection.alias", tree);
       } else if (isOwningCollection) {
-        System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+        checker.reportWarning(
+            node.getTree(), "owningcollection.error", ++numOwningCollectionErrors);
         checker.reportError(node.getTree(), "owningcollection.return.value", tree);
       }
     }
@@ -3718,10 +3759,11 @@ public class MustCallConsistencyAnalyzer {
             && ((ArrayType) elt.asType()).getComponentType().getKind() != TypeKind.ARRAY;
     boolean isCollection = elt != null && RLCUtils.isCollection(tree, mcoeTypeFactory);
     if (isOwningCollection && !(is1dArray || isCollection)) {
-      System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+      checker.reportWarning(tree, "owningcollection.error", ++numOwningCollectionErrors);
       checker.reportError(tree, "owningcollection.noncollection", tree);
     } else if (isOwning && (isArray || isCollection)) {
-      System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+
+      checker.reportWarning(tree, "owningcollection.error", ++numOwningCollectionErrors);
       checker.reportError(tree, "owning.collection", tree);
     }
   }
@@ -4110,7 +4152,7 @@ public class MustCallConsistencyAnalyzer {
         boolean paramIsIterator = RLCUtils.isIterator(paramElement, cmAtf);
         if (paramIsIterator) {
           if (shouldTrackIterator(paramElement.asType())) {
-            System.out.println("Adding iterator for param: " + param);
+            checker.reportWarning(param, "owningcollection.iterator", ++numOwningIterators);
             result.add(new IteratorObligation(Obligation.fromTree(param)));
           }
         }
@@ -4127,7 +4169,7 @@ public class MustCallConsistencyAnalyzer {
 
           if (isField && isIterator) {
             if (shouldTrackIterator(memberElm.asType())) {
-              System.out.println("Adding iterator for field: " + declaration);
+              checker.reportWarning(declaration, "owningcollection.iterator", ++numOwningIterators);
               result.add(new IteratorObligation(Obligation.fromTree(declaration)));
             }
           }
@@ -4300,7 +4342,8 @@ public class MustCallConsistencyAnalyzer {
           // mcoeUnknown
           // annotation to mask obligations. report an error for unfulfilled obligations.
           if (reportErrors) {
-            System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+            checker.reportWarning(
+                alias.tree, "owningcollection.error", ++numOwningCollectionErrors);
             checker.reportError(
                 alias.tree,
                 "unfulfilled.mustcallonelements.obligations",
@@ -4313,7 +4356,8 @@ public class MustCallConsistencyAnalyzer {
           // this is not an exit, but verification of modifiying operation.
           // Cannot remove access to collection elements with revoked ownership.
           if (reportErrors) {
-            System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+            checker.reportWarning(
+                alias.tree, "owningcollection.error", ++numOwningCollectionErrors);
             checker.reportError(
                 alias.tree, "modification.without.ownership", alias.tree.toString());
           }
@@ -4353,7 +4397,8 @@ public class MustCallConsistencyAnalyzer {
     if (!mcoeValues.isEmpty()) {
       if (isExit) {
         if (reportErrors) {
-          System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+          checker.reportWarning(
+              firstAlias.tree, "owningcollection.error", ++numOwningCollectionErrors);
           checker.reportError(
               firstAlias.tree,
               "unfulfilled.mustcallonelements.obligations",
@@ -4364,7 +4409,7 @@ public class MustCallConsistencyAnalyzer {
         return false;
       } else {
         if (reportErrors) {
-          System.out.println("Error about OwningCollection #" + ++numOwningCollectionErrors);
+          checker.reportWarning(occurence, "owningcollection.error", ++numOwningCollectionErrors);
           checker.reportError(
               occurence,
               "unsafe.owningcollection.modification",

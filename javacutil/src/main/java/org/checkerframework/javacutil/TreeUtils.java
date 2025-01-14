@@ -259,31 +259,33 @@ public final class TreeUtils {
     return false;
   }
 
-  /**
-   * Returns true iff the underlying JCTree exists and start at a position p &le; 0 in the source
-   * code.
-   *
-   * <p>Note that there are trees that may actually start at position 0 in the source code, such as
-   * import statements or class declarations. Be careful.
-   *
-   * @param tree the tree
-   * @return true iff the underlying JCTree exists and start at a position p &le; 0 in the source
-   *     code.
-   * @throws BugInCF if {@code tree} is null or is not a valid javac-internal tree (JCTree)
-   */
-  public static boolean statementIsSynthetic(Tree tree) {
-    if (tree == null) {
-      throw new BugInCF("TreeUtils.statementIsSynthetic: tree is null");
-    }
+  // /**
+  //  * Returns true iff the underlying JCTree exists and start at a position p &le; 0 in the source
+  //  * code.
+  //  *
+  //  * <p>Note that there are trees that may actually start at position 0 in the source code, such
+  // as
+  //  * import statements or class declarations. Be careful.
+  //  *
+  //  * @param tree the tree
+  //  * @return true iff the underlying JCTree exists and start at a position p &le; 0 in the source
+  //  *     code.
+  //  * @throws BugInCF if {@code tree} is null or is not a valid javac-internal tree (JCTree)
+  //  */
+  // public static boolean statementIsSynthetic(Tree tree) {
+  //   if (tree == null) {
+  //     throw new BugInCF("TreeUtils.statementIsSynthetic: tree is null");
+  //   }
 
-    if (tree instanceof JCTree) {
-      return ((JCTree) tree).getStartPosition() <= 0;
-    } else {
-      throw new BugInCF(
-          "TreeUtils.statementIsSynthetic: tree is not a valid Javac tree but a "
-              + tree.getClass());
-    }
-  }
+  //   System.out.println("jctree startpos: " + ((JCTree) tree).getStartPosition());
+  //   if (tree instanceof JCTree) {
+  //     return ((JCTree) tree).getStartPosition() <= 0;
+  //   } else {
+  //     throw new BugInCF(
+  //         "TreeUtils.statementIsSynthetic: tree is not a valid Javac tree but a "
+  //             + tree.getClass());
+  //   }
+  // }
 
   /**
    * If the given tree is a parenthesized tree, return the enclosed non-parenthesized tree.

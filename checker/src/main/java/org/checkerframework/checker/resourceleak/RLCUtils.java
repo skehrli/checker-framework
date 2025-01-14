@@ -13,7 +13,6 @@ import java.util.Set;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.AnnotationValue;
 import javax.lang.model.element.Element;
-import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.ArrayType;
@@ -31,7 +30,6 @@ import org.checkerframework.checker.mustcall.qual.MustCall;
 import org.checkerframework.checker.mustcallonelements.MustCallOnElementsChecker;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElements;
 import org.checkerframework.checker.mustcallonelements.qual.MustCallOnElementsUnknown;
-import org.checkerframework.checker.mustcallonelements.qual.OwningCollection;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsChecker;
@@ -251,19 +249,21 @@ public class RLCUtils {
   public static @NonNull List<String> getMcoeValuesOfOwningCollection(
       Element elt, MustCallAnnotatedTypeFactory mcAtf) {
     // Check arguments, since this is critical for the soundness of the defaulting rule.
-    ElementKind eltKind = elt.getKind();
-    boolean eltIsOwningCollection = elt.getAnnotation(OwningCollection.class) != null;
-    if (eltKind != ElementKind.FIELD && eltKind != ElementKind.PARAMETER) {
-      throw new IllegalArgumentException(
-          "RLCUtils#getMcoeValuesOfOwningCollection() expected a FIELD or PARAMETER element, but got: "
-              + eltKind);
-    }
-    if (!eltIsOwningCollection) {
-      throw new IllegalArgumentException(
-          "RLCUtils#getMcoeValuesOfOwningCollection() expected an @OwningCollection argument, but "
-              + elt
-              + " is not @OwningCollection.");
-    }
+    // ElementKind eltKind = elt.getKind();
+    // boolean eltIsOwningCollection = elt.getAnnotation(OwningCollection.class) != null;
+    // if (eltKind != ElementKind.FIELD && eltKind != ElementKind.PARAMETER) {
+    //   throw new IllegalArgumentException(
+    //       "RLCUtils#getMcoeValuesOfOwningCollection() expected a FIELD or PARAMETER element, but
+    // got: "
+    //           + eltKind);
+    // }
+    // if (!eltIsOwningCollection) {
+    //   throw new IllegalArgumentException(
+    //       "RLCUtils#getMcoeValuesOfOwningCollection() expected an @OwningCollection argument, but
+    // "
+    //           + elt
+    //           + " is not @OwningCollection.");
+    // }
 
     TypeMirror typeMirror = elt.asType();
     List<String> manualMcoeAnnoValues = getMcoeValuesInManualAnno(typeMirror);
