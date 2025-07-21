@@ -1,8 +1,11 @@
 package org.checkerframework.checker.collectionownership;
 
 import com.sun.source.tree.AnnotationTree;
+import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
@@ -27,6 +30,11 @@ import org.checkerframework.javacutil.TreeUtils;
  */
 public class CollectionOwnershipVisitor
     extends BaseTypeVisitor<CollectionOwnershipAnnotatedTypeFactory> {
+
+  private static long numOCFields = 0;
+  private static Set<Tree> ocFields = new HashSet<>();
+  private static long numRCs = 0;
+  private static Set<Tree> rcs = new HashSet<>();
 
   /**
    * Creates a new CollectionOwnershipVisitor.
@@ -89,12 +97,30 @@ public class CollectionOwnershipVisitor
   public Void visitVariable(VariableTree tree, Void p) {
     Element elt = TreeUtils.elementFromDeclaration(tree);
     if (elt != null && atypeFactory.isResourceCollectionField(elt)) {
+
       if (elt.getModifiers().contains(Modifier.STATIC)) {
         // error: static resource collection fields not supported
         checker.reportError(tree, "static.resource.collection.field", tree);
       }
       if (atypeFactory.isOwningCollectionField(elt)) {
+        numOCFields++;
+        ocFields.add(tree);
+        numRCs++;
+        rcs.add(tree);
+        System.out.println(
+          "VISITOR:\n"
+          + "oc fields: " + numOCFields + " " + ocFields + "\n"
+          + "num rcs: " + numRCs + " " + rcs
+        );
         checkOwningCollectionField(tree);
+      } else {
+        numRCs++;
+        rcs.add(tree);
+        System.out.println(
+          "VISITOR:\n"
+          + "oc fields: " + numOCFields + " " + ocFields + "\n"
+          + "num rcs: " + numRCs + " " + rcs
+        );
       }
     }
     return super.visitVariable(tree, p);

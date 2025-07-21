@@ -3385,6 +3385,16 @@ public class BaseTypeVisitor<Factory extends GenericAnnotatedTypeFactory<?, ?, ?
     return result.toString();
   }
 
+  public Long getLineNumber(Tree tree) {
+    long valuePos = positions.getStartPosition(root, tree);
+    LineMap lm = root.getLineMap();
+    if (valuePos != -1 && lm != null) {
+      return lm.getLineNumber(valuePos);
+    } else {
+      return Long.valueOf(-1);
+    }
+  }
+
   /**
    * Class that creates string representations of {@link AnnotatedTypeMirror}s which are only
    * verbose if required to differentiate the two types.

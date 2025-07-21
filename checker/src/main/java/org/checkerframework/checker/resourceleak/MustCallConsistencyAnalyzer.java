@@ -155,6 +155,11 @@ import org.plumelib.util.IPair;
  */
 public class MustCallConsistencyAnalyzer {
 
+  private static long numRCUses = 0;
+  private static Set<Tree> rcUses = new HashSet<>();
+  // private static long numOwningIterators = 0;
+  private static Map<MethodTree, Set<Long>> resourceCollections = new HashMap<>();
+
   /** True if errors related to static owning fields should be suppressed. */
   private final boolean permitStaticOwning;
 
@@ -743,6 +748,7 @@ public class MustCallConsistencyAnalyzer {
   // TODO: This analysis is currently implemented directly using a worklist; in the future, it
   // should be rewritten to use the dataflow framework of the Checker Framework.
   public void analyze(ControlFlowGraph cfg) {
+    long count = numRCUses;
     // The `visited` set contains everything that has been added to the worklist, even if it has
     // not yet been removed and analyzed.
     Set<BlockWithObligations> visited = new HashSet<>();
@@ -758,6 +764,12 @@ public class MustCallConsistencyAnalyzer {
       BlockWithObligations current = worklist.remove();
       propagateObligationsToSuccessorBlocks(
           cfg, current.obligations, current.block, visited, worklist);
+      if (numRCUses - count > 0) {
+        System.out.println(
+          "REPORT:\n"
+          + "RC uses: " + rcUses
+        );
+      }
     }
   }
 
@@ -2437,6 +2449,7 @@ public class MustCallConsistencyAnalyzer {
       Block currentBlock,
       Set<BlockWithObligations> visited,
       Deque<BlockWithObligations> worklist) {
+
     // For each successor block that isn't caused by an ignored exception type, this loop
     // computes the set of Obligations that should be propagated to it and then adds it to the
     // worklist if any of its resource aliases are still in scope in the successor block. If
@@ -2453,6 +2466,10 @@ public class MustCallConsistencyAnalyzer {
       // successor block, but can vary slightly depending on the exception type.  There might
       // be some opportunities for optimization in this mostly-redundant work.
       for (Node node : currentBlock.getNodes()) {
+        if (node.getTree() != null && coAtf.isResourceCollection(node.getTree())) {
+          logResourceCollection(node.getTree(), cfg);
+        }
+
         if (node instanceof AssignmentNode) {
           updateObligationsForAssignment(obligations, cfg, (AssignmentNode) node);
         } else if (node instanceof ReturnNode) {
@@ -2478,6 +2495,18 @@ public class MustCallConsistencyAnalyzer {
       } catch (InvalidLoopBodyAnalysisException e) {
         // this exception is only thrown from the loop body analysis, which has another entry point.
       }
+    }
+  }
+
+  private void logResourceCollection(Tree tree, ControlFlowGraph cfg) { 
+    MethodTree enclosingMethod = cfg.getEnclosingMethod(tree);
+    long lineNumber = cmAtf.getChecker().getVisitor().getLineNumber(tree);
+    Set<Long> linesWithResourceCollectionInMethod =
+        resourceCollections.getOrDefault(enclosingMethod, Collections.emptySet());
+    if (!linesWithResourceCollectionInMethod.contains(lineNumber)) {
+      ++numRCUses;
+      rcUses.add(tree);
+      resourceCollections.computeIfAbsent(enclosingMethod, k -> new HashSet<>()).add(lineNumber);
     }
   }
 
@@ -2802,6 +2831,9 @@ public class MustCallConsistencyAnalyzer {
       }
 
       for (VariableTree param : method.getParameters()) {
+        if (coAtf.isResourceCollection(param)) {
+          logResourceCollection(param, cfg);
+        }
         VariableElement paramElement = TreeUtils.elementFromDeclaration(param);
         boolean hasMustCallAlias = cmAtf.hasMustCallAlias(paramElement);
         if (hasMustCallAlias
