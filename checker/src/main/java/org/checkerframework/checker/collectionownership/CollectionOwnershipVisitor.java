@@ -102,6 +102,8 @@ public class CollectionOwnershipVisitor
         // error: static resource collection fields not supported
         checker.reportError(tree, "static.resource.collection.field", tree);
       }
+    }
+    if (elt != null) {
       if (atypeFactory.isOwningCollectionField(elt)) {
         numOCFields++;
         ocFields.add(tree);
@@ -113,7 +115,7 @@ public class CollectionOwnershipVisitor
           + "num rcs: " + numRCs + " " + rcs
         );
         checkOwningCollectionField(tree);
-      } else {
+      } else if (atypeFactory.isResourceCollection(elt.asType())) {
         numRCs++;
         rcs.add(tree);
         System.out.println(
