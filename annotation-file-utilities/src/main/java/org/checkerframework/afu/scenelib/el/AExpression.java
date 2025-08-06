@@ -12,15 +12,17 @@ import org.checkerframework.afu.scenelib.util.coll.VivifyingMap;
  * object creations. We can use this class for methods, field initializers, and static initializers.
  */
 public class AExpression extends AElement {
-  /** The method's annotated typecasts; map key is the offset of the checkcast bytecode */
+  /** The method's annotated typecasts; map key is the offset of the checkcast bytecode. */
   public final VivifyingMap<RelativeLocation, ATypeElement> typecasts =
       ATypeElement.<RelativeLocation>newVivifyingLHMap_ATE();
 
-  /** The method's annotated "instanceof" tests; map key is the offset of the instanceof bytecode */
+  /**
+   * The method's annotated "instanceof" tests; map key is the offset of the instanceof bytecode.
+   */
   public final VivifyingMap<RelativeLocation, ATypeElement> instanceofs =
       ATypeElement.<RelativeLocation>newVivifyingLHMap_ATE();
 
-  /** The method's annotated "new" invocations; map key is the offset of the new bytecode */
+  /** The method's annotated "new" invocations; map key is the offset of the new bytecode. */
   public final VivifyingMap<RelativeLocation, ATypeElement> news =
       ATypeElement.<RelativeLocation>newVivifyingLHMap_ATE();
 
@@ -54,9 +56,15 @@ public class AExpression extends AElement {
         }
       };
 
-  protected Object id;
+  /** A unique identifier. */
+  protected String id;
 
-  AExpression(Object id) {
+  /**
+   * Creates a new AExpression.
+   *
+   * @param id the identifier
+   */
+  AExpression(String id) {
     super(id);
 
     this.id = id;
@@ -75,7 +83,8 @@ public class AExpression extends AElement {
 
   @Override
   public AExpression clone() {
-    return new AExpression(this);
+    // TODO: This does not populate the result!
+    return new AExpression(id);
   }
 
   @Override

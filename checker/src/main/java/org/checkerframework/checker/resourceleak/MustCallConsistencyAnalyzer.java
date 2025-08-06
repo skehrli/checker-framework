@@ -189,13 +189,13 @@ public class MustCallConsistencyAnalyzer {
 
   /**
    * A cache for the result of calling {@code RLCCalledMethodsAnnotatedTypeFactory.getStoreAfter()}
-   * on a node. The cache prevents repeatedly computing least upper bounds on stores
+   * on a node. The cache prevents repeatedly computing least upper bounds on stores.
    */
   private final IdentityHashMap<Node, AccumulationStore> cmStoreAfter = new IdentityHashMap<>();
 
   /**
    * A cache for the result of calling {@code MustCallAnnotatedTypeFactory.getStoreAfter()} on a
-   * node. The cache prevents repeatedly computing least upper bounds on stores
+   * node. The cache prevents repeatedly computing least upper bounds on stores.
    */
   private final IdentityHashMap<Node, CFStore> mcStoreAfter = new IdentityHashMap<>();
 
@@ -287,7 +287,7 @@ public class MustCallConsistencyAnalyzer {
      * <p>We need this method since we frequently need to replace obligations. If the old obligation
      * was of a certain subclass, we want the replacement to be as well. Dynamic dispatch then
      * allows us to simply call getReplacement() on an obligation and get the replacement of the
-     * right (sub)class.
+     * correct (sub)class.
      *
      * @param resourceAliases set of resource aliases for the new obligation
      * @param whenToEnforce when this Obligation should be enforced
@@ -299,16 +299,15 @@ public class MustCallConsistencyAnalyzer {
     }
 
     /**
-     * Creates and returns an obligation derived from the given tree that is either an {@code
-     * ExpressionTree} or a {@code VariableTree}.
+     * Creates and returns an obligation derived from the given expression.
      *
-     * @param tree the tree from which the Obligation is to be created. Must be ExpressionTree or
-     *     VariableTree.
+     * @param tree the tree from which the Obligation is to be created. Must be {@code
+     *     ExpressionTree} or {@code VariableTree}.
      * @return an obligation derived from the given tree
      */
     public static Obligation fromTree(Tree tree) {
-      JavaExpression jx = null;
-      Element elem = null;
+      JavaExpression jx;
+      Element elem;
       if (tree instanceof ExpressionTree) {
         jx = JavaExpression.fromTree((ExpressionTree) tree);
         elem = TreeUtils.elementFromTree((ExpressionTree) tree);
@@ -513,7 +512,7 @@ public class MustCallConsistencyAnalyzer {
     }
   }
 
-  /** Obligation for calling a certain method on all elements of a collection. */
+  /** Obligation to call a certain method on all elements of a collection. */
   static class CollectionObligation extends Obligation {
 
     /** The method that must be called on all elements of the collection. */
@@ -522,7 +521,7 @@ public class MustCallConsistencyAnalyzer {
     /**
      * Create a CollectionObligation from a set of resource aliases.
      *
-     * @param mustCallMethod the method to be called on all elements of the collection.
+     * @param mustCallMethod the method to be called on all elements of the collection
      * @param resourceAliases a set of resource aliases
      * @param whenToEnforce when this Obligation should be enforced
      */
@@ -535,7 +534,7 @@ public class MustCallConsistencyAnalyzer {
     }
 
     /**
-     * Create a CollectionObligation from an Obligation
+     * Create a CollectionObligation from an Obligation.
      *
      * @param obligation the obligation to create a CollectionObligation from
      * @param mustCallMethod the method that must be called on the elements of the collection
@@ -546,11 +545,10 @@ public class MustCallConsistencyAnalyzer {
     }
 
     /**
-     * Creates and returns a CollectionObligation derived from the given tree that is either an
-     * {@code ExpressionTree} or a {@code VariableTree}.
+     * Creates and returns a CollectionObligation derived from the given expression.
      *
-     * @param tree the tree from which the CollectionObligation is to be created. Must be
-     *     ExpressionTree or VariableTree.
+     * @param tree the tree from which to create the CollectionObligation. Must be {@code
+     *     ExpressionTree} or {@code VariableTree}.
      * @param mustCallMethod the method that must be called on the elements of the collection
      * @return a CollectionObligation derived from the given tree
      */
@@ -577,12 +575,14 @@ public class MustCallConsistencyAnalyzer {
 
     @Override
     public boolean equals(@Nullable Object obj) {
-      if (!super.equals(obj)) {
-        return false;
-      } else {
-        return (obj instanceof CollectionObligation)
-            && ((CollectionObligation) obj).mustCallMethod.equals(this.mustCallMethod);
+      if (obj == this) {
+        return true;
       }
+      if (!(obj instanceof CollectionObligation)) {
+        return false;
+      }
+      return super.equals(obj)
+          && ((CollectionObligation) obj).mustCallMethod.equals(this.mustCallMethod);
     }
   }
 
@@ -774,10 +774,10 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Adds {@code CollectionObligation}s if the return type is {@code @OwningCollection}.
+   * Adds {@code CollectionObligation}s if the type of {@code node} is {@code @OwningCollection}.
    *
    * @param obligations the set of tracked obligations
-   * @param node the node of the return expression
+   * @param node the node of a return expression
    */
   private void addObligationsForOwningCollectionReturn(Set<Obligation> obligations, Node node) {
     LocalVariableNode tmpVar = cmAtf.getTempVarForNode(node);
@@ -791,7 +791,8 @@ public class MustCallConsistencyAnalyzer {
             coAtf.getMustCallValuesOfResourceCollectionComponent(node.getTree());
         if (mustCallValues == null) {
           throw new BugInCF(
-              "List of MustCall values of component type is null for OwningCollection return value: "
+              "List of MustCall values of component type is null for OwningCollection return value:"
+                  + " "
                   + node);
         }
         if (!ResourceLeakUtils.isIterator(node.getType())) {
@@ -883,7 +884,7 @@ public class MustCallConsistencyAnalyzer {
    *
    * @param obligations the Obligations to update
    * @param node the method or constructor invocation
-   * @param exceptionType a description of the outgoing CFG edge from the node: <code>null</code> to
+   * @param exceptionType a description of the outgoing CFG edge from the node: {@code null} to
    *     indicate normal return, or a {@link TypeMirror} to indicate a subclass of the given
    *     throwable class was thrown
    */
@@ -1079,7 +1080,7 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Checks whether the two JavaExpressions are the same. This is identical to calling equals() on
+   * Returns true if the two JavaExpressions are the same. This is identical to calling equals() on
    * one of them, with two exceptions: the second expression can be null, and {@code this}
    * references are compared using their underlying type. (ThisReference#equals always returns true,
    * which is probably a bug and isn't accurate in the case of nested classes.)
@@ -1272,7 +1273,7 @@ public class MustCallConsistencyAnalyzer {
    * @param obligations the current set of Obligations, which is side-effected to remove Obligations
    *     for locals that are passed as owning parameters to the method or constructor
    * @param node a method or constructor invocation node
-   * @param exceptionType a description of the outgoing CFG edge from the node: <code>null</code> to
+   * @param exceptionType a description of the outgoing CFG edge from the node: {@code null} to
    *     indicate normal return, or a {@link TypeMirror} to indicate a subclass of the given
    *     throwable class was thrown
    */
@@ -1533,7 +1534,9 @@ public class MustCallConsistencyAnalyzer {
     }
     Obligation oldObligation = null, newObligation = null;
     for (Obligation o : obligations) {
-      if (oldObligation != null && newObligation != null) break;
+      if (oldObligation != null && newObligation != null) {
+        break;
+      }
       for (ResourceAlias alias : o.resourceAliases) {
         if ((alias.tree instanceof ExpressionTree)
             && (rhsExpr.getTree() instanceof ExpressionTree)
@@ -1857,7 +1860,9 @@ public class MustCallConsistencyAnalyzer {
               for (Obligation obligation : obligationsForVar) {
                 obligations.remove(obligation);
               }
-              if (isFinalField) return;
+              if (isFinalField) {
+                return;
+              }
             }
           // fall through
           case NotOwningCollection:
@@ -2296,7 +2301,7 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Get the nodes representing the arguments of a method or constructor invocation from the
+   * Returns the nodes representing the arguments of a method or constructor invocation from the
    * invocation node.
    *
    * @param node a MethodInvocation or ObjectCreation node
@@ -2314,7 +2319,7 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Get the elements representing the formal parameters of a method or constructor, from an
+   * Returns the elements representing the formal parameters of a method or constructor, from an
    * invocation of that method or constructor.
    *
    * @param node a method invocation or object creation node
@@ -2372,8 +2377,8 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Get all successor blocks for some block, except for those corresponding to ignored exception
-   * types. See {@link RLCCalledMethodsAnalysis#isIgnoredExceptionType(TypeMirror)}. Each
+   * Returns all successor blocks for some block, except for those corresponding to ignored
+   * exception types. See {@link RLCCalledMethodsAnalysis#isIgnoredExceptionType(TypeMirror)}. Each
    * exceptional successor is paired with the type of exception that leads to it, for use in error
    * messages.
    *
@@ -2517,9 +2522,8 @@ public class MustCallConsistencyAnalyzer {
    * @param obligations the Obligations for the current block
    * @param currentBlock the current block
    * @param successor a successor of the current block
-   * @param exceptionType the type of edge from <code>currentBlock</code> to <code>successor
-   *     </code>: <code>null</code> for normal control flow, or a throwable type for exceptional
-   *     control flow
+   * @param exceptionType the type of edge from {@code currentBlock} to {@code successor}: {@code
+   *     null} for normal control flow, or a throwable type for exceptional control flow
    * @param visited block-Obligations pairs already analyzed or already on the worklist
    * @param worklist current worklist
    * @throws InvalidLoopBodyAnalysisException if the propagation is called as part of a loop body
@@ -2764,7 +2768,7 @@ public class MustCallConsistencyAnalyzer {
    * of the edge must contain no {@link Node}s.
    *
    * @param currentBlock source block of the CFG edge. Must contain no {@link Node}s.
-   * @param successor target block of the CFG edge.
+   * @param successor target block of the CFG edge
    * @return store propagated by the {@link RLCCalledMethodsAnalysis} along the CFG edge
    */
   private AccumulationStore getStoreForEdgeFromEmptyBlock(Block currentBlock, Block successor) {
@@ -2878,7 +2882,7 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Checks whether there is some resource alias set <em>R</em> in {@code obligations} such that
+   * Returns true if there is some resource alias set <em>R</em> in {@code obligations} such that
    * <em>R</em> contains a {@link ResourceAlias} whose local variable is {@code node}.
    *
    * @param obligations the set of Obligations to search
@@ -3096,7 +3100,7 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Increment the -AcountMustCall counter.
+   * Increments the -AcountMustCall counter.
    *
    * @param node the node being counted, to extract the type
    */
@@ -3108,7 +3112,7 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Increment the -AcountMustCall counter.
+   * Increments the -AcountMustCall counter.
    *
    * @param elt the elt being counted, to extract the type
    */
@@ -3325,8 +3329,7 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Checks whether the given {@code MethodInvocationNode} is desugared from an enhanced for loop
-   * and calls a loop-body-analysis on the detected loop if it is.
+   * Calls a loop-body-analysis on the loop if it is desugared from an enhanced for loop.
    *
    * <p>If a {@code MethodInvocationNode} is desugared from an enhanced for loop over a collection
    * it corresponds to the node in the synthetic {@code Iterator.next()} method call, which is the
@@ -3340,7 +3343,7 @@ public class MustCallConsistencyAnalyzer {
    * MustCallOnElements checker.
    *
    * @param methodInvocationNode the {@code MethodInvocationNode}, for which it is checked, whether
-   *     it is desugared from an enhanced for loop.
+   *     it is desugared from an enhanced for loop
    * @param cfg the enclosing cfg of the {@code MethodInvocationNode}
    */
   private void patternMatchEnhancedCollectionForLoop(
@@ -3526,14 +3529,17 @@ public class MustCallConsistencyAnalyzer {
         boolean isLastBlockOfBody = successorAndExceptionType.first == loopUpdateBlock;
         if (isLastBlockOfBody) {
           Set<String> calledMethodsAfterBlock =
-              analyzeTypeOfCollectionElement(currentBlock, potentiallyFulfillingLoop, obligations);
+              analyzeTypeOfCollectionElement(
+                  currentBlock, potentiallyFulfillingLoop, obligations, loopUpdateBlock);
           // intersect the called methods after this block with the accumulated ones so far.
           // This is required because there may be multiple "back edges" of the loop, in which
           // case we must intersect the called methods between those.
-          if (calledMethodsInLoop == null) {
-            calledMethodsInLoop = calledMethodsAfterBlock;
-          } else {
-            calledMethodsInLoop.retainAll(calledMethodsAfterBlock);
+          if (calledMethodsAfterBlock != null) {
+            if (calledMethodsInLoop == null) {
+              calledMethodsInLoop = calledMethodsAfterBlock;
+            } else {
+              calledMethodsInLoop.retainAll(calledMethodsAfterBlock);
+            }
           }
         } else {
           try {
@@ -3567,17 +3573,24 @@ public class MustCallConsistencyAnalyzer {
    * @param lastLoopBodyBlock last block of loop body
    * @param potentiallyFulfillingLoop loop wrapper of the loop to analyze
    * @param obligations the set of tracked obligations
+   * @param loopUpdateBlock block that updates the loop
    * @return the union of methods in the CalledMethods type of the collection element and all its
-   *     resource aliases.
+   *     resource aliases or {@code null} if the called methods is bottom
    */
   private Set<String> analyzeTypeOfCollectionElement(
       Block lastLoopBodyBlock,
       PotentiallyFulfillingLoop potentiallyFulfillingLoop,
-      Set<Obligation> obligations) {
+      Set<Obligation> obligations,
+      Block loopUpdateBlock) {
     AccumulationStore store = null;
-    if (lastLoopBodyBlock.getLastNode() == null) {
-      // TODO is this really the right store? I think we need to get the then-or else store
-      store = cmAtf.getStoreAfterBlock(lastLoopBodyBlock);
+    if (lastLoopBodyBlock.getType() == BlockType.CONDITIONAL_BLOCK) {
+      ConditionalBlock conditionalBlock = (ConditionalBlock) lastLoopBodyBlock;
+      @SuppressWarnings("interning:not.interned")
+      boolean thenSuccessor = conditionalBlock.getThenSuccessor() == loopUpdateBlock;
+      store = cmAtf.getStoreAfterConditionalBlock(conditionalBlock, thenSuccessor);
+    } else if (lastLoopBodyBlock.getLastNode() == null) {
+      throw new BugInCF("Loop Body Analysis -- Block " + lastLoopBodyBlock + " has no nodes");
+      // store = cmAtf.getStoreAfterBlock(lastLoopBodyBlock);
     } else {
       store = cmAtf.getStoreAfter(lastLoopBodyBlock.getLastNode());
     }
@@ -3593,7 +3606,7 @@ public class MustCallConsistencyAnalyzer {
       //         + potentiallyFulfillingLoop.collectionElementTree);
     }
 
-    Set<String> calledMethodsAfterThisBlock = new HashSet<>();
+    Set<String> calledMethodsAfterThisBlock = null;
 
     // add the called methods of the ICE
     IteratedCollectionElement ice =
@@ -3603,18 +3616,24 @@ public class MustCallConsistencyAnalyzer {
     if (ice != null) {
       AccumulationValue cmValOfIce = store.getValue(ice);
       List<String> calledMethods = getCalledMethods(cmValOfIce);
-      if (calledMethods != null && calledMethods.size() > 0) {
-        calledMethodsAfterThisBlock.addAll(calledMethods);
+      if (calledMethods != null) {
+        calledMethodsAfterThisBlock = new HashSet<>(calledMethods);
       }
     }
 
     // add the called methods of possible aliases of the collection element
     for (ResourceAlias alias : collectionElementObligation.resourceAliases) {
       AccumulationValue cmValOfAlias = store.getValue(alias.reference);
-      if (cmValOfAlias == null) continue;
+      if (cmValOfAlias == null) {
+        continue;
+      }
       List<String> calledMethods = getCalledMethods(cmValOfAlias);
-      if (calledMethods != null && calledMethods.size() > 0) {
-        calledMethodsAfterThisBlock.addAll(calledMethods);
+      if (calledMethods != null) {
+        if (calledMethodsAfterThisBlock == null) {
+          calledMethodsAfterThisBlock = new HashSet<>(calledMethods);
+        } else {
+          calledMethodsAfterThisBlock.addAll(calledMethods);
+        }
       }
     }
 
@@ -3622,10 +3641,12 @@ public class MustCallConsistencyAnalyzer {
   }
 
   /**
-   * Returns the set of called methods values given an AccumulationValue.
+   * Returns the set of called methods values given an AccumulationValue or null if the accumulation
+   * value is bottom.
    *
    * @param cmVal the accumulation value
-   * @return the set of called methods of the given value
+   * @return the set of called methods of the given value or null if the accumulation value is
+   *     bottom
    */
   private List<String> getCalledMethods(AccumulationValue cmVal) {
     Set<String> calledMethods = cmVal.getAccumulatedValues();
@@ -3636,6 +3657,9 @@ public class MustCallConsistencyAnalyzer {
         if (AnnotationUtils.areSameByName(
             anno, "org.checkerframework.checker.calledmethods.qual.CalledMethods")) {
           return cmAtf.getCalledMethods(anno);
+        } else if (AnnotationUtils.areSameByName(
+            anno, "org.checkerframework.checker.calledmethods.qual.CalledMethodsBottom")) {
+          return null;
         }
       }
     }
@@ -3655,7 +3679,7 @@ public class MustCallConsistencyAnalyzer {
   private static class InvalidLoopBodyAnalysisException extends Exception {
 
     /**
-     * Construct an InvalidLoopBodyAnalysisException
+     * Construct an InvalidLoopBodyAnalysisException.
      *
      * @param message the error message
      */

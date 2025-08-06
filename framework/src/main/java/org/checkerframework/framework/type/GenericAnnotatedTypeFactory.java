@@ -146,8 +146,8 @@ public abstract class GenericAnnotatedTypeFactory<
     extends AnnotatedTypeFactory {
 
   /**
-   * Whether to output verbose, low-level debugging messages. Also see {@code TreeAnnotator.debug}
-   * and {@link AnnotatedTypeFactory#debugGat}.
+   * If true, output verbose, low-level debugging messages. Also see {@code TreeAnnotator.debug} and
+   * {@link AnnotatedTypeFactory#debugGat}.
    */
   private static final boolean debug = false;
 
@@ -191,7 +191,7 @@ public abstract class GenericAnnotatedTypeFactory<
   public final @Nullable Set<TypeMirror> relevantJavaTypes;
 
   /**
-   * Whether users may write type annotations on arrays. Ignored unless {@link #relevantJavaTypes}
+   * True if users may write type annotations on arrays. Ignored unless {@link #relevantJavaTypes}
    * is non-null.
    */
   protected final boolean arraysAreRelevant;
@@ -330,7 +330,7 @@ public abstract class GenericAnnotatedTypeFactory<
    * Creates a type factory. Its compilation unit is not yet set.
    *
    * @param checker the checker to which this type factory belongs
-   * @param useFlow whether flow analysis should be performed
+   * @param useFlow true if flow analysis should be performed
    */
   @SuppressWarnings("this-escape")
   protected GenericAnnotatedTypeFactory(BaseTypeChecker checker, boolean useFlow) {
@@ -1219,7 +1219,7 @@ public abstract class GenericAnnotatedTypeFactory<
    * Returns the regular store for a given block.
    *
    * @param block a block whose regular store to return
-   * @return the regular store of {@code block}.
+   * @return the regular store of {@code block}
    */
   public Store getRegularStore(Block block) {
     TransferInput<Value, Store> input;
@@ -1323,7 +1323,7 @@ public abstract class GenericAnnotatedTypeFactory<
   }
 
   /**
-   * Return the first {@link Node} for a given {@link Tree} that has class {@code kind}.
+   * Returns the first {@link Node} for a given {@link Tree} that has class {@code kind}.
    *
    * <p>You probably don't want to use this function: iterate over the result of {@link
    * #getNodesForTree(Tree)} yourself or ask for a conservative approximation of the store using
@@ -1693,7 +1693,7 @@ public abstract class GenericAnnotatedTypeFactory<
     handleCFGViz(cfg);
   }
 
-  /** Whether handling CFG visualization is necessary. */
+  /** True if handling CFG visualization is necessary. */
   private final boolean handleCFGViz;
 
   /**
@@ -1907,7 +1907,7 @@ public abstract class GenericAnnotatedTypeFactory<
    *
    * @param tree an AST node
    * @param type the type obtained from tree
-   * @param iUseFlow whether to use information from dataflow analysis
+   * @param iUseFlow if true, use information from dataflow analysis
    */
   protected void addComputedTypeAnnotations(Tree tree, AnnotatedTypeMirror type, boolean iUseFlow) {
     if (root == null && ajavaTypes.isParsing()) {
@@ -1976,7 +1976,7 @@ public abstract class GenericAnnotatedTypeFactory<
    *
    * @param tree an AST node
    * @param type the type obtained from tree
-   * @param iUseFlow whether to use information from dataflow analysis
+   * @param iUseFlow if true, use information from dataflow analysis
    */
   protected void addComputedTypeAnnotationsForWarnRedundant(
       Tree tree, AnnotatedTypeMirror type, boolean iUseFlow) {
@@ -2641,7 +2641,8 @@ public abstract class GenericAnnotatedTypeFactory<
   }
 
   /**
-   * Return the type of the default value of the given type. The default value is 0, false, or null.
+   * Returns the type of the default value of the given type. The default value is 0, false, or
+   * null.
    *
    * @param typeMirror a type
    * @return the annotated type of {@code type}'s default value
@@ -2657,8 +2658,8 @@ public abstract class GenericAnnotatedTypeFactory<
   }
 
   /**
-   * Return the contract annotations (that is, pre- and post-conditions) for the given AMethod. Does
-   * not modify the AMethod.
+   * Returns the contract annotations (that is, pre- and post-conditions) for the given AMethod.
+   * Does not modify the AMethod.
    *
    * <p>This overload must only be called when using WholeProgramInferenceScenes.
    *
@@ -2675,7 +2676,7 @@ public abstract class GenericAnnotatedTypeFactory<
   }
 
   /**
-   * Return the precondition annotations for the given AMethod. Does not modify the AMethod.
+   * Returns the precondition annotations for the given AMethod. Does not modify the AMethod.
    *
    * <p>This overload must only be called when using WholeProgramInferenceScenes.
    *
@@ -2712,7 +2713,7 @@ public abstract class GenericAnnotatedTypeFactory<
   }
 
   /**
-   * Return the postcondition annotations for the given AMethod. Does not modify the AMethod.
+   * Returns the postcondition annotations for the given AMethod. Does not modify the AMethod.
    *
    * <p>This overload must only be called when using WholeProgramInferenceScenes.
    *
@@ -2753,7 +2754,7 @@ public abstract class GenericAnnotatedTypeFactory<
   }
 
   /**
-   * Return the contract annotations (that is, pre- and post-conditions) for the given
+   * Returns the contract annotations (that is, pre- and post-conditions) for the given
    * CallableDeclarationAnnos. Does not modify the CallableDeclarationAnnos.
    *
    * <p>This overload must only be called when using WholeProgramInferenceJavaParserStorage.
@@ -2772,8 +2773,8 @@ public abstract class GenericAnnotatedTypeFactory<
   }
 
   /**
-   * Return the precondition annotations for the given CallableDeclarationAnnos. Does not modify the
-   * CallableDeclarationAnnos.
+   * Returns the precondition annotations for the given CallableDeclarationAnnos. Does not modify
+   * the CallableDeclarationAnnos.
    *
    * <p>This overload must only be called when using WholeProgramInferenceJavaParserStorage.
    *
@@ -2793,7 +2794,7 @@ public abstract class GenericAnnotatedTypeFactory<
   }
 
   /**
-   * Return the postcondition annotations for the given CallableDeclarationAnnos. Does not modify
+   * Returns the postcondition annotations for the given CallableDeclarationAnnos. Does not modify
    * the CallableDeclarationAnnos.
    *
    * <p>This overload must only be called when using WholeProgramInferenceJavaParserStorage.
@@ -2881,7 +2882,7 @@ public abstract class GenericAnnotatedTypeFactory<
    *     of {@code preOrPost})
    * @param declaredType the declared type of the expression, which is used to determine if the
    *     inferred type supplies no additional information beyond the declared type
-   * @param preOrPost whether to return preconditions or postconditions
+   * @param preOrPost what to return: preconditions or postconditions
    * @param preconds the precondition annotations for the method; used to suppress redundant
    *     postconditions; non-null exactly when {@code preOrPost} is {@code AFTER}
    * @return precondition or postcondition annotations for the element (possibly an empty list)
@@ -2947,7 +2948,7 @@ public abstract class GenericAnnotatedTypeFactory<
    * @param qualifier the qualifier that must be present
    * @param declaredType the declared type of the expression, which is used to avoid inferring
    *     redundant pre- or postcondition annotations
-   * @param preOrPost whether to return a precondition or postcondition annotation
+   * @param preOrPost what to return: a precondition or postcondition annotation
    * @param preconds the list of precondition annotations; used to suppress redundant
    *     postconditions; non-null exactly when {@code preOrPost} is {@code BeforeOrAfter.BEFORE}
    * @return a {@code RequiresQualifier("...")} or {@code EnsuresQualifier("...")} annotation for
@@ -2991,7 +2992,7 @@ public abstract class GenericAnnotatedTypeFactory<
    *
    * @param tree the source code corresponding to cfg
    * @param cfg the control flow graph to use for tree
-   * @return whether a shared CFG was found to actually add to (duplicate keys also return true)
+   * @return true if a shared CFG was found to actually add to (duplicate keys also return true)
    */
   public boolean addSharedCFGForTree(Tree tree, ControlFlowGraph cfg) {
     if (!shouldCache) {
@@ -3023,9 +3024,9 @@ public abstract class GenericAnnotatedTypeFactory<
   }
 
   /**
-   * Get the shared control flow graph used for {@code tree} by this checker's topmost superchecker.
-   * Returns null if no information is available about the given tree, or if this checker has a
-   * parent checker that does not have a GenericAnnotatedTypeFactory.
+   * Returns the shared control flow graph used for {@code tree} by this checker's topmost
+   * superchecker. Returns null if no information is available about the given tree, or if this
+   * checker has a parent checker that does not have a GenericAnnotatedTypeFactory.
    *
    * <p>Calls to this method should be guarded by checking {@link #hasOrIsSubchecker}; it is
    * nonsensical to have a shared CFG when a checker is running alone.

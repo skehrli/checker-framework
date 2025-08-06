@@ -238,8 +238,8 @@ public class ResourceLeakUtils {
     } else {
       throw new IllegalArgumentException(
           "Argument referenceChecker to"
-              + " ResourceLeakUtils#getCollectionOwnershipAnnotatedTypeFactory(referenceChecker) expected to"
-              + " be an RLC checker but is "
+              + " ResourceLeakUtils#getCollectionOwnershipAnnotatedTypeFactory(referenceChecker)"
+              + " expected to be an RLC checker but is "
               + className);
     }
   }
@@ -262,50 +262,62 @@ public class ResourceLeakUtils {
   }
 
   /**
-   * Returns whether the given Element is a java.lang.Iterable or java.util.Iterator type by
+   * Returns true if the given Element is a java.lang.Iterable or java.util.Iterator type by
    * checking whether the raw type of the element is assignable from either. Returns false if
    * element is null, or has no valid type.
    *
    * @param element the element
    * @param atf an AnnotatedTypeFactory to get the annotated type of the element
-   * @return whether the given element is a Java.lang.Iterable or Java.util.Iterator type
+   * @return true if the given element is a Java.lang.Iterable or Java.util.Iterator type
    */
   public static boolean isCollection(Element element, AnnotatedTypeFactory atf) {
-    if (element == null) return false;
+    if (element == null) {
+      return false;
+    }
     AnnotatedTypeMirror elementTypeMirror = atf.getAnnotatedType(element).getErased();
-    if (elementTypeMirror == null || elementTypeMirror.getUnderlyingType() == null) return false;
+    if (elementTypeMirror == null || elementTypeMirror.getUnderlyingType() == null) {
+      return false;
+    }
     return isCollection(elementTypeMirror.getUnderlyingType());
   }
 
   /**
-   * Returns whether the given {@link TypeMirror} is a java.lang.Iterable or java.util.Iterator
+   * Returns true if the given {@link TypeMirror} is a java.lang.Iterable or java.util.Iterator
    * subclass. This is determined by getting the class of the TypeMirror and checking whether it is
    * assignable from either.
    *
    * @param type the TypeMirror
-   * @return whether type is a java.lang.Iterable or java.util.Iterator
+   * @return true if type is a java.lang.Iterable or java.util.Iterator
    */
   public static boolean isCollection(TypeMirror type) {
-    if (type == null) return false;
+    if (type == null) {
+      return false;
+    }
     Class<?> elementRawType = TypesUtils.getClassFromType(type);
-    if (elementRawType == null) return false;
+    if (elementRawType == null) {
+      return false;
+    }
     return Iterable.class.isAssignableFrom(elementRawType)
         || Iterator.class.isAssignableFrom(elementRawType)
         || Map.class.isAssignableFrom(elementRawType);
   }
 
   /**
-   * Returns whether the given {@link TypeMirror} is a java.util.Iterator subclass. This is
+   * Returns true if the given {@link TypeMirror} is a java.util.Iterator subclass. This is
    * determined by getting the class of the TypeMirror and checking whether it is assignable from
    * java.util.Iterator.
    *
    * @param type the TypeMirror
-   * @return whether type is a java.util.Iterator
+   * @return true if type is a java.util.Iterator
    */
   public static boolean isIterator(TypeMirror type) {
-    if (type == null) return false;
+    if (type == null) {
+      return false;
+    }
     Class<?> elementRawType = TypesUtils.getClassFromType(type);
-    if (elementRawType == null) return false;
+    if (elementRawType == null) {
+      return false;
+    }
     return Iterator.class.isAssignableFrom(elementRawType);
   }
 
@@ -341,7 +353,7 @@ public class ResourceLeakUtils {
    * @param type the {@code TypeMirror}
    * @param mcAtf the {@code MustCallAnnotatedTypeFactory} to get the {@code MustCall} type
    * @return the list of mustcall obligations for the upper bound of {@code type} or null if the
-   *     upper bound is null.
+   *     upper bound is null
    */
   public static @Nullable List<String> getMcValues(
       TypeMirror type, MustCallAnnotatedTypeFactory mcAtf) {
@@ -398,7 +410,7 @@ public class ResourceLeakUtils {
    *
    * @param type the {@code AnnotatedTypeMirror}
    * @param mcAtf the {@code MustCallAnnotatedTypeFactory} to get the {@code MustCall} type
-   * @return the list of mustcall obligations for the upper bound of {@code type}.
+   * @return the list of mustcall obligations for the upper bound of {@code type}
    */
   public static List<String> getMcValues(
       AnnotatedTypeMirror type, MustCallAnnotatedTypeFactory mcAtf) {
@@ -413,13 +425,15 @@ public class ResourceLeakUtils {
   }
 
   /**
-   * Return true if the passed {@code TypeMirror} has a manual {@code MustCallUnknown} annotation.
+   * Returns true if the passed {@code TypeMirror} has a manual {@code MustCallUnknown} annotation.
    *
    * @param typeMirror the {@code TypeMirror}
    * @return true if the passed {@code TypeMirror} has a manual {@code MustCallUnknown} annotation
    */
   public static boolean hasManualMustCallUnknownAnno(TypeMirror typeMirror) {
-    if (typeMirror == null) return false;
+    if (typeMirror == null) {
+      return false;
+    }
     for (AnnotationMirror paramAnno : typeMirror.getAnnotationMirrors()) {
       if (AnnotationUtils.areSameByName(paramAnno, MustCallUnknown.class.getCanonicalName())) {
         return true;
@@ -429,7 +443,7 @@ public class ResourceLeakUtils {
   }
 
   /**
-   * Return true if the passed {@code AnnotatedTypeMirror} has a manual {@code MustCallUnknown}
+   * Returns true if the passed {@code AnnotatedTypeMirror} has a manual {@code MustCallUnknown}
    * annotation.
    *
    * @param annotatedTypeMirror the {@code AnnotatedTypeMirror}
@@ -439,9 +453,13 @@ public class ResourceLeakUtils {
    */
   public static boolean hasManualMustCallUnknownAnno(
       AnnotatedTypeMirror annotatedTypeMirror, MustCallAnnotatedTypeFactory mcAtf) {
-    if (annotatedTypeMirror == null) return false;
+    if (annotatedTypeMirror == null) {
+      return false;
+    }
     AnnotationMirror manualMcAnno = annotatedTypeMirror.getPrimaryAnnotationInHierarchy(mcAtf.TOP);
-    if (manualMcAnno == null) return false;
+    if (manualMcAnno == null) {
+      return false;
+    }
     if (AnnotationUtils.areSameByName(manualMcAnno, MustCallUnknown.class.getCanonicalName())) {
       return true;
     }

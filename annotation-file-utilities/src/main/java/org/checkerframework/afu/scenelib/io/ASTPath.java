@@ -61,6 +61,8 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import org.checkerframework.afu.annotator.find.CaseUtils;
+import org.checkerframework.checker.collectionownership.qual.NotOwningCollection;
+import org.checkerframework.checker.collectionownership.qual.PolyOwningCollection;
 import org.plumelib.util.ArraysPlume;
 
 /** A path through the AST. */
@@ -295,7 +297,7 @@ public class ASTPath extends ImmutableStack<ASTPath.ASTEntry>
 
   // TODO: replace w/ skip list?
   @Override
-  public Iterator<ASTEntry> iterator() {
+  public @PolyOwningCollection Iterator<ASTEntry> iterator(@PolyOwningCollection ASTPath this) {
     ImmutableStack<ASTEntry> s = this;
     int n = size();
     ASTEntry[] a = new ASTEntry[n];
@@ -350,7 +352,7 @@ public class ASTPath extends ImmutableStack<ASTPath.ASTEntry>
     return new Parser(s).parseASTPath();
   }
 
-  /** Determine whether this {@code ASTPath} matches a given {@code TreePath}. */
+  /** Returns true if this {@code ASTPath} matches a given {@code TreePath}. */
   public boolean matches(TreePath treePath) {
     CompilationUnitTree cut = treePath.getCompilationUnit();
     Tree leaf = treePath.getLeaf();
@@ -1221,7 +1223,9 @@ public class ASTPath extends ImmutableStack<ASTPath.ASTEntry>
           }
           dbug.debug("next: %s%n", nextString);
         }
-        if (next != actualPath.get(i + 1)) {
+        @SuppressWarnings("interning:not.interned")
+        boolean hasNextMatch = next == actualPath.get(i + 1);
+        if (!hasNextMatch) {
           dbug.debug("no next match%n");
           return false;
         }
@@ -1260,7 +1264,7 @@ public class ASTPath extends ImmutableStack<ASTPath.ASTEntry>
   }
 
   public static boolean isClassEquiv(Tree.Kind kind) {
-    return kind.asInterface().equals(ClassTree.class);
+    return kind.asInterface() == ClassTree.class;
   }
 
   /**
@@ -1270,7 +1274,7 @@ public class ASTPath extends ImmutableStack<ASTPath.ASTEntry>
    * @return true if the given kind is a compound assignment
    */
   public static boolean isCompoundAssignment(Tree.Kind kind) {
-    return kind.asInterface().equals(CompoundAssignmentTree.class);
+    return kind.asInterface() == CompoundAssignmentTree.class;
   }
 
   /**
@@ -1280,7 +1284,7 @@ public class ASTPath extends ImmutableStack<ASTPath.ASTEntry>
    * @return true if the given kind is a unary operator
    */
   public static boolean isUnaryOperator(Tree.Kind kind) {
-    return kind.asInterface().equals(UnaryTree.class);
+    return kind.asInterface() == UnaryTree.class;
   }
 
   /**
@@ -1290,11 +1294,11 @@ public class ASTPath extends ImmutableStack<ASTPath.ASTEntry>
    * @return true if the given kind is a binary operator
    */
   public static boolean isBinaryOperator(Tree.Kind kind) {
-    return kind.asInterface().equals(BinaryTree.class);
+    return kind.asInterface() == BinaryTree.class;
   }
 
   public static boolean isLiteral(Tree.Kind kind) {
-    return kind.asInterface().equals(LiteralTree.class);
+    return kind.asInterface() == LiteralTree.class;
   }
 
   public static boolean isTypeKind(Tree.Kind kind) {
@@ -1320,7 +1324,7 @@ public class ASTPath extends ImmutableStack<ASTPath.ASTEntry>
    * @return true if the given kind is a wildcard
    */
   public static boolean isWildcard(Tree.Kind kind) {
-    return kind.asInterface().equals(WildcardTree.class);
+    return kind.asInterface() == WildcardTree.class;
   }
 
   /**
@@ -1339,7 +1343,7 @@ public class ASTPath extends ImmutableStack<ASTPath.ASTEntry>
   }
 
   /**
-   * Determines whether an {@code ASTPath} can identify nodes of the given kind.
+   * Returns true if an {@code ASTPath} can identify nodes of the given kind.
    *
    * @param kind the kind to test
    * @return true if the given kind can be identified by an {@code ASTPath}
@@ -1458,18 +1462,33 @@ class ImmutableStack<E> {
     }
   }
 
-  public boolean isEmpty() {
+  /**
+   * Returns true if the stack is empty.
+   *
+   * @return true if the stack is empty
+   */
+  public boolean isEmpty(@NotOwningCollection ImmutableStack<E> this) {
     return size == 0;
   }
 
-  public E peek() {
+  /**
+   * Returns the top element of the stack, without modifying the stack.
+   *
+   * @return the top element of the stack
+   */
+  public E peek(@NotOwningCollection ImmutableStack<E> this) {
     if (isEmpty()) {
       throw new IllegalStateException("peek() on empty stack");
     }
     return elem;
   }
 
-  public ImmutableStack<E> pop() {
+  /**
+   * Returns all of the stack except the top element.
+   *
+   * @return all of the stack except the top element
+   */
+  public ImmutableStack<E> pop(@NotOwningCollection ImmutableStack<E> this) {
     if (isEmpty()) {
       throw new IllegalStateException("pop() on empty stack");
     }
@@ -1480,11 +1499,21 @@ class ImmutableStack<E> {
     return extend(elem, this);
   }
 
-  public int size() {
+  /**
+   * Returns the size: the number of elements in the stack.
+   *
+   * @return the size of this stack
+   */
+  public int size(@NotOwningCollection ImmutableStack<E> this) {
     return size;
   }
 
-  /** Return the index-th element of this stack. */
+  /**
+   * Returns the index-th element of this stack.
+   *
+   * @param index which element to return
+   * @return the index-th element of this stack
+   */
   public E get(int index) {
     int n = size();
 

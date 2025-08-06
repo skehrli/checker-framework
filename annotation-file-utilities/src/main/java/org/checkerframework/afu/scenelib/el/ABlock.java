@@ -10,11 +10,16 @@ import org.checkerframework.afu.scenelib.util.coll.VivifyingMap;
 public class ABlock extends AExpression {
   // Currently we don't validate the local locations (e.g., that no two
   // distinct ranges for the same index overlap).
-  /** The method's annotated local variables; map key contains local variable location numbers */
+  /** The method's annotated local variables; map key contains local variable location numbers. */
   public final VivifyingMap<LocalLocation, AField> locals =
       AField.<LocalLocation>newVivifyingLHMap_AF();
 
-  ABlock(Object id) {
+  /**
+   * Creates a new ABlock.
+   *
+   * @param id the identifier
+   */
+  ABlock(String id) {
     super(id);
   }
 

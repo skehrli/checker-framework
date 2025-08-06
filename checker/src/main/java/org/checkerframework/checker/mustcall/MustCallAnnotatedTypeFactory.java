@@ -171,12 +171,14 @@ public class MustCallAnnotatedTypeFactory extends BaseAnnotatedTypeFactory
    *
    * @param tree the tree
    * @param adt the annotated declared type for which all Collection type variables with Top type
-   *     are to be replaced with Bottom.
+   *     are to be replaced with Bottom
    */
   private void replaceCollectionTypeVarsWithBottomIfTop(Tree tree, AnnotatedDeclaredType adt) {
     if (ResourceLeakUtils.isCollection(adt.getUnderlyingType())) {
       for (AnnotatedTypeMirror typeArg : adt.getTypeArguments()) {
-        if (typeArg == null) continue;
+        if (typeArg == null) {
+          continue;
+        }
         if (typeArg.getKind() == TypeKind.WILDCARD || typeArg.getKind() == TypeKind.TYPEVAR) {
           if (tree != null && tree instanceof NewClassTree) {
             if (((NewClassTree) tree).getTypeArguments().isEmpty()) {
@@ -228,17 +230,16 @@ public class MustCallAnnotatedTypeFactory extends BaseAnnotatedTypeFactory
    *
    * <p>This is necessary, as the type variable upper bounds for collections is
    * {@code @MustCallUnknown}. When the type variable is a generic or wildcard with no upper bound,
-   * the type parameter does default to {@code @MustCallUnknown}, which is both unsound and
-   * imprecise.
+   * the type parameter defaults to {@code @MustCallUnknown}, which is both unsound and imprecise.
    *
    * <p>This method changes the type parameter annotations for declared types directly. The other
    * overload with access to {@code Element}s handles type parameter annotations for method return
    * types and parameters, such that the changes are 'visible' at call-site as well as within the
    * method. Changing this on the {@code Tree} is not sufficient. The reason that declared types are
-   * handled here is that for object initializations where the type parameter is left for inference,
-   * we don't want to change the type parameter annotation here, but wait for the inference instead,
-   * which instantiates it with the inferred type and corresponding annotation. {@code new
-   * Object<>()} Access to the {@code Tree} allows us to detect whether we have a new class tree
+   * handled here is that for object initializations where the type parameter is left for inference
+   * (e.g., {@code new Object<>()}), we don't want to change the type parameter annotation here, but
+   * wait for the inference instead, which instantiates it with the inferred type and corresponding
+   * annotation. Access to the {@code Tree} allows us to detect whether we have a new class tree
    * without type parameters.
    */
   @Override
@@ -585,19 +586,21 @@ public class MustCallAnnotatedTypeFactory extends BaseAnnotatedTypeFactory
   }
 
   /**
-   * Fetches the store from the results of dataflow for {@code first}. If {@code afterFirstStore} is
-   * true, then the store after {@code first} is returned; if {@code afterFirstStore} is false, the
-   * store before {@code succ} is returned.
+   * Fetches the store from the results of dataflow for {@code firstBlock}. If {@code
+   * afterFirstStore} is true, then the store after {@code firstBlock} is returned; if {@code
+   * afterFirstStore} is false, the store before {@code succBlock} is returned.
    *
-   * @param afterFirstStore whether to use the store after the first block or the store before its
-   *     successor, succ
-   * @param first a block
-   * @param succ first's successor
+   * @param afterFirstStore if true, use the store after the first block; if false, use the store
+   *     before its successor, {@code succBlock}
+   * @param firstBlock a CFG block
+   * @param succBlock {@code firstBlock}'s successor
    * @return the appropriate CFStore, populated with MustCall annotations, from the results of
    *     running dataflow
    */
-  public CFStore getStoreForBlock(boolean afterFirstStore, Block first, Block succ) {
-    return afterFirstStore ? flowResult.getStoreAfter(first) : flowResult.getStoreBefore(succ);
+  public CFStore getStoreForBlock(boolean afterFirstStore, Block firstBlock, Block succBlock) {
+    return afterFirstStore
+        ? flowResult.getStoreAfter(firstBlock)
+        : flowResult.getStoreBefore(succBlock);
   }
 
   /**
@@ -666,7 +669,7 @@ public class MustCallAnnotatedTypeFactory extends BaseAnnotatedTypeFactory
   }
 
   /**
-   * Return the temporary variable for node, if it exists. See {@code #tempVars}.
+   * Returns the temporary variable for node, if it exists. See {@code #tempVars}.
    *
    * @param node a CFG node
    * @return the corresponding temporary variable, or null if there is not one

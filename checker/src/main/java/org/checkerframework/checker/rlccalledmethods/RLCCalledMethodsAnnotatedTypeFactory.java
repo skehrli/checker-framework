@@ -150,9 +150,9 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
   }
 
   /**
-   * Return the static set of {@code PotentiallyFulfillingLoop}s scheduled for analysis.
+   * Returns the static set of {@code PotentiallyFulfillingLoop}s scheduled for analysis.
    *
-   * @return the static set of {@code PotentiallyFulfillingLoop}s scheduled for analysis.
+   * @return the static set of {@code PotentiallyFulfillingLoop}s scheduled for analysis
    */
   public static Set<PotentiallyFulfillingLoop> getPotentiallyFulfillingLoops() {
     return potentiallyFulfillingLoops;
@@ -220,7 +220,7 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
   }
 
   /**
-   * Returns whether the {@link MustCall#value} element/argument of the @MustCall annotation on the
+   * Returns true if the {@link MustCall#value} element/argument of the @MustCall annotation on the
    * type of {@code tree} is definitely empty.
    *
    * <p>This method only considers the declared type: it does not consider flow-sensitive
@@ -241,7 +241,7 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
   }
 
   /**
-   * Returns whether the {@link MustCall#value} element/argument of the @MustCall annotation on the
+   * Returns true if the {@link MustCall#value} element/argument of the @MustCall annotation on the
    * type of {@code element} is definitely empty.
    *
    * <p>This method only considers the declared type: it does not consider flow-sensitive
@@ -323,7 +323,7 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
   }
 
   /**
-   * Gets the tree for a temporary variable
+   * Gets the tree for a temporary variable.
    *
    * @param node a node for a temporary variable
    * @return the tree for {@code node}
@@ -360,7 +360,7 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
    * CFStore)}.
    *
    * @param tree a tree
-   * @return whether the tree has declared must-call obligations
+   * @return true if the tree has declared must-call obligations
    */
   public boolean declaredTypeHasMustCall(Tree tree) {
     assert tree instanceof MethodTree
@@ -437,6 +437,24 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
     return flowResult.getStoreAfter(block);
   }
 
+  /**
+   * Returns the then or else store after {@code block} depending on the value of {@code then} is
+   * returned.
+   *
+   * @param block a conditional block
+   * @param then wether the then store should be returned
+   * @return the then or else store after {@code block} depending on the value of {@code then} is
+   *     returned
+   */
+  public AccumulationStore getStoreAfterConditionalBlock(ConditionalBlock block, boolean then) {
+    TransferInput<AccumulationValue, AccumulationStore> transferInput = flowResult.getInput(block);
+    assert transferInput != null : "@AssumeAssertion(nullness): transferInput should be non-null";
+    if (then) {
+      return transferInput.getThenStore();
+    }
+    return transferInput.getElseStore();
+  }
+
   @Override
   @SuppressWarnings("TypeParameterUnusedInFormals") // Intentional abuse
   public <T extends GenericAnnotatedTypeFactory<?, ?, ?, ?>>
@@ -488,7 +506,7 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
    * by this checker, not subcheckers).
    *
    * @param elt an element
-   * @return whether there is a NotOwning annotation on the given element
+   * @return true if there is a NotOwning annotation on the given element
    */
   public boolean hasNotOwning(Element elt) {
     MustCallAnnotatedTypeFactory mcatf = getTypeFactoryOfSubchecker(MustCallChecker.class);
@@ -503,7 +521,7 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
    * by this checker, not subcheckers).
    *
    * @param elt an element
-   * @return whether there is an Owning annotation on the given element
+   * @return true if there is an Owning annotation on the given element
    */
   public boolean hasOwning(Element elt) {
     MustCallAnnotatedTypeFactory mcatf = getTypeFactoryOfSubchecker(MustCallChecker.class);
@@ -560,7 +578,7 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
    * names this method.
    *
    * @param elt a method
-   * @return whether that method is one of the must-call methods for its enclosing class
+   * @return true if that method is one of the must-call methods for its enclosing class
    */
   private boolean isMustCallMethod(ExecutableElement elt) {
     TypeElement enclosingClass = ElementUtils.enclosingTypeElement(elt);
@@ -646,7 +664,7 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
      * @param collectionElementTree AST {@code Tree} for collection element iterated over
      * @param condition AST {@code Tree} for loop condition
      * @param associatedMethods set of methods associated with this loop
-     * @param loopKind whether this is an assigning/fulfilling loop
+     * @param loopKind the type of loop, e.g., assigning/fulfilling
      */
     protected CollectionObligationAlteringLoop(
         ExpressionTree collectionTree,
@@ -677,7 +695,7 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
     }
 
     /**
-     * Return methods associated with this loop. For assigning loops, these are methods that are to
+     * Returns methods associated with this loop. For assigning loops, these are methods that are to
      * be added to the {@code MustCallOnElements} type and for fulfilling loops, methods that are to
      * be removed from the {@code MustCallOnElements} and added to the {@code
      * CalledMethodsOnElements} type.
@@ -692,16 +710,16 @@ public class RLCCalledMethodsAnnotatedTypeFactory extends CalledMethodsAnnotated
   /** Wrapper for a loop that potentially calls methods on all elements of a collection/array. */
   public static class PotentiallyFulfillingLoop extends CollectionObligationAlteringLoop {
 
-    /** cfg {@code Block} containing the loop body entry */
+    /** cfg {@code Block} containing the loop body entry. */
     public final Block loopBodyEntryBlock;
 
-    /** cfg {@code Block} containing the loop update */
+    /** cfg {@code Block} containing the loop update. */
     public final Block loopUpdateBlock;
 
-    /** cfg conditional {@link Block} following loop condition */
+    /** cfg conditional {@link Block} following loop condition. */
     public final ConditionalBlock loopConditionalBlock;
 
-    /** cfg {@code Node} for the collection element iterated over */
+    /** cfg {@code Node} for the collection element iterated over. */
     public final Node collectionElementNode;
 
     /**

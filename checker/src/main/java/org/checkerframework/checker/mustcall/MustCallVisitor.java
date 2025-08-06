@@ -352,17 +352,13 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
     return null;
   }
 
-  /*
-   * SECTION: syntactically match for-loops that iterate over all elements of a collection on
-   * the AST
-   */
+  // ///////////////////////////////////////////////////////////////////////////
+  // syntactically match for-loops that iterate over all elements of a collection on the AST
+  //
 
   /**
-   * Checks through pattern-matching whether the loop calls a method on entries of an
-   * {@code @OwningCollection}.
-   *
-   * <p>If yes, this is marked in some static datastructures in the
-   * {@code @CollectionOwnershipAnnotatedTypeFactory}
+   * Records, in the {@code @CollectionOwnershipAnnotatedTypeFactory}, loops that call a method on
+   * entries of an {@code @OwningCollection}.
    */
   @Override
   public Void visitForLoop(ForLoopTree tree, Void p) {
@@ -374,10 +370,9 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
   }
 
   /**
-   * Checks whether a for-loop potentially fulfills collection obligations of a collection and marks
-   * the loop in case the check is successful.
+   * Marks the for-loop if it potentially fulfills collection obligations of a collection.
    *
-   * @param tree forlooptree
+   * @param tree a `for` loop with exactly one loop variable
    */
   private void patternMatchFulfillingLoop(ForLoopTree tree) {
     List<? extends StatementTree> loopBodyStatementList;
@@ -388,8 +383,11 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
       loopBodyStatementList = Collections.singletonList(tree.getStatement());
     }
     StatementTree init = tree.getInitializer().get(0);
-    ExpressionTree condition = tree.getCondition();
+    ExpressionTree condition = TreeUtils.withoutParens(tree.getCondition());
     ExpressionStatementTree update = tree.getUpdate().get(0);
+    if (!(condition instanceof BinaryTree)) {
+      return;
+    }
     Name identifierInHeader = verifyAllElementsAreCalledOn(init, (BinaryTree) condition, update);
     Name iterator = getNameFromStatementTree(init);
     if (identifierInHeader == null || iterator == null) {
@@ -398,38 +396,38 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
     ExpressionTree collectionElementTree =
         preMatchLoop(loopBodyStatementList, identifierInHeader, iterator);
     if (collectionElementTree != null) {
-      // pattern match succeeded, now mark the loop in the respective datastructures
-      Set<Node> conditionNodes = atypeFactory.getNodesForTree(condition);
-      Set<Node> collectionEltNodes = atypeFactory.getNodesForTree(collectionElementTree);
-      Set<Node> updateNodes = atypeFactory.getNodesForTree(update.getExpression());
+      // Pattern match succeeded, now mark the loop in the respective datastructures.
+
       Block loopConditionBlock = null;
-      for (Node node : conditionNodes) {
+      for (Node node : atypeFactory.getNodesForTree(condition)) {
         Block blockOfNode = node.getBlock();
         if (blockOfNode != null) {
           loopConditionBlock = blockOfNode;
           break;
         }
       }
+
       Block loopUpdateBlock = null;
-      for (Node node : updateNodes) {
+      for (Node node : atypeFactory.getNodesForTree(update.getExpression())) {
         Block blockOfNode = node.getBlock();
         if (blockOfNode != null) {
           loopUpdateBlock = blockOfNode;
           break;
         }
       }
+
+      Set<Node> collectionEltNodes = atypeFactory.getNodesForTree(collectionElementTree);
       Node nodeForCollectionElt = null;
       if (collectionEltNodes != null) {
         nodeForCollectionElt = collectionEltNodes.iterator().next();
       }
-      if (loopUpdateBlock == null || loopConditionBlock == null) return;
-      // add the blocks into a static datastructure in the calledmethodsatf, such that it can
-      // analyze
-      // them (call MustCallConsistencyAnalyzer.analyzeFulfillingLoops, which in turn adds the trees
-      // to the static datastructure in McoeAtf)
-      assert (loopConditionBlock instanceof SingleSuccessorBlock);
+      if (loopUpdateBlock == null || loopConditionBlock == null) {
+        return;
+      }
+      // Add the blocks into a static datastructure in the calledmethodsatf, such that it can
+      // analyze them (call MustCallConsistencyAnalyzer.analyzeFulfillingLoops, which in turn adds
+      // the trees to the static datastructure in McoeAtf).
       Block conditionalBlock = ((SingleSuccessorBlock) loopConditionBlock).getSuccessor();
-      assert (conditionalBlock instanceof ConditionalBlock);
       Block loopBodyEntryBlock = ((ConditionalBlock) conditionalBlock).getThenSuccessor();
       RLCCalledMethodsAnnotatedTypeFactory.addPotentiallyFulfillingLoop(
           collectionTreeFromExpression(collectionElementTree),
@@ -443,51 +441,59 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
   }
 
   /**
-   * Decides for a for-loop header whether the loop iterates over all elements of some collection
-   * based on a pattern-match with one-sided error with the following rules:
+   * Conservatively decides whether a loop iterates over all elements of some collection, using the
+   * following rules:
    *
    * <ul>
    *   <li>only one loop variable
    *   <li>initialization must be of the form i = 0
    *   <li>condition must be of the form (i &lt; col.size())
-   *   <li>update must be prefix or postfix
+   *   <li>update must be prefix or postfix {@code ++}
    * </ul>
    *
    * Returns:
    *
    * <ul>
-   *   <li>null if any rule is violated
+   *   <li>null, if any of the above rules is violated
    *   <li>the name of the collection if the loop condition is of the form (i &lt; col.size())
    * </ul>
    *
    * @param init the initializer of the loop
    * @param condition the loop condition
    * @param update the loop update
-   * @return null if any rule is violated, or the name of the collection if the loop condition is of
-   *     the form (i &lt; col.size())
+   * @return the name of the collection that the loop iterates over all elements of, or null
    */
   protected Name verifyAllElementsAreCalledOn(
       StatementTree init, BinaryTree condition, ExpressionStatementTree update) {
     Tree.Kind updateKind = update.getExpression().getKind();
     if (updateKind == Tree.Kind.PREFIX_INCREMENT || updateKind == Tree.Kind.POSTFIX_INCREMENT) {
       UnaryTree inc = (UnaryTree) update.getExpression();
-      // verify update is of form i++ or ++i and init is variable initializer
+
+      // Verify update is of form i++ or ++i and init is variable initializer.
       if (!(init instanceof VariableTree) || !(inc.getExpression() instanceof IdentifierTree))
         return null;
       VariableTree initVar = (VariableTree) init;
-      // verify that intializer is i=0
+
+      // Verify that intializer is i=0.
       if (!(initVar.getInitializer() instanceof LiteralTree)
           || !((LiteralTree) initVar.getInitializer()).getValue().equals(0)) {
         return null;
       }
-      // verify that condition is of the form: i < something
-      if (!(condition.getLeftOperand() instanceof IdentifierTree)) return null;
-      if (initVar.getName()
-              != ((IdentifierTree) condition.getLeftOperand()).getName() // i=0 and i<n are same "i"
-          || initVar.getName()
-              != ((IdentifierTree) inc.getExpression()).getName()) { // i=0 and i++ are same "i"
+
+      // Verify that condition is of the form: i < something.
+      if (!(condition.getLeftOperand() instanceof IdentifierTree)) {
         return null;
       }
+
+      // Verify that i=0, i<n, and i++ have the same "i".
+      Name initVarName = initVar.getName();
+      if (initVarName != ((IdentifierTree) condition.getLeftOperand()).getName()) {
+        return null;
+      }
+      if (initVarName != ((IdentifierTree) inc.getExpression()).getName()) {
+        return null;
+      }
+
       if ((condition.getRightOperand() instanceof MethodInvocationTree)
           && TreeUtils.isSizeAccess(condition.getRightOperand())) {
         ExpressionTree methodSelect =
@@ -505,10 +511,11 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
   }
 
   /**
-   * Check that the loop does not contain any writes to the loop iterator variable, or to the
-   * collection variable itself. return/break statements. Extract the collection access tree ({@code
-   * arr[i]} or {@code collection.get(i)} where {@code i} is the iterator variable and {@code
-   * collection/arr} is consistent with the loop header) and return the last encountered such tree.
+   * Check that the loop does not contain any writes to the loop iterator variable or to the
+   * collection variable itself, or any return/break statements. Extract the collection access tree
+   * ({@code arr[i]} or {@code collection.get(i)} where {@code i} is the iterator variable and
+   * {@code collection/arr} is consistent with the loop header) and return the last encountered such
+   * tree.
    *
    * @param statements list of statements of the loop body
    * @param identifierInHeader collection name if loop condition is {@code i < collection.size()} or
@@ -594,13 +601,15 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
   }
 
   /**
-   * Get name from an ExpressionTree
+   * Returns the identifier of an ExpressionTree, or null.
    *
-   * @param expr ExpressionTree
-   * @return Name of the identifier the expression evaluates to or null if it doesn't
+   * @param expr an expression
+   * @return the name of the identifier the expression evaluates to or null if it doesn't
    */
   protected Name getNameFromExpressionTree(ExpressionTree expr) {
-    if (expr == null) return null;
+    if (expr == null) {
+      return null;
+    }
     switch (expr.getKind()) {
       case IDENTIFIER:
         return ((IdentifierTree) expr).getName();
@@ -619,13 +628,15 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
   }
 
   /**
-   * Get name from a {@code StatementTree}
+   * Returns the name from a {@code StatementTree}, or null.
    *
    * @param expr the {@code StatementTree}
-   * @return Name of the identifier the expression evaluates to or null if it doesn't
+   * @return name of the identifier the expression evaluates to or null if it doesn't
    */
   protected Name getNameFromStatementTree(StatementTree expr) {
-    if (expr == null) return null;
+    if (expr == null) {
+      return null;
+    }
     switch (expr.getKind()) {
       case VARIABLE:
         return ((VariableTree) expr).getName();
@@ -637,7 +648,7 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
   }
 
   /**
-   * Returns the ExpressionTree of the collection in the given expression
+   * Returns the ExpressionTree of the collection in the given expression.
    *
    * @param expr ExpressionTree
    * @return the expression evaluates to or null if it doesn't
@@ -661,34 +672,36 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
   }
 
   /**
-   * Returns whether the given collection name is consistent with the identifier from the loop
-   * header.
-   *
-   * <p>That is, the names are equal.
+   * Returns true if the given collection name is consistent with the identifier from the loop
+   * header. That is, returns true if the names are equal.
    *
    * <p>Returns false if any argument is null.
    *
    * @param idInHeader identifier from loop header
    * @param collectionName name of collection
-   * @return whether the given collection name is consistent with the identifier from the loop
-   *     header.
+   * @return true if the given collection name is consistent with the identifier from the loop
+   *     header
    */
   private boolean loopHeaderConsistentWithCollection(Name idInHeader, Name collectionName) {
-    if (idInHeader == null || collectionName == null) return false;
+    if (idInHeader == null || collectionName == null) {
+      return false;
+    }
     boolean namesAreEqual = collectionName == idInHeader;
     return namesAreEqual;
   }
 
   /**
-   * Returns whether the given tree is of the form collection.get(i), where i is the given index
+   * Returns true if the given tree is of the form collection.get(i), where i is the given index
    * name.
    *
    * @param tree the tree to check
    * @param index the index variable name
-   * @return whether the given tree is of the form collection.get(index)
+   * @return true if the given tree is of the form collection.get(index)
    */
   private boolean isIthCollectionElement(Tree tree, Name index) {
-    if (tree == null || index == null) return false;
+    if (tree == null || index == null) {
+      return false;
+    }
     if (tree instanceof MethodInvocationTree
         && index == getNameFromExpressionTree(TreeUtils.getIdxForGetCall(tree))) {
       MethodInvocationTree mit = (MethodInvocationTree) tree;

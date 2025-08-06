@@ -7,10 +7,10 @@ import org.checkerframework.javacutil.AnnotationProvider;
 
 /**
  * Represents a collection element that is iterated over in a potentially
- * collection-obligation-fulfilling loop, for example {@code o} in {@code for (Object o: list) { }}
+ * collection-obligation-fulfilling loop, for example {@code o} in {@code for (Object o: list) { }}.
  */
 public class IteratedCollectionElement extends JavaExpression {
-  /** The cfg node for this collection element. */
+  /** The CFG node for this collection element. */
   public final Node node;
 
   /** The AST node for this collection element. */
@@ -28,17 +28,16 @@ public class IteratedCollectionElement extends JavaExpression {
     this.tree = tree;
   }
 
-  @SuppressWarnings("interning:not.interned")
   @Override
   public boolean equals(@Nullable Object obj) {
+    if (this == obj) {
+      return true;
+    }
     if (!(obj instanceof IteratedCollectionElement)) {
       return false;
     }
     IteratedCollectionElement other = (IteratedCollectionElement) obj;
-    return other.tree.equals(this.tree)
-        || other.tree == this.tree
-        || other.node == this.node
-        || other.node.equals(this.node);
+    return other.tree.equals(this.tree) || other.node.equals(this.node);
   }
 
   // /**
