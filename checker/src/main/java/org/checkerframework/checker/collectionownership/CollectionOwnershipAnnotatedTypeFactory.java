@@ -255,7 +255,7 @@ public class CollectionOwnershipAnnotatedTypeFactory
   /**
    * Whether the given element is a resource collection field that is {@code @OwningCollection} by
    * declaration, which is the default behavior, i.e. with no different collection ownership
-   * annotation.
+   * annotation. Resource iterator fields are not considered an 'owning collection field'.
    *
    * @param elt the element
    * @return true if the element is a resource collection field that is {@code @OwningCollection} by
@@ -264,19 +264,21 @@ public class CollectionOwnershipAnnotatedTypeFactory
   public boolean isOwningCollectionField(Element elt) {
     if (elt == null) return false;
     if (isResourceCollection(elt.asType())) {
-      if (elt.getKind().isField()) {
-        AnnotatedTypeMirror atm = getAnnotatedType(elt);
-        CollectionOwnershipType fieldType =
-            getCoType(Collections.singletonList(atm.getEffectiveAnnotationInHierarchy(TOP)));
-        if (fieldType == null) {
-          return false;
-        }
-        switch (fieldType) {
-          case OwningCollection:
-          case OwningCollectionWithoutObligation:
-            return true;
-          default:
+      if (!ResourceLeakUtils.isIterator(elt.asType())) {
+        if (elt.getKind().isField()) {
+          AnnotatedTypeMirror atm = getAnnotatedType(elt);
+          CollectionOwnershipType fieldType =
+              getCoType(Collections.singletonList(atm.getEffectiveAnnotationInHierarchy(TOP)));
+          if (fieldType == null) {
             return false;
+          }
+          switch (fieldType) {
+            case OwningCollection:
+            case OwningCollectionWithoutObligation:
+              return true;
+            default:
+              return false;
+          }
         }
       }
     }

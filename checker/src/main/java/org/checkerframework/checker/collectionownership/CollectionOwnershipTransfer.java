@@ -75,6 +75,13 @@ public class CollectionOwnershipTransfer
     CollectionOwnershipStore coStore = atypeFactory.getStoreBefore(node);
     CollectionOwnershipType rhsType = atypeFactory.getCoType(rhs, coStore);
 
+    boolean lhsIsIterator = ResourceLeakUtils.isIterator(lhs.getType());
+    boolean rhsIsIterator = ResourceLeakUtils.isIterator(rhs.getType());
+    if (lhsIsIterator || rhsIsIterator) {
+      // no ownership transfers for iterators
+      return res;
+    }
+
     // ownership transfer from rhs into lhs usually.
     // special case desugared assignments of a temporary array variable
     // and rhs being owning resource collection field
@@ -94,24 +101,7 @@ public class CollectionOwnershipTransfer
         default:
       }
     }
-    // boolean assignmentOfOwningCollectionArrayElement =
-    //     lhsIsOwningCollection && lhs.getTree().getKind() == Tree.Kind.ARRAY_ACCESS;
 
-    // if (assignmentOfOwningCollectionArrayElement) {
-    //   ExpressionTree arrayExpression = ((ArrayAccessTree) lhs.getTree()).getExpression();
-    //   JavaExpression arrayJx = JavaExpression.fromTree(arrayExpression);
-
-    //   boolean inAssigningLoop =
-    //       MustCallOnElementsAnnotatedTypeFactory.doesAssignmentCreateArrayObligation(
-    //           (AssignmentTree) node.getTree());
-
-    //   // transformation of assigning loop is handled at the loop condition node,
-    //   // not the assignment node. So, only transform if not in an assigning loop.
-    //   if (!inAssigningLoop) {
-    //     store =
-    //         transformWriteToOwningCollection(arrayJx, arrayExpression, node.getExpression(),
-    // store);
-    //   }
     return res;
   }
 
@@ -218,6 +208,14 @@ public class CollectionOwnershipTransfer
       VariableElement param = params.get(i);
       Node arg = args.get(i);
       arg = getNodeOrTempVar(arg);
+
+      boolean argIsIterator = ResourceLeakUtils.isIterator(arg.getType());
+      boolean paramIsIterator = ResourceLeakUtils.isIterator(param.asType());
+      if (argIsIterator || paramIsIterator) {
+        // no ownership transfers for iterators
+        return res;
+      }
+
       JavaExpression argJx = JavaExpression.fromNode(arg);
       CollectionOwnershipStore coStore = atypeFactory.getStoreBefore(node);
       CollectionOwnershipType argType = atypeFactory.getCoType(arg, coStore);
