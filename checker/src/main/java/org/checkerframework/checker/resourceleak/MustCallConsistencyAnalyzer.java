@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.stream.Collectors;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
@@ -1396,7 +1397,7 @@ public class MustCallConsistencyAnalyzer {
       MethodTree method = ((UnderlyingAST.CFGMethod) underlyingAST).getMethod();
       ExecutableElement executableElement = TreeUtils.elementFromDeclaration(method);
       boolean returnTypeHasManualNocAnno =
-          coAtf.getCoType(new HashSet<>(executableElement.getReturnType().getAnnotationMirrors()))
+          coAtf.getCoType(executableElement.getReturnType().getAnnotationMirrors())
               == CollectionOwnershipType.NotOwningCollection;
       if (returnTypeHasManualNocAnno) {
         // return is @NotOwningCollection. No ownership transfer to call-site.
@@ -2601,7 +2602,7 @@ public class MustCallConsistencyAnalyzer {
       if (isElseEdgeOfFulfillingLoop) {
         if (obligation instanceof CollectionObligation) {
           String mustCallMethodOfCo = ((CollectionObligation) obligation).mustCallMethod;
-          if (loop.getMethods().contains(mustCallMethodOfCo)) {
+          if (loop.getCalledMethods().contains(mustCallMethodOfCo)) {
             // don't propagate this obligation along this edge, as it was fulfilled
             // in the loop that the currentBlock is the conditional block of
             continue;
@@ -3195,10 +3196,28 @@ public class MustCallConsistencyAnalyzer {
     if (size == 0) {
       throw new TypeSystemError("empty mustCallVal " + mustCallVal);
     } else if (size == 1) {
-      return "method " + mustCallVal.get(0);
+      return "method " + formatMustCallMethod(mustCallVal.get(0));
     } else {
-      return "methods " + String.join(", ", mustCallVal);
+      return "methods "
+          + String.join(
+              ", ",
+              mustCallVal.stream().map(s -> formatMustCallMethod(s)).collect(Collectors.toList()));
     }
+  }
+
+  /**
+   * Returns a human-readable representation of a must-call method name. If the given method name
+   * equals {@link CollectionOwnershipAnnotatedTypeFactory#UNKNOWN_METHOD_NAME}, the literal string
+   * {@code "Unknown"} is returned. Otherwise, the original name is returned unchanged.
+   *
+   * @param method the must-call method name
+   * @return {@code "Unknown"} if {@code method} equals {@code UNKNOWN_METHOD_NAME}, otherwise
+   *     {@code method} itself
+   */
+  private static String formatMustCallMethod(String method) {
+    return method.equals(CollectionOwnershipAnnotatedTypeFactory.UNKNOWN_METHOD_NAME)
+        ? "Unknown"
+        : method;
   }
 
   /**
@@ -3398,12 +3417,12 @@ public class MustCallConsistencyAnalyzer {
             block = predBlocks.iterator().next();
             nodeIterator = block.getNodes().iterator();
           } else {
-            throw new BugInCF(
-                "Encountered more than one CFG Block predeccessor trying to find the"
-                    + " enhanced-for-loop update block. Block: ");
-            // + block
-            // + "\nPredecessors: "
-            // + predBlocks);
+            // there is no trivial resolution here. Best we can do is just skip this loop,
+            // which is of course sound.
+            return;
+            // throw new BugInCF(
+            //     "Encountered more than one CFG Block predecessor trying to find the"
+            //         + " enhanced-for-loop update block. Block: ");
           }
         }
         node = nodeIterator.next();
@@ -3559,7 +3578,7 @@ public class MustCallConsistencyAnalyzer {
 
     // now put the loop into the static datastructure if it calls any methods on the element
     if (calledMethodsInLoop != null && calledMethodsInLoop.size() > 0) {
-      potentiallyFulfillingLoop.addMethods(calledMethodsInLoop);
+      potentiallyFulfillingLoop.addCalledMethods(calledMethodsInLoop);
       CollectionOwnershipAnnotatedTypeFactory.markFulfillingLoop(potentiallyFulfillingLoop);
     }
   }

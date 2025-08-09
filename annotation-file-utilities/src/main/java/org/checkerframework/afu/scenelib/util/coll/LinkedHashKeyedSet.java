@@ -4,7 +4,6 @@ import java.util.AbstractSet;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
-import java.util.Map;
 import org.checkerframework.checker.collectionownership.qual.OwningCollection;
 import org.checkerframework.checker.collectionownership.qual.PolyOwningCollection;
 import org.checkerframework.checker.mustcall.qual.NotOwning;
@@ -13,12 +12,19 @@ import org.checkerframework.checker.mustcall.qual.Owning;
 /**
  * A simple implementation of {@link KeyedSet} backed by an insertion-order {@link
  * java.util.LinkedHashMap} and its {@link java.util.LinkedHashMap#values() value collection}.
+ *
+ * @param <K> the type of keys
+ * @param <V> the type of values
  */
 public class LinkedHashKeyedSet<K, V> extends AbstractSet<V> implements KeyedSet<K, V> {
+  /** Produces a key for a value. */
   private final Keyer<? extends K, ? super V> keyer;
 
-  private final Map<K, V> theMap = new LinkedHashMap<>();
+  /** The map that backs this set. */
+  // Declared as LinkedHashMap because some implementations of Map prohibit null keys.
+  private final LinkedHashMap<K, V> theMap = new LinkedHashMap<>();
 
+  /** The values in the set. Implemented as a view into the map. */
   final Collection<V> theValues = theMap.values();
 
   /**

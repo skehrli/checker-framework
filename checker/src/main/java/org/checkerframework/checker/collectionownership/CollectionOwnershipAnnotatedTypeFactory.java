@@ -1,6 +1,5 @@
 package org.checkerframework.checker.collectionownership;
 
-import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.Tree;
@@ -31,7 +30,6 @@ import org.checkerframework.checker.collectionownership.qual.OwningCollectionBot
 import org.checkerframework.checker.collectionownership.qual.OwningCollectionWithoutObligation;
 import org.checkerframework.checker.collectionownership.qual.PolyOwningCollection;
 import org.checkerframework.checker.mustcall.MustCallAnnotatedTypeFactory;
-import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.checker.resourceleak.MustCallConsistencyAnalyzer;
 import org.checkerframework.checker.resourceleak.MustCallInference;
 import org.checkerframework.checker.resourceleak.ResourceLeakChecker;
@@ -69,6 +67,12 @@ public class CollectionOwnershipAnnotatedTypeFactory
         CollectionOwnershipStore,
         CollectionOwnershipTransfer,
         CollectionOwnershipAnalysis> {
+
+  /**
+   * The {@code @} {@link MustCallAnnotatedTypeFactory} instance in the checker hierarchy. Used for
+   * getting the {@code @MustCall} type of expressions.
+   */
+  private final MustCallAnnotatedTypeFactory mcAtf;
 
   /** The {@code @}{@link NotOwningCollection} annotation. */
   public final AnnotationMirror TOP;
@@ -178,12 +182,8 @@ public class CollectionOwnershipAnnotatedTypeFactory
         AnnotationBuilder.fromClass(elements, OwningCollectionWithoutObligation.class);
     BOTTOM = AnnotationBuilder.fromClass(elements, OwningCollectionBottom.class);
     POLY = AnnotationBuilder.fromClass(elements, PolyOwningCollection.class);
+    mcAtf = ResourceLeakUtils.getMustCallAnnotatedTypeFactory(checker);
     this.postInit();
-  }
-
-  @Override
-  public void setRoot(@Nullable CompilationUnitTree newRoot) {
-    super.setRoot(newRoot);
   }
 
   @Override
@@ -248,9 +248,6 @@ public class CollectionOwnershipAnnotatedTypeFactory
    * @return true if t is a resource collection
    */
   public boolean isResourceCollection(TypeMirror t) {
-    if (t == null) {
-      return false;
-    }
     List<String> mcValues = getMustCallValuesOfResourceCollectionComponent(t);
     return mcValues != null && mcValues.size() > 0;
   }
@@ -272,7 +269,7 @@ public class CollectionOwnershipAnnotatedTypeFactory
       if (isResourceCollection(elt.asType())) {
         AnnotatedTypeMirror atm = getAnnotatedType(elt);
         CollectionOwnershipType fieldType =
-            getCoType(Collections.singletonList(atm.getEffectiveAnnotationInHierarchy(TOP)));
+            getCoType(Collections.singletonList(atm.getPrimaryAnnotationInHierarchy(TOP)));
         if (fieldType == null) {
           return false;
         }
@@ -295,9 +292,6 @@ public class CollectionOwnershipAnnotatedTypeFactory
    * @return true if the element is a resource collection field
    */
   public boolean isResourceCollectionField(Element elt) {
-    if (elt == null) {
-      return false;
-    }
     if (elt.getKind().isField()) {
       if (isResourceCollection(elt.asType())) {
         return true;
@@ -316,14 +310,11 @@ public class CollectionOwnershipAnnotatedTypeFactory
    *     {@code @OwningCollection} by declaration
    */
   public boolean isOwningCollectionParameter(Element elt) {
-    if (elt == null) {
-      return false;
-    }
     if (isResourceCollection(elt.asType())) {
       if (elt.getKind() == ElementKind.PARAMETER) {
         AnnotatedTypeMirror atm = getAnnotatedType(elt);
         CollectionOwnershipType paramType =
-            getCoType(Collections.singletonList(atm.getEffectiveAnnotationInHierarchy(TOP)));
+            getCoType(Collections.singletonList(atm.getPrimaryAnnotationInHierarchy(TOP)));
         if (paramType == null) {
           return false;
         }
@@ -351,13 +342,7 @@ public class CollectionOwnershipAnnotatedTypeFactory
     if (tree == null) {
       return false;
     }
-    MustCallAnnotatedTypeFactory mcAtf = ResourceLeakUtils.getMustCallAnnotatedTypeFactory(this);
-    AnnotatedTypeMirror treeMcType = null;
-    try {
-      treeMcType = mcAtf.getAnnotatedType(tree);
-    } catch (BugInCF e) {
-      return false;
-    }
+    AnnotatedTypeMirror treeMcType = mcAtf.getAnnotatedType(tree);
     List<String> mcValues = getMustCallValuesOfResourceCollectionComponent(treeMcType);
     return mcValues != null && mcValues.size() > 0;
   }
@@ -374,9 +359,6 @@ public class CollectionOwnershipAnnotatedTypeFactory
    *     if there are none or if the given type is not a collection
    */
   public List<String> getMustCallValuesOfResourceCollectionComponent(AnnotatedTypeMirror atm) {
-    if (atm == null) {
-      return null;
-    }
     boolean isCollectionType = ResourceLeakUtils.isCollection(atm.getUnderlyingType());
 
     AnnotatedTypeMirror componentType = null;
@@ -389,7 +371,6 @@ public class CollectionOwnershipAnnotatedTypeFactory
     }
 
     if (componentType != null) {
-      MustCallAnnotatedTypeFactory mcAtf = ResourceLeakUtils.getMustCallAnnotatedTypeFactory(this);
       List<String> list = ResourceLeakUtils.getMcValues(componentType, mcAtf);
       return list;
     } else {
@@ -409,7 +390,6 @@ public class CollectionOwnershipAnnotatedTypeFactory
    *     or null if there are none or if the given type is not a collection
    */
   public List<String> getMustCallValuesOfResourceCollectionComponent(Tree tree) {
-    MustCallAnnotatedTypeFactory mcAtf = ResourceLeakUtils.getMustCallAnnotatedTypeFactory(this);
     return getMustCallValuesOfResourceCollectionComponent(mcAtf.getAnnotatedType(tree));
   }
 
@@ -425,9 +405,6 @@ public class CollectionOwnershipAnnotatedTypeFactory
    *     if there are none or if the given type is not a collection
    */
   public List<String> getMustCallValuesOfResourceCollectionComponent(TypeMirror t) {
-    if (t == null) {
-      return null;
-    }
     boolean isCollectionType = ResourceLeakUtils.isCollection(t);
 
     TypeMirror componentType = null;
@@ -439,7 +416,6 @@ public class CollectionOwnershipAnnotatedTypeFactory
     }
 
     if (componentType != null) {
-      MustCallAnnotatedTypeFactory mcAtf = ResourceLeakUtils.getMustCallAnnotatedTypeFactory(this);
       List<String> list = ResourceLeakUtils.getMcValues(componentType, mcAtf);
       return list;
     } else {
@@ -456,13 +432,17 @@ public class CollectionOwnershipAnnotatedTypeFactory
    * @return the {@code CollectionOwnershipType} that the given node has in the given store
    */
   public CollectionOwnershipType getCoType(Node node, CollectionOwnershipStore coStore) {
+    JavaExpression jx = JavaExpression.fromNode(node);
+    CFValue storeVal;
     try {
-      JavaExpression jx = JavaExpression.fromNode(node);
-      CFValue storeVal = coStore.getValue(jx);
-      return getCoType(storeVal.getAnnotations());
-    } catch (Exception e) {
+      storeVal = coStore.getValue(jx);
+    } catch (BugInCF e) {
+      storeVal = null;
+    }
+    if (storeVal == null) {
       return null;
     }
+    return getCoType(storeVal.getAnnotations());
   }
 
   /**
@@ -494,10 +474,7 @@ public class CollectionOwnershipAnnotatedTypeFactory
    * @param annos the {@code AnnotationMirror} collection
    * @return the extracted {@code CollectionOwnershipType} from annos
    */
-  public CollectionOwnershipType getCoType(Collection<AnnotationMirror> annos) {
-    if (annos == null) {
-      return null;
-    }
+  public CollectionOwnershipType getCoType(Collection<? extends AnnotationMirror> annos) {
     for (AnnotationMirror anm : annos) {
       if (anm == null) {
         continue;
@@ -601,12 +578,12 @@ public class CollectionOwnershipAnnotatedTypeFactory
       AnnotatedDeclaredType receiverType = t.getReceiverType();
       AnnotationMirror receiverAnno =
           receiverType == null ? null : receiverType.getEffectiveAnnotationInHierarchy(TOP);
-      boolean receiverHasManualAnno =
+      boolean receiverHasExplicitAnno =
           receiverAnno != null && !AnnotationUtils.areSameByName(BOTTOM, receiverAnno);
 
       AnnotatedTypeMirror returnType = t.getReturnType();
       AnnotationMirror returnAnno = returnType.getEffectiveAnnotationInHierarchy(TOP);
-      boolean returnHasManualAnno =
+      boolean returnHasExplicitAnno =
           returnAnno != null && !AnnotationUtils.areSameByName(BOTTOM, returnAnno);
 
       // inherit supertype annotations
@@ -620,26 +597,26 @@ public class CollectionOwnershipAnnotatedTypeFactory
           AnnotatedExecutableType annotatedSuperMethod =
               CollectionOwnershipAnnotatedTypeFactory.this.getAnnotatedType(superElt);
 
-          if (!receiverHasManualAnno) {
+          if (!receiverHasExplicitAnno) {
             AnnotatedDeclaredType superReceiver = annotatedSuperMethod.getReceiverType();
             AnnotationMirror superReceiverAnno = superReceiver.getPrimaryAnnotationInHierarchy(TOP);
-            boolean superReceiverHasManualAnno =
+            boolean superReceiverHasExplicitAnno =
                 superReceiverAnno != null
                     && !AnnotationUtils.areSameByName(BOTTOM, superReceiverAnno)
                     && !AnnotationUtils.areSameByName(POLY, superReceiverAnno);
-            if (superReceiverHasManualAnno) {
+            if (superReceiverHasExplicitAnno) {
               receiverType.replaceAnnotation(superReceiverAnno);
             }
           }
 
-          if (!returnHasManualAnno) {
+          if (!returnHasExplicitAnno) {
             AnnotatedTypeMirror superReturnType = annotatedSuperMethod.getReturnType();
             AnnotationMirror superReturnAnno = superReturnType.getPrimaryAnnotationInHierarchy(TOP);
-            boolean superReturnHasManualAnno =
+            boolean superReturnHasExplicitAnno =
                 superReturnAnno != null
                     && !AnnotationUtils.areSameByName(BOTTOM, superReturnAnno)
                     && !AnnotationUtils.areSameByName(POLY, superReturnAnno);
-            if (superReturnHasManualAnno) {
+            if (superReturnHasExplicitAnno) {
               returnType.replaceAnnotation(superReturnAnno);
             }
           }
@@ -647,21 +624,19 @@ public class CollectionOwnershipAnnotatedTypeFactory
           List<? extends AnnotatedTypeMirror> paramTypes = t.getParameterTypes();
           List<? extends AnnotatedTypeMirror> superParamTypes =
               annotatedSuperMethod.getParameterTypes();
-          if (paramTypes.size() == superParamTypes.size()) {
-            for (int i = 0; i < superParamTypes.size(); i++) {
-              AnnotationMirror paramAnno = paramTypes.get(i).getEffectiveAnnotationInHierarchy(TOP);
-              boolean paramHasManualAnno =
-                  paramAnno != null && !AnnotationUtils.areSameByName(BOTTOM, paramAnno);
-              if (!paramHasManualAnno) {
-                AnnotationMirror superParamAnno =
-                    superParamTypes.get(i).getPrimaryAnnotationInHierarchy(TOP);
-                boolean superParamHasManualAnno =
-                    superParamAnno != null
-                        && !AnnotationUtils.areSameByName(BOTTOM, superParamAnno)
-                        && !AnnotationUtils.areSameByName(POLY, superParamAnno);
-                if (superParamHasManualAnno) {
-                  paramTypes.get(i).replaceAnnotation(superParamAnno);
-                }
+          for (int i = 0; i < superParamTypes.size(); i++) {
+            AnnotationMirror paramAnno = paramTypes.get(i).getEffectiveAnnotationInHierarchy(TOP);
+            boolean paramHasExplicitAnno =
+                paramAnno != null && !AnnotationUtils.areSameByName(BOTTOM, paramAnno);
+            if (!paramHasExplicitAnno) {
+              AnnotationMirror superParamAnno =
+                  superParamTypes.get(i).getPrimaryAnnotationInHierarchy(TOP);
+              boolean superParamHasExplicitAnno =
+                  superParamAnno != null
+                      && !AnnotationUtils.areSameByName(BOTTOM, superParamAnno)
+                      && !AnnotationUtils.areSameByName(POLY, superParamAnno);
+              if (superParamHasExplicitAnno) {
+                paramTypes.get(i).replaceAnnotation(superParamAnno);
               }
             }
           }
@@ -694,7 +669,7 @@ public class CollectionOwnershipAnnotatedTypeFactory
   }
 
   /*
-   * Defaults resource collection fields within methods of the class to @OwningCollection.
+   * Defaults resource collection field uses within member methods to @OwningCollection.
    */
   @Override
   protected void addComputedTypeAnnotations(Tree tree, AnnotatedTypeMirror type, boolean iUseFlow) {
@@ -746,6 +721,7 @@ public class CollectionOwnershipAnnotatedTypeFactory
           for (int i = 0; i < params.size(); i++) {
             if (params.get(i).getSimpleName() == elt.getSimpleName()) {
               type.replaceAnnotation(paramTypes.get(i).getEffectiveAnnotationInHierarchy(TOP));
+              break;
             }
           }
         }

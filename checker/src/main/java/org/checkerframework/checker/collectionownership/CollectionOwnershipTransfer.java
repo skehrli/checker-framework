@@ -1,7 +1,6 @@
 package org.checkerframework.checker.collectionownership;
 
 import com.sun.source.tree.Tree;
-import java.util.HashSet;
 import java.util.List;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
@@ -124,7 +123,7 @@ public class CollectionOwnershipTransfer
    *     collection-obligation-fulfilling loop
    * @return the resulting transfer result
    */
-  private TransferResult<CFValue, CollectionOwnershipStore> transformPotentiallyFulfillingLoop(
+  private TransferResult<CFValue, CollectionOwnershipStore> updateStoreForPotentiallyFulfillingLoop(
       TransferResult<CFValue, CollectionOwnershipStore> res, Tree tree) {
     PotentiallyFulfillingLoop loop =
         CollectionOwnershipAnnotatedTypeFactory.getFulfillingLoopForCondition(tree);
@@ -136,7 +135,7 @@ public class CollectionOwnershipTransfer
       if (collectionCoType == CollectionOwnershipType.OwningCollection) {
         List<String> mustCallValuesOfElements =
             atypeFactory.getMustCallValuesOfResourceCollectionComponent(loop.collectionTree);
-        if (loop.getMethods().containsAll(mustCallValuesOfElements)) {
+        if (loop.getCalledMethods().containsAll(mustCallValuesOfElements)) {
           elseStore.clearValue(collectionJE);
           elseStore.insertValue(collectionJE, atypeFactory.OWNINGCOLLECTIONWITHOUTOBLIGATION);
           return new ConditionalTransferResult<>(
@@ -151,7 +150,7 @@ public class CollectionOwnershipTransfer
   public TransferResult<CFValue, CollectionOwnershipStore> visitLessThan(
       LessThanNode node, TransferInput<CFValue, CollectionOwnershipStore> in) {
     TransferResult<CFValue, CollectionOwnershipStore> res = super.visitLessThan(node, in);
-    return transformPotentiallyFulfillingLoop(res, node.getTree());
+    return updateStoreForPotentiallyFulfillingLoop(res, node.getTree());
   }
 
   @Override
@@ -164,7 +163,7 @@ public class CollectionOwnershipTransfer
     ExecutableElement method = node.getTarget().getMethod();
     List<Node> args = node.getArguments();
     res = transferOwnershipForMethodInvocation(method, node, args, res);
-    res = transformPotentiallyFulfillingLoop(res, node.getTree());
+    res = updateStoreForPotentiallyFulfillingLoop(res, node.getTree());
 
     // Check whether the method is annotated @CreatesCollectionObligation.
     ExecutableElement methodElement = TreeUtils.elementFromUse(node.getTree());
@@ -218,7 +217,7 @@ public class CollectionOwnershipTransfer
       CollectionOwnershipType argType =
           atypeFactory.getCoType(arg, atypeFactory.getStoreBefore(node));
       CollectionOwnershipType paramType =
-          atypeFactory.getCoType(new HashSet<>(param.asType().getAnnotationMirrors()));
+          atypeFactory.getCoType(param.asType().getAnnotationMirrors());
       if (paramType == null) {
         continue;
       }
@@ -313,28 +312,8 @@ public class CollectionOwnershipTransfer
             atypeFactory
                 .getAnnotatedType(node.getTree())
                 .getPrimaryAnnotationInHierarchy(atypeFactory.TOP);
-        insertInStores(result, localExp, anm == null ? atypeFactory.TOP : anm);
+        insertIntoStores(result, localExp, anm == null ? atypeFactory.TOP : anm);
       }
-    }
-  }
-
-  /**
-   * Inserts {@code newAnno} as the value into all stores (conditional or not) in the result for
-   * node.
-   *
-   * @param result the TransferResult holding the stores to modify
-   * @param target the receiver whose value should be modified
-   * @param newAnno the new value
-   */
-  protected static void insertInStores(
-      TransferResult<CFValue, CollectionOwnershipStore> result,
-      JavaExpression target,
-      AnnotationMirror newAnno) {
-    if (result.containsTwoStores()) {
-      result.getThenStore().insertValue(target, newAnno);
-      result.getElseStore().insertValue(target, newAnno);
-    } else {
-      result.getRegularStore().insertValue(target, newAnno);
     }
   }
 

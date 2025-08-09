@@ -4,6 +4,7 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 import org.checkerframework.checker.mustcall.qual.NotOwning;
+import org.checkerframework.checker.nullness.qual.Nullable;
 
 /**
  * A {@link WrapperMap} is a map all of whose methods delegate by default to those of a supplied
@@ -40,7 +41,7 @@ public class WrapperMap<K, V> implements Map<K, V> {
   }
 
   @Override
-  public @NotOwning V get(Object key) {
+  public @NotOwning @Nullable V get(Object key) {
     return back.get(key);
   }
 
@@ -55,7 +56,8 @@ public class WrapperMap<K, V> implements Map<K, V> {
   }
 
   @Override
-  public @NotOwning V put(K key, V value) {
+  @SuppressWarnings("keyfor:contracts.postcondition") // uses a delegate map
+  public @NotOwning @Nullable V put(K key, V value) {
     return back.put(key, value);
   }
 
