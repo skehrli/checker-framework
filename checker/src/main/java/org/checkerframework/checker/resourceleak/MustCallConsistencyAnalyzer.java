@@ -766,10 +766,7 @@ public class MustCallConsistencyAnalyzer {
       propagateObligationsToSuccessorBlocks(
           cfg, current.obligations, current.block, visited, worklist);
       if (numRCUses - count > 0) {
-        System.out.println(
-          "REPORT:\n"
-          + "RC uses: " + rcUses
-        );
+        System.out.println("REPORT:\n" + "RC uses: " + rcUses);
       }
     }
   }
@@ -2504,7 +2501,7 @@ public class MustCallConsistencyAnalyzer {
     }
   }
 
-  private void logResourceCollection(Tree tree, ControlFlowGraph cfg) { 
+  private void logResourceCollection(Tree tree, ControlFlowGraph cfg) {
     MethodTree enclosingMethod = cfg.getEnclosingMethod(tree);
     long lineNumber = cmAtf.getChecker().getVisitor().getLineNumber(tree);
     Set<Long> linesWithResourceCollectionInMethod =

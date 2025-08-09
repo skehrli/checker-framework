@@ -111,19 +111,31 @@ public class CollectionOwnershipVisitor
         numRCs++;
         rcs.add(tree);
         System.out.println(
-          "VISITOR:\n"
-          + "oc fields: " + numOCFields + " " + ocFields + "\n"
-          + "num rcs: " + numRCs + " " + rcs
-        );
+            "VISITOR:\n"
+                + "oc fields: "
+                + numOCFields
+                + " "
+                + ocFields
+                + "\n"
+                + "num rcs: "
+                + numRCs
+                + " "
+                + rcs);
         checkOwningCollectionField(tree);
       } else if (atypeFactory.isResourceCollection(elt.asType())) {
         numRCs++;
         rcs.add(tree);
         System.out.println(
-          "VISITOR:\n"
-          + "oc fields: " + numOCFields + " " + ocFields + "\n"
-          + "num rcs: " + numRCs + " " + rcs
-        );
+            "VISITOR:\n"
+                + "oc fields: "
+                + numOCFields
+                + " "
+                + ocFields
+                + "\n"
+                + "num rcs: "
+                + numRCs
+                + " "
+                + rcs);
       }
     }
     return super.visitVariable(tree, p);
