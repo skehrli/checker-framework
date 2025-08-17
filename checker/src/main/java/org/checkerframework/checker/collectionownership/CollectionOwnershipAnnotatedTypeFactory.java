@@ -216,6 +216,10 @@ public class CollectionOwnershipAnnotatedTypeFactory
         : flowResult.getStoreBefore(succBlock);
   }
 
+  // Note that this method is overridden here because the collections ownership
+  // typechecker runs last in the RLC, not because this has anything to do with
+  // collections. Whatever checker runs last in the RLC must do this. TODO: make this
+  // run last in a more sensible way.
   @Override
   public void postAnalyze(ControlFlowGraph cfg) {
     ResourceLeakChecker rlc = ResourceLeakUtils.getResourceLeakChecker(this);
@@ -241,8 +245,8 @@ public class CollectionOwnershipAnnotatedTypeFactory
    * Returns true if the given type is a resource collection: a type assignable from {@code
    * Collection} whose single type var has non-empty MustCall type.
    *
-   * <p>This overload should be used before computation of AnnotatedTypeMirrors is completed, in
-   * particular in addComputedTypeAnnotations(AnnotatedTypeMirror).
+   * <p>This overload should be used only before computation of AnnotatedTypeMirrors is completed,
+   * in particular in addComputedTypeAnnotations(AnnotatedTypeMirror).
    *
    * @param t the AnnotatedTypeMirror
    * @return true if t is a resource collection
