@@ -12,6 +12,7 @@ import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.VariableElement;
+import javax.tools.Diagnostic;
 import org.checkerframework.checker.resourceleak.MustCallConsistencyAnalyzer;
 import org.checkerframework.checker.resourceleak.ResourceLeakUtils;
 import org.checkerframework.checker.rlccalledmethods.RLCCalledMethodsAnnotatedTypeFactory;
@@ -110,17 +111,31 @@ public class CollectionOwnershipVisitor
         ocFields.add(tree);
         numRCs++;
         rcs.add(tree);
-        System.out.println(
-            "VISITOR:\n"
-                + "oc fields: "
-                + numOCFields
-                + " "
-                + ocFields
-                + "\n"
-                + "num rcs: "
-                + numRCs
-                + " "
-                + rcs);
+        checker
+            .getProcessingEnvironment()
+            .getMessager()
+            .printMessage(
+                Diagnostic.Kind.WARNING,
+                "VISITOR: "
+                    + "oc fields: "
+                    + numOCFields
+                    + " "
+                    + ocFields
+                    + " num rcs: "
+                    + numRCs
+                    + " "
+                    + rcs);
+        // System.out.println(
+        //     "VISITOR:\n"
+        //         + "oc fields: "
+        //         + numOCFields
+        //         + " "
+        //         + ocFields
+        //         + "\n"
+        //         + "num rcs: "
+        //         + numRCs
+        //         + " "
+        //         + rcs);
         checkOwningCollectionField(tree);
       } else if (atypeFactory.isResourceCollection(elt.asType())) {
         numRCs++;

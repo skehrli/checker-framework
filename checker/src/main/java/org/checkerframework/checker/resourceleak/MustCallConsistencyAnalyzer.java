@@ -40,6 +40,7 @@ import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
+import javax.tools.Diagnostic;
 import org.checkerframework.checker.calledmethods.qual.CalledMethods;
 import org.checkerframework.checker.collectionownership.CollectionOwnershipAnnotatedTypeFactory;
 import org.checkerframework.checker.collectionownership.CollectionOwnershipAnnotatedTypeFactory.CollectionOwnershipType;
@@ -158,7 +159,6 @@ public class MustCallConsistencyAnalyzer {
 
   private static long numRCUses = 0;
   private static Set<Tree> rcUses = new HashSet<>();
-  // private static long numOwningIterators = 0;
   private static Map<MethodTree, Set<Long>> resourceCollections = new HashMap<>();
 
   /** True if errors related to static owning fields should be suppressed. */
@@ -766,7 +766,11 @@ public class MustCallConsistencyAnalyzer {
       propagateObligationsToSuccessorBlocks(
           cfg, current.obligations, current.block, visited, worklist);
       if (numRCUses - count > 0) {
-        System.out.println("REPORT:\n" + "RC uses: " + rcUses);
+        checker
+            .getProcessingEnvironment()
+            .getMessager()
+            .printMessage(Diagnostic.Kind.WARNING, "RC uses: " + rcUses.size() + " " + rcUses);
+        // System.out.println("REPORT:\n" + "RC uses: " + rcUses);
       }
     }
   }
