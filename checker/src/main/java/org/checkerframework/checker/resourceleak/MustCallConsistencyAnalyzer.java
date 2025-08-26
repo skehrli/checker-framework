@@ -83,12 +83,12 @@ import org.checkerframework.dataflow.cfg.node.ThisNode;
 import org.checkerframework.dataflow.expression.FieldAccess;
 import org.checkerframework.dataflow.expression.IteratedCollectionElement;
 import org.checkerframework.dataflow.expression.JavaExpression;
+import org.checkerframework.dataflow.expression.JavaExpressionParseException;
 import org.checkerframework.dataflow.expression.LocalVariable;
 import org.checkerframework.dataflow.expression.ThisReference;
 import org.checkerframework.dataflow.util.NodeUtils;
 import org.checkerframework.framework.flow.CFStore;
 import org.checkerframework.framework.flow.CFValue;
-import org.checkerframework.framework.util.JavaExpressionParseUtil.JavaExpressionParseException;
 import org.checkerframework.framework.util.StringToJavaExpression;
 import org.checkerframework.javacutil.AnnotationUtils;
 import org.checkerframework.javacutil.BugInCF;
@@ -705,7 +705,9 @@ public class MustCallConsistencyAnalyzer {
       String referenceStr = reference.toString();
       // We assume that any temporary variable name will not be a syntactically-valid
       // identifier or keyword.
-      return !SourceVersion.isIdentifier(referenceStr) ? tree.toString() : referenceStr;
+      return !SourceVersion.isIdentifier(referenceStr)
+          ? TreeUtils.toStringTruncated(tree, 50)
+          : referenceStr;
     }
   }
 

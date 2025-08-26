@@ -2,7 +2,7 @@ import de.undercouch.gradle.tasks.download.Download
 
 plugins {
   // https://plugins.gradle.org/plugin/com.gradleup.shadow
-  id 'com.gradleup.shadow' version '8.3.9'
+  id 'com.gradleup.shadow' version '9.0.2'
   // https://plugins.gradle.org/plugin/de.undercouch.download
   id 'de.undercouch.download' version '5.6.0'
   id 'java'
@@ -227,6 +227,8 @@ allprojects { currentProj ->
       '--add-exports',
       'jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED',
       '--add-exports',
+      'jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED',
+      '--add-exports',
       'jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED',
       '--add-exports',
       'jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED',
@@ -423,6 +425,7 @@ allprojects { currentProj ->
         options.addBooleanOption('-add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED', true)
         options.addBooleanOption('-add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED', true)
         options.addBooleanOption('-add-exports=jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED', true)
+        options.addBooleanOption('-add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED', true)
         options.addBooleanOption('-add-exports=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED', true)
         options.addBooleanOption('-add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED', true)
         options.addBooleanOption('-add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED', true)
@@ -487,6 +490,8 @@ allprojects { currentProj ->
           '--add-exports',
           'jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED',
           '--add-exports',
+          'jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED',
+          '--add-exports',
           'jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED',
           '--add-exports',
           'jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED',
@@ -543,6 +548,8 @@ allprojects { currentProj ->
           '-Xep:MixedMutabilityReturnType:OFF',
           // Don't want to add a dependency to ErrorProne.
           '-Xep:AnnotateFormatMethod:OFF',
+          // Don't want to add a dependency to ErrorProne.
+          "-Xep:DoNotCallSuggester:OFF",
           // Warns for every use of "@checker_framework.manual"
           '-Xep:InvalidBlockTag:OFF',
           // Recommends writing @InlineMe which is an Error-Prone-specific annotation
@@ -678,17 +685,17 @@ task allJavadoc(type: Javadoc, group: 'Documentation') {
       project(':annotation-file-utilities').sourceSets.main.allJava,
       )
 
-  doFirst {
-    source(
-        project(':framework-test').sourceSets.taglet.allJava
-        )
-  }
-
   classpath = configurations.allProjects
   // disable interpreting module-info.java files until all sub-modules support them
   modularity.inferModulePath = false
 
   finalizedBy 'addFavicon'
+
+  doFirst {
+    source(
+        project(':framework-test').sourceSets.taglet.allJava
+        )
+  }
 }
 
 // See documentation for allJavadoc task.
@@ -713,7 +720,7 @@ task requireJavadoc(type: JavaExec, group: 'Documentation') {
   description = 'Ensures that Javadoc documentation exists in source code.'
   mainClass = 'org.plumelib.javadoc.RequireJavadoc'
   classpath = configurations.requireJavadoc
-  args 'checker/src/main/java', 'checker-qual/src/main/java', 'checker-util/src/main/java', 'dataflow/src/main/java', 'framework/src/main/java', 'framework-test/src/main/java', 'javacutil/src/main/java'
+  args '--exclude=module-info.java', 'checker/src/main/java', 'checker-qual/src/main/java', 'checker-util/src/main/java', 'dataflow/src/main/java', 'framework/src/main/java', 'framework-test/src/main/java', 'javacutil/src/main/java'
   jvmArgs += [
     '--add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED',
     '--add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED',
