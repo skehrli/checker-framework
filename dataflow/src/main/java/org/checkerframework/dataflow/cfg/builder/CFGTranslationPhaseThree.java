@@ -61,8 +61,8 @@ public class CFGTranslationPhaseThree {
   /**
    * Perform phase three on the control flow graph {@code cfg}.
    *
-   * @param cfg the control flow graph. Ownership is transfered to this method and the caller is not
-   *     allowed to read or modify {@code cfg} after the call to {@code process} any more.
+   * @param cfg the control flow graph. Ownership is transferred to this method and the caller is
+   *     not allowed to read or modify {@code cfg} after the call to {@code process} any more.
    * @return the resulting control flow graph
    */
   @SuppressWarnings("nullness") // TODO: successors
@@ -264,19 +264,10 @@ public class CFGTranslationPhaseThree {
     for (Block p : cur.getPredecessors()) {
       BlockImpl pred = (BlockImpl) p;
       switch (pred.getType()) {
-        case SPECIAL_BLOCK:
-          // add pred correctly to predecessor list
-          predecessors.add(getPredecessorHolder(pred, cur));
-          break;
-        case CONDITIONAL_BLOCK:
-          // add pred correctly to predecessor list
-          predecessors.add(getPredecessorHolder(pred, cur));
-          break;
-        case EXCEPTION_BLOCK:
-          // add pred correctly to predecessor list
-          predecessors.add(getPredecessorHolder(pred, cur));
-          break;
-        case REGULAR_BLOCK:
+        case SPECIAL_BLOCK, CONDITIONAL_BLOCK, EXCEPTION_BLOCK ->
+            // add pred correctly to predecessor list
+            predecessors.add(getPredecessorHolder(pred, cur));
+        case REGULAR_BLOCK -> {
           RegularBlockImpl r = (RegularBlockImpl) pred;
           if (r.isEmpty()) {
             // recursively look backwards
@@ -287,7 +278,7 @@ public class CFGTranslationPhaseThree {
             // add pred correctly to predecessor list
             predecessors.add(getPredecessorHolder(pred, cur));
           }
-          break;
+        }
       }
     }
   }
@@ -304,10 +295,11 @@ public class CFGTranslationPhaseThree {
   @SuppressWarnings("interning:not.interned") // AST node comparisons
   protected static PredecessorHolder getPredecessorHolder(BlockImpl pred, BlockImpl cur) {
     switch (pred.getType()) {
-      case SPECIAL_BLOCK:
+      case SPECIAL_BLOCK -> {
         SingleSuccessorBlockImpl s = (SingleSuccessorBlockImpl) pred;
         return singleSuccessorHolder(s, cur);
-      case CONDITIONAL_BLOCK:
+      }
+      case CONDITIONAL_BLOCK -> {
         // add pred correctly to predecessor list
         ConditionalBlockImpl c = (ConditionalBlockImpl) pred;
         if (c.getThenSuccessor() == cur) {
@@ -338,7 +330,8 @@ public class CFGTranslationPhaseThree {
             }
           };
         }
-      case EXCEPTION_BLOCK:
+      }
+      case EXCEPTION_BLOCK -> {
         // add pred correctly to predecessor list
         ExceptionBlockImpl e = (ExceptionBlockImpl) pred;
         if (e.getSuccessor() == cur) {
@@ -364,11 +357,12 @@ public class CFGTranslationPhaseThree {
           }
         }
         throw new BugInCF("Unreachable");
-      case REGULAR_BLOCK:
+      }
+      case REGULAR_BLOCK -> {
         RegularBlockImpl r = (RegularBlockImpl) pred;
         return singleSuccessorHolder(r, cur);
-      default:
-        throw new BugInCF("Unexpected block type " + pred.getType());
+      }
+      default -> throw new BugInCF("Unexpected block type " + pred.getType());
     }
   }
 
