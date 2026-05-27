@@ -388,11 +388,11 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
     StatementTree init = tree.getInitializer().get(0);
     ExpressionTree condition = TreeUtils.withoutParens(tree.getCondition());
     ExpressionStatementTree update = tree.getUpdate().get(0);
-    if (!(condition instanceof BinaryTree)) {
+    if (!(condition instanceof BinaryTree binaryCondition)) {
       return;
     }
     Name identifierInHeader =
-        nameOfCollectionThatAllElementsAreCalledOn(init, (BinaryTree) condition, update);
+        nameOfCollectionThatAllElementsAreCalledOn(init, binaryCondition, update);
     Name iterator = getNameFromStatementTree(init);
     if (identifierInHeader == null || iterator == null) {
       return;
@@ -474,13 +474,14 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
       UnaryTree inc = (UnaryTree) update.getExpression();
 
       // Verify update is of form i++ or ++i and init is variable initializer.
-      if (!(init instanceof VariableTree) || !(inc.getExpression() instanceof IdentifierTree))
+      if (!(init instanceof VariableTree initVar)
+          || !(inc.getExpression() instanceof IdentifierTree)) {
         return null;
-      VariableTree initVar = (VariableTree) init;
+      }
 
       // Verify that intializer is i=0.
-      if (!(initVar.getInitializer() instanceof LiteralTree)
-          || !((LiteralTree) initVar.getInitializer()).getValue().equals(0)) {
+      if (!(initVar.getInitializer() instanceof LiteralTree initLit)
+          || !initLit.getValue().equals(0)) {
         return null;
       }
 
@@ -502,11 +503,10 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
           && TreeUtils.isSizeAccess(condition.getRightOperand())) {
         ExpressionTree methodSelect =
             ((MethodInvocationTree) condition.getRightOperand()).getMethodSelect();
-        if (methodSelect instanceof MemberSelectTree) {
-          MemberSelectTree mst = (MemberSelectTree) methodSelect;
-          Element elt = TreeUtils.elementFromTree(mst.getExpression());
+        if (methodSelect instanceof MemberSelectTree msTree) {
+          Element elt = TreeUtils.elementFromTree(msTree.getExpression());
           if (ResourceLeakUtils.isCollection(elt, atypeFactory)) {
-            return getNameFromExpressionTree(mst.getExpression());
+            return getNameFromExpressionTree(msTree.getExpression());
           }
         }
       }
@@ -539,16 +539,12 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
           @Override
           public Void visitUnary(UnaryTree tree, Void p) {
             switch (tree.getKind()) {
-              case PREFIX_DECREMENT:
-              case POSTFIX_DECREMENT:
-              case PREFIX_INCREMENT:
-              case POSTFIX_INCREMENT:
+              case PREFIX_DECREMENT, POSTFIX_DECREMENT, PREFIX_INCREMENT, POSTFIX_INCREMENT -> {
                 if (getNameFromExpressionTree(tree.getExpression()) == iterator) {
                   blockIsIllegal.set(true);
                 }
-                break;
-              default:
-                break;
+              }
+              default -> {}
             }
             return super.visitUnary(tree, p);
           }
@@ -616,19 +612,23 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
       return null;
     }
     switch (expr.getKind()) {
-      case IDENTIFIER:
+      case IDENTIFIER -> {
         return ((IdentifierTree) expr).getName();
-      case MEMBER_SELECT:
+      }
+      case MEMBER_SELECT -> {
         Element elt = TreeUtils.elementFromUse((MemberSelectTree) expr);
         if (elt.getKind() == ElementKind.METHOD || elt.getKind() == ElementKind.FIELD) {
           return getNameFromExpressionTree(((MemberSelectTree) expr).getExpression());
         } else {
           return null;
         }
-      case METHOD_INVOCATION:
+      }
+      case METHOD_INVOCATION -> {
         return getNameFromExpressionTree(((MethodInvocationTree) expr).getMethodSelect());
-      default:
+      }
+      default -> {
         return null;
+      }
     }
   }
 
@@ -644,14 +644,12 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
     if (expr == null) {
       return null;
     }
-    switch (expr.getKind()) {
-      case VARIABLE:
-        return ((VariableTree) expr).getName();
-      case EXPRESSION_STATEMENT:
-        return getNameFromExpressionTree(((ExpressionStatementTree) expr).getExpression());
-      default:
-        return null;
-    }
+    return switch (expr.getKind()) {
+      case VARIABLE -> ((VariableTree) expr).getName();
+      case EXPRESSION_STATEMENT ->
+          getNameFromExpressionTree(((ExpressionStatementTree) expr).getExpression());
+      default -> null;
+    };
   }
 
   /**
@@ -662,19 +660,23 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
    */
   protected ExpressionTree collectionTreeFromExpression(ExpressionTree expr) {
     switch (expr.getKind()) {
-      case IDENTIFIER:
+      case IDENTIFIER -> {
         return expr;
-      case MEMBER_SELECT:
+      }
+      case MEMBER_SELECT -> {
         Element elt = TreeUtils.elementFromUse((MemberSelectTree) expr);
         if (elt.getKind() == ElementKind.METHOD) {
           return ((MemberSelectTree) expr).getExpression();
         } else {
           return null;
         }
-      case METHOD_INVOCATION:
+      }
+      case METHOD_INVOCATION -> {
         return collectionTreeFromExpression(((MethodInvocationTree) expr).getMethodSelect());
-      default:
+      }
+      default -> {
         return null;
+      }
     }
   }
 
@@ -690,13 +692,11 @@ public class MustCallVisitor extends BaseTypeVisitor<MustCallAnnotatedTypeFactor
     if (tree == null || index == null) {
       return false;
     }
-    if (tree instanceof MethodInvocationTree
+    if (tree instanceof MethodInvocationTree miTree
         && index == getNameFromExpressionTree(TreeUtils.getIdxForGetCall(tree))) {
-      MethodInvocationTree mit = (MethodInvocationTree) tree;
-      ExpressionTree methodSelect = mit.getMethodSelect();
-      if (methodSelect instanceof MemberSelectTree) {
-        MemberSelectTree mst = (MemberSelectTree) methodSelect;
-        Element receiverElt = TreeUtils.elementFromTree(mst.getExpression());
+      ExpressionTree methodSelect = miTree.getMethodSelect();
+      if (methodSelect instanceof MemberSelectTree msTree) {
+        Element receiverElt = TreeUtils.elementFromTree(msTree.getExpression());
         return ResourceLeakUtils.isCollection(receiverElt, atypeFactory);
       }
     }

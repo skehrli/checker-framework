@@ -77,8 +77,7 @@ public class CollectionOwnershipTransfer
     // and rhs being owning resource collection field.
     if (rhsType != null) {
       switch (rhsType) {
-        case OwningCollection:
-        case OwningCollectionWithoutObligation:
+        case OwningCollection, OwningCollectionWithoutObligation -> {
           JavaExpression rhsJE = JavaExpression.fromNode(rhs);
           if (node.isDesugaredFromEnhancedArrayForLoop()
               || atypeFactory.isOwningCollectionField(
@@ -87,8 +86,8 @@ public class CollectionOwnershipTransfer
           } else {
             replaceInStores(res, rhsJE, atypeFactory.NOTOWNINGCOLLECTION);
           }
-          break;
-        default:
+        }
+        default -> {}
       }
     }
     return res;
@@ -207,7 +206,7 @@ public class CollectionOwnershipTransfer
       Element argElem = TreeUtils.elementFromTree(arg.getTree());
       boolean transferOwnership = false;
       switch (paramType) {
-        case OwningCollection:
+        case OwningCollection -> {
           switch (argType) {
             case OwningCollection:
             case OwningCollectionWithoutObligation:
@@ -215,16 +214,16 @@ public class CollectionOwnershipTransfer
               break;
             default:
           }
-          break;
-        case OwningCollectionWithoutObligation:
+        }
+        case OwningCollectionWithoutObligation -> {
           switch (argType) {
             case OwningCollectionWithoutObligation:
               transferOwnership = true;
               break;
             default:
           }
-          break;
-        default:
+        }
+        default -> {}
       }
       if (transferOwnership) {
         if (argElem.getKind().isField()) {

@@ -1694,9 +1694,8 @@ public final class TreeUtils {
    * @return ExpressionTree of {@code idx} if tree is {@code Collection.get(idx)} and null else
    */
   public static @Nullable ExpressionTree getIdxForGetCall(Tree tree) {
-    if ((tree instanceof MethodInvocationTree)
-        && isNamedMethodCall("get", (MethodInvocationTree) tree)) {
-      return ((MethodInvocationTree) tree).getArguments().get(0);
+    if ((tree instanceof MethodInvocationTree miTree) && isNamedMethodCall("get", miTree)) {
+      return miTree.getArguments().get(0);
     }
     return null;
   }
@@ -1708,9 +1707,9 @@ public final class TreeUtils {
    * @return true if the given tree is of the form object.size()
    */
   public static boolean isSizeAccess(Tree tree) {
-    return (tree instanceof MethodInvocationTree)
-        && isNamedMethodCall("size", (MethodInvocationTree) tree)
-        && ((MethodInvocationTree) tree).getArguments().isEmpty();
+    return (tree instanceof MethodInvocationTree miTree)
+        && isNamedMethodCall("size", miTree)
+        && miTree.getArguments().isEmpty();
   }
 
   /**

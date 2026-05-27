@@ -277,13 +277,10 @@ public class CollectionOwnershipAnnotatedTypeFactory
         if (fieldType == null) {
           return false;
         }
-        switch (fieldType) {
-          case OwningCollection:
-          case OwningCollectionWithoutObligation:
-            return true;
-          default:
-            return false;
-        }
+        return switch (fieldType) {
+          case OwningCollection, OwningCollectionWithoutObligation -> true;
+          default -> false;
+        };
       }
     }
     return false;
@@ -322,12 +319,10 @@ public class CollectionOwnershipAnnotatedTypeFactory
         if (paramType == null) {
           return false;
         }
-        switch (paramType) {
-          case OwningCollection:
-            return true;
-          default:
-            return false;
-        }
+        return switch (paramType) {
+          case OwningCollection -> true;
+          default -> false;
+        };
       }
     }
     return false;
@@ -467,10 +462,10 @@ public class CollectionOwnershipAnnotatedTypeFactory
    */
   public CollectionOwnershipType getCoType(Tree tree) {
     JavaExpression jx = null;
-    if (tree instanceof ExpressionTree) {
-      jx = JavaExpression.fromTree((ExpressionTree) tree);
-    } else if (tree instanceof VariableTree) {
-      jx = JavaExpression.fromVariableTree((VariableTree) tree);
+    if (tree instanceof ExpressionTree exprTree) {
+      jx = JavaExpression.fromTree(exprTree);
+    } else if (tree instanceof VariableTree varTree) {
+      jx = JavaExpression.fromVariableTree(varTree);
     }
     try {
       CollectionOwnershipStore coStore = getStoreBefore(tree);
@@ -534,7 +529,7 @@ public class CollectionOwnershipAnnotatedTypeFactory
   public boolean expressionIsFieldAccess(String e, VariableElement field) {
     try {
       JavaExpression je = StringToJavaExpression.atFieldDecl(e, field, this.checker);
-      return je instanceof FieldAccess && ((FieldAccess) je).getField().equals(field);
+      return je instanceof FieldAccess fa && fa.getField().equals(field);
     } catch (JavaExpressionParseException ex) {
       // The parsing error will be reported elsewhere, assuming e was derived from an
       // annotation.
@@ -552,10 +547,10 @@ public class CollectionOwnershipAnnotatedTypeFactory
    *     expression
    */
   public JavaExpression stringToJavaExpression(String s, ExecutableElement method) {
-    Tree methodTree = declarationFromElement(method);
-    if (methodTree instanceof MethodTree) {
+    Tree methodDecl = declarationFromElement(method);
+    if (methodDecl instanceof MethodTree methodTree) {
       try {
-        return StringToJavaExpression.atMethodBody(s, (MethodTree) methodTree, checker);
+        return StringToJavaExpression.atMethodBody(s, methodTree, checker);
       } catch (JavaExpressionParseException ex) {
         return null;
       }
@@ -591,12 +586,12 @@ public class CollectionOwnershipAnnotatedTypeFactory
 
       AnnotatedDeclaredType receiverType = t.getReceiverType();
       AnnotationMirror receiverAnno =
-          receiverType == null ? null : receiverType.getEffectiveAnnotationInHierarchy(TOP);
+          receiverType == null ? null : receiverType.getAnnotationInHierarchy(TOP);
       boolean receiverHasExplicitAnno =
           receiverAnno != null && !AnnotationUtils.areSameByName(BOTTOM, receiverAnno);
 
       AnnotatedTypeMirror returnType = t.getReturnType();
-      AnnotationMirror returnAnno = returnType.getEffectiveAnnotationInHierarchy(TOP);
+      AnnotationMirror returnAnno = returnType.getAnnotationInHierarchy(TOP);
       boolean returnHasExplicitAnno =
           returnAnno != null && !AnnotationUtils.areSameByName(BOTTOM, returnAnno);
 
@@ -639,7 +634,7 @@ public class CollectionOwnershipAnnotatedTypeFactory
           List<? extends AnnotatedTypeMirror> superParamTypes =
               annotatedSuperMethod.getParameterTypes();
           for (int i = 0; i < superParamTypes.size(); i++) {
-            AnnotationMirror paramAnno = paramTypes.get(i).getEffectiveAnnotationInHierarchy(TOP);
+            AnnotationMirror paramAnno = paramTypes.get(i).getAnnotationInHierarchy(TOP);
             boolean paramHasExplicitAnno =
                 paramAnno != null && !AnnotationUtils.areSameByName(BOTTOM, paramAnno);
             if (!paramHasExplicitAnno) {
@@ -658,7 +653,7 @@ public class CollectionOwnershipAnnotatedTypeFactory
       } // end "if (overriddenMethods != null)"
 
       if (isResourceCollection(returnType.getUnderlyingType())) {
-        AnnotationMirror manualAnno = returnType.getEffectiveAnnotationInHierarchy(TOP);
+        AnnotationMirror manualAnno = returnType.getAnnotationInHierarchy(TOP);
         if (manualAnno == null || AnnotationUtils.areSameByName(BOTTOM, manualAnno)) {
           boolean isConstructor = t.getElement().getKind() == ElementKind.CONSTRUCTOR;
           if (isConstructor) {
@@ -671,7 +666,7 @@ public class CollectionOwnershipAnnotatedTypeFactory
 
       for (AnnotatedTypeMirror paramType : t.getParameterTypes()) {
         if (isResourceCollection(paramType.getUnderlyingType())) {
-          AnnotationMirror manualAnno = paramType.getEffectiveAnnotationInHierarchy(TOP);
+          AnnotationMirror manualAnno = paramType.getAnnotationInHierarchy(TOP);
           if (manualAnno == null || AnnotationUtils.areSameByName(BOTTOM, manualAnno)) {
             paramType.replaceAnnotation(NOTOWNINGCOLLECTION);
           }
@@ -694,7 +689,7 @@ public class CollectionOwnershipAnnotatedTypeFactory
       if (elt != null) {
         boolean isField = elt.getKind() == ElementKind.FIELD;
         if (isField && isResourceCollection(type.getUnderlyingType())) {
-          AnnotationMirror fieldAnno = type.getEffectiveAnnotationInHierarchy(TOP);
+          AnnotationMirror fieldAnno = type.getAnnotationInHierarchy(TOP);
           if (fieldAnno == null || AnnotationUtils.areSameByName(BOTTOM, fieldAnno)) {
             TreePath currentPath = getPath(tree);
             MethodTree enclosingMethodTree = TreePathUtil.enclosingMethod(currentPath);
@@ -721,7 +716,7 @@ public class CollectionOwnershipAnnotatedTypeFactory
     if (elt instanceof VariableElement) {
       if (isResourceCollection(type.getUnderlyingType())) {
         if (elt.getKind() == ElementKind.FIELD) {
-          AnnotationMirror fieldAnno = type.getEffectiveAnnotationInHierarchy(TOP);
+          AnnotationMirror fieldAnno = type.getAnnotationInHierarchy(TOP);
           if (fieldAnno == null || AnnotationUtils.areSameByName(BOTTOM, fieldAnno)) {
             type.replaceAnnotation(OWNINGCOLLECTION);
           }
@@ -734,7 +729,7 @@ public class CollectionOwnershipAnnotatedTypeFactory
           List<? extends AnnotatedTypeMirror> paramTypes = annotatedMethod.getParameterTypes();
           for (int i = 0; i < params.size(); i++) {
             if (params.get(i).getSimpleName() == elt.getSimpleName()) {
-              type.replaceAnnotation(paramTypes.get(i).getEffectiveAnnotationInHierarchy(TOP));
+              type.replaceAnnotation(paramTypes.get(i).getAnnotationInHierarchy(TOP));
               break;
             }
           }

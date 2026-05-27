@@ -180,14 +180,14 @@ public class MustCallAnnotatedTypeFactory extends BaseAnnotatedTypeFactory
           continue;
         }
         if (typeArg.getKind() == TypeKind.WILDCARD || typeArg.getKind() == TypeKind.TYPEVAR) {
-          if (tree != null && tree instanceof NewClassTree) {
-            if (((NewClassTree) tree).getTypeArguments().isEmpty()) {
+          if (tree != null && tree instanceof NewClassTree ncTree) {
+            if (ncTree.getTypeArguments().isEmpty()) {
               // Diamond [new Class()<>]. Not explicit generic type param.
               // This will be inferred later. Don't put it to bottom here.
               continue;
             }
           }
-          AnnotationMirror mcAnno = typeArg.getEffectiveAnnotationInHierarchy(TOP);
+          AnnotationMirror mcAnno = typeArg.getAnnotationInHierarchy(TOP);
           boolean typeArgIsMcUnknown =
               mcAnno != null
                   && processingEnv
@@ -205,8 +205,8 @@ public class MustCallAnnotatedTypeFactory extends BaseAnnotatedTypeFactory
               if (!ResourceLeakUtils.hasManualMustCallUnknownAnno(extendsBound)) {
                 typeArg.replaceAnnotation(BOTTOM);
               }
-            } else if (typeArg instanceof AnnotatedTypeVariable) {
-              AnnotatedTypeMirror upperBound = ((AnnotatedTypeVariable) typeArg).getUpperBound();
+            } else if (typeArg instanceof AnnotatedTypeVariable atVar) {
+              AnnotatedTypeMirror upperBound = atVar.getUpperBound();
               // set back to bottom if the type var is a captured wildcard
               // or if it doesn't have a manual MustCallUnknown anno
               if (typeArg.containsCapturedTypes()
